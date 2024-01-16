@@ -99,6 +99,35 @@ int main() {
             }
             input_selected_table.close();
             valid_query = true;
+        } else if(query_type == "SELECT" 
+                && tokens.size() == 7 && table_directory.count(tokens[2])
+                && areDigits(tokens[4]) 
+                && (size_t) std::stoi(tokens[4]) <= table_directory[tokens[2]].num_of_columns
+                && tokens[5] == "="){
+            // SELECT FROM <table name> WHERE <column number> = "STRING LITERAL".
+            std::string table_name = tokens[2];
+            std::string filter_str = tokens[6];
+            size_t filter_column_num = std::stoi(tokens[4]);
+
+            std::vector<std::vector<std::string>> table_buffer;
+            std::string row_buffer;
+            
+            std::ifstream input_selected_table(table_name + ".txt");
+            while(std::getline(input_selected_table, row_buffer)){
+                std::vector<std::string> columns = strSplit(row_buffer, ',');
+                table_buffer.emplace_back(columns);
+                
+            }
+            input_selected_table.close();
+
+            for(auto &row: table_buffer){
+                if(row[filter_column_num-1] == filter_str){
+                    for(size_t i = 0; i < row.size(); i++)
+                        std::cout << row[i] << " " ;
+                    std::cout << std::endl;
+                }
+            }
+            valid_query = true;
         } else if(query_type == "DELETE" && tokens.size() == 3 && table_directory.count(tokens[2])){
             // DELETE FROM <table name> deletes the entire table.
             std::string table_name = tokens[2];
@@ -136,6 +165,7 @@ int main() {
  * supported queries:
  * CREATE TABLE <table name> <number of columns>.
  * SELECT FROM <table name> returns the entire table.
+ * SELECT FROM <table name> WHERE <column number> = "STRING LITERAL".
  * DELETE FROM <table name> deletes the entire table.
  * INSERT INTO <table name> <n values> and n = number of columns.
  */
