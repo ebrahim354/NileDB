@@ -36,6 +36,10 @@ bool areDigits(std::string nums){
 
 class DiskManager {
     public:
+
+        DiskManager(){}
+        ~DiskManager(){}
+
         // returns 1 in case of failure and 0 in case of success.
         int readFile(std::string file_name, std::vector<std::vector<std::string>> &ouput_buffer){
             std::ifstream input_selected_table(file_name);
@@ -72,9 +76,43 @@ class DiskManager {
 
 
 
+class CacheManager {
+    public:
+    CacheManager(DiskManager *disk_manager):  disk_manager_(disk_manager){}
+    ~CacheManager(){}
+
+    std::vector<std::vector<std::string>>* fetchFile(std::string file_name){
+        if(files_.count(file_name)) return &files_[file_name];
+
+        files_[file_name] = std::vector<std::vector<std::string>>();
+        int err = disk_manager_->readFile(file_name, files_[file_name]);
+        if(err) return nullptr;
+
+        return &files_[file_name];
+    }
+
+    void flushFile(std::string file_name){
+        if(!files_.count(file_name))   return;
+
+        int err = disk_manager_->writeFile(file_name, files_[file_name]);
+        if(err) return;
+
+        files_.erase(file_name);
+    }
+
+
+    private:
+    DiskManager *disk_manager_;
+    std::unordered_map<std::string, std::vector<std::vector<std::string>>> files_;
+};
+
+
+
+
 
 int main() {
-    DiskManager DM;
+    DiskManager disk_manager_;
+    CacheManager cache_manager_(&disk_manager_);
     // setting up meta data.
     bool prompt_is_running = true;
     std::ifstream input_main_tables("main_tables.txt");
@@ -125,20 +163,19 @@ int main() {
                 valid_query = true;
             }
         } else if(query_type == "SELECT" && tokens.size() == 3 && table_directory.count(tokens[2])){
-            // SELECT FROM <table name> returns the entire table.
+            // SELECT FROM <!table name> returns the entire table.
             std::string table_name = tokens[2];
             std::string file_name = table_name+".txt";
 
-            std::vector<std::vector<std::string>> table_buffer;
-            int err = DM.readFile(file_name, table_buffer);
-            if(!err){
-                for(auto &row : table_buffer){
+            std::vector<std::vector<std::string>> *table_buffer = cache_manager_.fetchFile(file_name);
+            if(table_buffer != nullptr){
+                for(auto &row : *table_buffer){
                     for(auto &col : row)
                         std::cout << col << " " ;
                     std::cout << "\n";
                 }
+                valid_query = true;
             }
-            valid_query = true;
         } else if(query_type == "SELECT" 
                 && tokens.size() == 7 && table_directory.count(tokens[2])
                 && areDigits(tokens[4]) 
@@ -149,29 +186,32 @@ int main() {
             std::string file_name = table_name+".txt";
             int filter_column_num = std::stoi(tokens[4]);
             std::string filter_str = tokens[6];
-            std::vector<std::vector<std::string>> table_buffer;
 
-            int err = DM.readFile(file_name, table_buffer);
-            if(!err){
-                for(auto &row : table_buffer){
+            std::vector<std::vector<std::string>> *table_buffer = cache_manager_.fetchFile(file_name);
+
+            if(table_buffer != nullptr){
+                for(auto &row : *table_buffer){
                     if(row[filter_column_num-1] == filter_str){
                         for(size_t i = 0; i < row.size(); i++)
                             std::cout << row[i] << " " ;
                         std::cout << std::endl;
                     }
                 }
+                valid_query = true;
             }
-            valid_query = true;
         } else if(query_type == "DELETE" && tokens.size() == 3 && table_directory.count(tokens[2])){
             // DELETE FROM <table name> deletes the entire table.
             std::string table_name = tokens[2];
             std::string file_name = table_name+".txt";
-            std::vector<std::vector<std::string>> tmp_buffer;
-            int err = DM.writeFile(file_name, tmp_buffer);
-            if(!err){
+
+            std::vector<std::vector<std::string>> *table_buffer = cache_manager_.fetchFile(file_name);
+            if(table_buffer != nullptr){
+                table_buffer->clear();
+                cache_manager_.flushFile(file_name);
                 std::cout << "CLEARED TABLE" << std::endl;
                 valid_query = true;
             }
+
         } else if(query_type == "INSERT" && tokens.size() >= 3 
                 && table_directory.count(tokens[2]) && table_directory[tokens[2]].num_of_columns == tokens.size() - 3
                 ){
@@ -179,19 +219,15 @@ int main() {
             std::string table_name = tokens[2];
             std::string file_name = table_name+".txt";
             std::size_t n = table_directory[table_name].num_of_columns;
-            std::vector<std::vector<std::string>> io_buffer;
-            std::string row = ""; 
 
-            int r_err = DM.readFile(file_name, io_buffer);
-            if(!r_err){
+            std::vector<std::vector<std::string>> *io_buffer = cache_manager_.fetchFile(file_name);
+            if(io_buffer != nullptr){
                 std::vector<std::string> row;
                 for(size_t i = 0; i < n; i++)  row.push_back(tokens[i+3]);
-                io_buffer.push_back(row);
-                int w_err = DM.writeFile(file_name, io_buffer);
-                if(!w_err){
-                    std::cout << "INSERTED A NEW RECORD" << std::endl;
-                    valid_query = true;
-                }
+                io_buffer->push_back(row);
+                cache_manager_.flushFile(file_name);
+                std::cout << "INSERTED A NEW RECORD" << std::endl;
+                valid_query = true;
             }
         }
         
