@@ -161,117 +161,168 @@ class DirectoryManager {
 };
 
 
+class QueryProcessor{
+    public:
+        QueryProcessor(CacheManager *cache_manager, DirectoryManager *directory_manager): 
+            cache_manager_(cache_manager),
+            directory_manager_(directory_manager){}
+        ~QueryProcessor(){}
+
+        // executor functions for certain queries.
+        //
+        /*
+         * CREATE TABLE <table name> <number of columns>.
+         * SELECT FROM <table name> returns the entire table.
+         * SELECT FROM <table name> WHERE <column number> = "STRING LITERAL".
+         * DELETE FROM <table name> deletes the entire table.
+         * INSERT INTO <table name> <n values> and n = number of columns.
+         */
+         
+        bool createTableExec(std::string table_name, std::string table_size){
+            if(!areDigits(table_size) || directory_manager_->tableExists(table_name) || table_name == "main_tables") 
+                return false;
+            bool created_successfully =  directory_manager_->createTable(table_name, table_size);
+            return created_successfully; 
+        }
+
+        bool selectExec(std::string table_name){
+            std::string file_name = table_name+".txt";
+
+            std::vector<std::vector<std::string>> *table_buffer = cache_manager_->fetchFile(file_name);
+            if(!table_buffer) return false;
+            for(auto &row : *table_buffer){
+                for(auto &col : row)
+                    std::cout << col << " " ;
+                std::cout << "\n";
+            }
+            return true;
+        } 
+
+        bool selectFilterExec(std::string table_name, size_t filter_idx, std::string filter_str){
+            std::string file_name = table_name+".txt";
+            
+            std::vector<std::vector<std::string>> *table_buffer = cache_manager_->fetchFile(file_name);
+            if(!table_buffer) return false;
+
+            for(auto &row : *table_buffer){
+                if(row[filter_idx-1] == filter_str){
+                    for(size_t i = 0; i < row.size(); i++)
+                        std::cout << row[i] << " " ;
+                    std::cout << std::endl;
+                }
+            }
+            return true;
+        }
+
+        bool deleteExec(std::string table_name){
+            std::string file_name = table_name+".txt";
+            std::vector<std::vector<std::string>> *table_buffer = cache_manager_->fetchFile(file_name);
+            if(!table_buffer) return false;
+            table_buffer->clear();
+            cache_manager_->flushFile(file_name);
+            return true;
+        }
+
+        // INSERT INTO <table name> <n values> and n = number of columns.
+        bool insertExec(std::string table_name, std::vector<std::string> &vals){
+            std::string file_name = table_name+".txt";
+            std::size_t n = directory_manager_->getTable(table_name).num_of_columns;
+
+            std::vector<std::vector<std::string>> *io_buffer = cache_manager_->fetchFile(file_name);
+            if(!io_buffer) return false;
+
+            io_buffer->push_back(vals);
+            cache_manager_->flushFile(file_name);
+            return true;
+        }
+
+
+        std::vector<std::string> tokenize(std::string query){
+            std::vector<std::string> tokens;
+            std::stringstream ss(query);
+            std::string cur_token;
+            while(ss >> cur_token){
+                tokens.push_back(cur_token); 
+            }
+            return tokens;
+        }
+
+        void handleQuery(std::string query){
+            std::vector<std::string> tokens = tokenize(query);
+            bool valid_query = false;
+            std::string query_type = tokens[0];
+            if(query_type == "CREATE" && tokens.size() == 4){
+                //  CREATE TABLE <table name> <number of columns>.
+                std::string table_name = tokens[2];
+                std::string n = tokens[3];
+                valid_query = createTableExec(table_name, n);
+                if(valid_query)
+                    std::cout << "CREATED TABLE : " << table_name << "\n";
+            } else if(query_type == "SELECT" && tokens.size() == 3 && directory_manager_->tableExists(tokens[2])){
+                // SELECT FROM <!table name> returns the entire table.
+                std::string table_name = tokens[2];
+                valid_query = selectExec(table_name);
+
+            } else if(query_type == "SELECT" 
+                    && tokens.size() == 7 && directory_manager_->tableExists(tokens[2])
+                    && areDigits(tokens[4]) 
+                    && (size_t) std::stoi(tokens[4]) <= directory_manager_->getTable(tokens[2]).num_of_columns
+                    && tokens[5] == "="){
+                // SELECT FROM <table name> WHERE <column number> = "STRING LITERAL".
+                std::string table_name = tokens[2];
+                int filter_column_num = std::stoi(tokens[4]);
+                std::string filter_str = tokens[6];
+                valid_query = selectFilterExec(table_name, filter_column_num, filter_str);
+            } else if(query_type == "DELETE" && tokens.size() == 3 && directory_manager_->tableExists(tokens[2])){
+                // DELETE FROM <table name> deletes the entire table.
+                std::string table_name = tokens[2];
+                valid_query = deleteExec(table_name);
+
+                if(valid_query)
+                    std::cout << "CLEARED TABLE" << std::endl;
+
+            } else if(query_type == "INSERT" && tokens.size() >= 3 
+                    && directory_manager_->tableExists(tokens[2]) 
+                    && directory_manager_->getTable(tokens[2]).num_of_columns == tokens.size() - 3
+                    ){
+                // INSERT INTO <table name> <n values> and n = number of columns.
+                std::string table_name = tokens[2];
+                std::string file_name = table_name+".txt";
+                std::size_t n = directory_manager_->getTable(table_name).num_of_columns;
+                std::vector<std::string> vals;
+                for(size_t i = 0; i < n; i++)  vals.push_back(tokens[i+3]);
+
+                valid_query = insertExec(table_name, vals);
+                if(valid_query)
+                    std::cout << "INSERTED A NEW RECORD" << std::endl;
+            }
+
+            if(!valid_query){
+                std::cout << "INVALID QUERY" << "\n";
+            }
+
+        }
+
+    private:
+        CacheManager *cache_manager_;
+        DirectoryManager *directory_manager_;
+};
+
+
 
 
 int main() {
     DiskManager disk_manager_{};
     CacheManager cache_manager_(&disk_manager_);
     DirectoryManager directory_manager_(&cache_manager_);
+    QueryProcessor query_processor_(&cache_manager_,&directory_manager_);
     // setting up meta data.
     bool prompt_is_running = true;
     while(prompt_is_running){
         std::cout << "> ";
-        bool valid_query = false;
-        std::vector<std::string> tokens;
-        std::string line;
-        std::getline(std::cin, line);
-        // stringstream to filter white space between tokens.
-        std::stringstream ss(line);
-        std::string token;
-        while(ss >> token){
-            tokens.push_back(token); 
-        }
-        // handle query then start over.
-        std::string query_type = tokens[0];
-        if(query_type == "CREATE" && tokens.size() == 4){
-            //  CREATE TABLE <table name> <number of columns>.
-            std::string table_name = tokens[2];
-            std::string n = tokens[3];
-
-            if(areDigits(n) && !directory_manager_.tableExists(table_name) && table_name != "main_tables"){
-
-                bool created = directory_manager_.createTable(table_name, n);
-                if(created){
-                    std::cout << "CREATED TABLE : " << table_name << "\n";
-                    valid_query = true;
-                }
-            }
-
-
-        } else if(query_type == "SELECT" && tokens.size() == 3 && directory_manager_.tableExists(tokens[2])){
-            // SELECT FROM <!table name> returns the entire table.
-            std::string table_name = tokens[2];
-            std::string file_name = table_name+".txt";
-
-            std::vector<std::vector<std::string>> *table_buffer = cache_manager_.fetchFile(file_name);
-            if(table_buffer != nullptr){
-                for(auto &row : *table_buffer){
-                    for(auto &col : row)
-                        std::cout << col << " " ;
-                    std::cout << "\n";
-                }
-                valid_query = true;
-            }
-        } else if(query_type == "SELECT" 
-                && tokens.size() == 7 && directory_manager_.tableExists(tokens[2])
-                && areDigits(tokens[4]) 
-                && (size_t) std::stoi(tokens[4]) <= directory_manager_.getTable(tokens[2]).num_of_columns
-                && tokens[5] == "="){
-            // SELECT FROM <table name> WHERE <column number> = "STRING LITERAL".
-            std::string table_name = tokens[2];
-            std::string file_name = table_name+".txt";
-            int filter_column_num = std::stoi(tokens[4]);
-            std::string filter_str = tokens[6];
-
-            std::vector<std::vector<std::string>> *table_buffer = cache_manager_.fetchFile(file_name);
-
-            if(table_buffer != nullptr){
-                for(auto &row : *table_buffer){
-                    if(row[filter_column_num-1] == filter_str){
-                        for(size_t i = 0; i < row.size(); i++)
-                            std::cout << row[i] << " " ;
-                        std::cout << std::endl;
-                    }
-                }
-                valid_query = true;
-            }
-        } else if(query_type == "DELETE" && tokens.size() == 3 && directory_manager_.tableExists(tokens[2])){
-            // DELETE FROM <table name> deletes the entire table.
-            std::string table_name = tokens[2];
-            std::string file_name = table_name+".txt";
-
-            std::vector<std::vector<std::string>> *table_buffer = cache_manager_.fetchFile(file_name);
-            if(table_buffer != nullptr){
-                table_buffer->clear();
-                cache_manager_.flushFile(file_name);
-                std::cout << "CLEARED TABLE" << std::endl;
-                valid_query = true;
-            }
-
-        } else if(query_type == "INSERT" && tokens.size() >= 3 
-                && directory_manager_.tableExists(tokens[2]) 
-                && directory_manager_.getTable(tokens[2]).num_of_columns == tokens.size() - 3
-                ){
-            // INSERT INTO <table name> <n values> and n = number of columns.
-            std::string table_name = tokens[2];
-            std::string file_name = table_name+".txt";
-            std::size_t n = directory_manager_.getTable(table_name).num_of_columns;
-
-            std::vector<std::vector<std::string>> *io_buffer = cache_manager_.fetchFile(file_name);
-            if(io_buffer != nullptr){
-                std::vector<std::string> row;
-                for(size_t i = 0; i < n; i++)  row.push_back(tokens[i+3]);
-                io_buffer->push_back(row);
-                cache_manager_.flushFile(file_name);
-                std::cout << "INSERTED A NEW RECORD" << std::endl;
-                valid_query = true;
-            }
-        }
-        
-        if(!valid_query){
-            std::cout << "INVALID QUERY" << "\n";
-        }
-            
+        std::string query;
+        std::getline(std::cin, query);
+        query_processor_.handleQuery(query);
     }
     return 0;
 }
