@@ -106,34 +106,69 @@ class CacheManager {
     std::unordered_map<std::string, std::vector<std::vector<std::string>>> files_;
 };
 
+// each individual table is present in one line
+// each line contains <table name>,<number of columns>
+// using the CacheManager to get the main_tables.txt file as a matrix of values.
+// this is better than handling disk directly.
+
+class DirectoryManager {
+    public:
+        DirectoryManager(CacheManager *cache_manager): cache_manager_(cache_manager){
+            //cache_manager_ = cache_manager;
+            std::vector<std::vector<std::string>> *main_tables = cache_manager_->fetchFile("main_tables.txt");
+            for(auto &table : *main_tables){
+                std::string table_name = table[0];
+                size_t n = std::stoi(table[1]);
+                table_directory[table_name] = {
+                    table_name,
+                    n
+                };
+            }
+        }
+        ~DirectoryManager(){}
+
+        bool tableExists(std::string table_name){
+            return table_directory.count(table_name);
+        }
+        // the user should check for table exists first or gets an empty table object.
+        Table getTable(std::string table_name){
+            if(!tableExists(table_name)) return {};
+           
+            return table_directory[table_name];
+        }
+        bool createTable(std::string table_name, std::string table_size){
+            // append the new file into the main_tables file.
+            std::vector<std::vector<std::string>> *io_buffer = cache_manager_->fetchFile("main_tables.txt");
+
+            if(!io_buffer) return false;
+
+            std::vector<std::string> tmp;
+            tmp.push_back(table_name);
+            tmp.push_back(table_size);
+            io_buffer->push_back(tmp);
+            cache_manager_->flushFile("main_tables.txt");
+            table_directory[table_name] = {
+                table_name,
+                (size_t)std::stoi(table_size)
+            };
+            return true;
+        }
+        
+
+    private:
+        CacheManager *cache_manager_;
+        std::unordered_map<std::string, Table> table_directory;
+};
 
 
 
 
 int main() {
-    DiskManager disk_manager_;
+    DiskManager disk_manager_{};
     CacheManager cache_manager_(&disk_manager_);
+    DirectoryManager directory_manager_(&cache_manager_);
     // setting up meta data.
     bool prompt_is_running = true;
-    std::ifstream input_main_tables("main_tables.txt");
-    std::unordered_map<std::string, Table> table_directory;
-    std::string row;
-    while(std::getline(input_main_tables, row)){
-        // each individual table is present in one line
-        // each line contains <table name> <number of columns>
-        std::stringstream ss(row);
-        std::string table_name; 
-        size_t n;
-
-        ss >> table_name;
-        ss >> n;
-        
-        table_directory[table_name] = {
-            table_name,
-            n
-        };
-    }
-    input_main_tables.close();
     while(prompt_is_running){
         std::cout << "> ";
         bool valid_query = false;
@@ -152,17 +187,18 @@ int main() {
             //  CREATE TABLE <table name> <number of columns>.
             std::string table_name = tokens[2];
             std::string n = tokens[3];
-            if(areDigits(n) && !table_directory.count(table_name) && table_name != "main_tables"){
-                std::ofstream output_main_tables("main_tables.txt", std::ios::app | std::ios::ate);
-                output_main_tables << table_name << " " << n << std::endl;
-                table_directory[table_name] = {
-                    table_name,
-                    (size_t)std::stoi(n)
-                };
-                std::cout << "CREATED TABLE : " << table_name << "\n";
-                valid_query = true;
+
+            if(areDigits(n) && !directory_manager_.tableExists(table_name) && table_name != "main_tables"){
+
+                bool created = directory_manager_.createTable(table_name, n);
+                if(created){
+                    std::cout << "CREATED TABLE : " << table_name << "\n";
+                    valid_query = true;
+                }
             }
-        } else if(query_type == "SELECT" && tokens.size() == 3 && table_directory.count(tokens[2])){
+
+
+        } else if(query_type == "SELECT" && tokens.size() == 3 && directory_manager_.tableExists(tokens[2])){
             // SELECT FROM <!table name> returns the entire table.
             std::string table_name = tokens[2];
             std::string file_name = table_name+".txt";
@@ -177,9 +213,9 @@ int main() {
                 valid_query = true;
             }
         } else if(query_type == "SELECT" 
-                && tokens.size() == 7 && table_directory.count(tokens[2])
+                && tokens.size() == 7 && directory_manager_.tableExists(tokens[2])
                 && areDigits(tokens[4]) 
-                && (size_t) std::stoi(tokens[4]) <= table_directory[tokens[2]].num_of_columns
+                && (size_t) std::stoi(tokens[4]) <= directory_manager_.getTable(tokens[2]).num_of_columns
                 && tokens[5] == "="){
             // SELECT FROM <table name> WHERE <column number> = "STRING LITERAL".
             std::string table_name = tokens[2];
@@ -199,7 +235,7 @@ int main() {
                 }
                 valid_query = true;
             }
-        } else if(query_type == "DELETE" && tokens.size() == 3 && table_directory.count(tokens[2])){
+        } else if(query_type == "DELETE" && tokens.size() == 3 && directory_manager_.tableExists(tokens[2])){
             // DELETE FROM <table name> deletes the entire table.
             std::string table_name = tokens[2];
             std::string file_name = table_name+".txt";
@@ -213,12 +249,13 @@ int main() {
             }
 
         } else if(query_type == "INSERT" && tokens.size() >= 3 
-                && table_directory.count(tokens[2]) && table_directory[tokens[2]].num_of_columns == tokens.size() - 3
+                && directory_manager_.tableExists(tokens[2]) 
+                && directory_manager_.getTable(tokens[2]).num_of_columns == tokens.size() - 3
                 ){
             // INSERT INTO <table name> <n values> and n = number of columns.
             std::string table_name = tokens[2];
             std::string file_name = table_name+".txt";
-            std::size_t n = table_directory[table_name].num_of_columns;
+            std::size_t n = directory_manager_.getTable(table_name).num_of_columns;
 
             std::vector<std::vector<std::string>> *io_buffer = cache_manager_.fetchFile(file_name);
             if(io_buffer != nullptr){
