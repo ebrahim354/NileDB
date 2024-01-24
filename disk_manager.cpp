@@ -6,25 +6,9 @@
 #include <string.h>
 #include <sys/types.h>
 #include <unordered_map>
+#include "page.cpp"
 
 
-struct PageID{
-    std::string file_name_{0};
-    int32_t page_num_{0};
-};
-
-
-#define PAGE_SIZE 4096 //4KB
-#define FILE_EXT ".NDB"
-const PageID INVALID_PAGE_ID = PageID{ .file_name_ = "INVALID_FILE_NAME", .page_num_ = -1 };
-
-
-
-
-struct Page {
-        char* data_[PAGE_SIZE]{};
-        PageID page_id_ = INVALID_PAGE_ID;
-};
 
 
 class DiskManager {
@@ -35,13 +19,13 @@ class DiskManager {
                 file.second.close();
             }
         }
-        // 1 on failure, 0 on success.
-        int openFile(std::string file_name);
         // returns 1 in case of failure and 0 in case of success.
         int readPage(PageID page_id, char* ouput_buffer);
         int writePage(PageID page_id, char* input_buffer);
         
     private:
+        // 1 on failure, 0 on success.
+        int openFile(std::string file_name);
         std::unordered_map<std::string, std::fstream> cached_files_;
 };
 
