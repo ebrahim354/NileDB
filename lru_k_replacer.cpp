@@ -11,6 +11,8 @@
 
 #define EVICTABLE 0
 #define NON_EVICTABLE 1
+#define LRUK_REPLACER_K = 10;  
+
 
 class LRUKReplacer {
     public:
