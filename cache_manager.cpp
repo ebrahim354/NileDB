@@ -40,7 +40,7 @@ class CacheManager {
         // this is not effecient because we persist the new page twice once on creation and flushing,
         // should be optimized later.
         Page* newPage(std::string file_name);
-        Page* FetchPgImp(PageID page_id);
+        Page* fetchPage(PageID page_id);
         bool unpinPage(PageID page_id, bool is_dirty);
         bool flushPage(PageID page_id);
         void flushAllPages();
@@ -99,7 +99,7 @@ Page* CacheManager::newPage(std::string file_name){
 
 
 
-Page* CacheManager::FetchPgImp(PageID page_id){
+Page* CacheManager::fetchPage(PageID page_id){
     const std::lock_guard<std::mutex> lock(latch_);
     if (page_id.file_name_ == INVALID_PAGE_ID.file_name_ || page_id.page_num_ == INVALID_PAGE_ID.page_num_) {
         return nullptr;

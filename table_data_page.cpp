@@ -12,8 +12,8 @@ class TableDataPage : public Page {
         void setFreeSpaceOffset(uint32_t free_space_ptr);
         void setNumOfSlots(uint32_t slot_cnt);
         uint32_t getPageNumber();
-        uint32_t getPrevPageNumber();
-        uint32_t getNextPageNumber();
+        uint32_t getPrevPageNumber(); // 0 in case of first page.
+        uint32_t getNextPageNumber(); // 0 in case of last  page.
         uint32_t getFreeSpaceOffset();
         uint32_t getNumOfSlots();
         char*    getFreeSpacePtr();
