@@ -53,12 +53,17 @@ class TableIterator {
             }
             return true;
         }
-        const Record* Next(){
-            if(!hasNext()) return nullptr;
+        // 1 in case of an error
+        bool advance(){
+            if(!hasNext()) return 1;
+            return true;
+        }
+
+        Record getCurRecordCpy(){
             char* cur_data;
             int err = cur_page_->getRecord(cur_data, cur_slot_idx_);
-            if(err) return nullptr;
-            return new Record(cur_data, cur_slot_idx_);
+            if(err) return Record(nullptr, 0);
+            return  Record(cur_data, cur_slot_idx_);
         }
     private:
         CacheManager *cache_manager_;

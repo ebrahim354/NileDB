@@ -30,6 +30,15 @@ class Record {
         {}
         ~Record(){}
 
+
+        uint32_t getRecordSize(){
+            return record_size_;
+        }
+
+        bool isInvalidRecord(){
+            return data_ == nullptr;
+        }
+
         // a pointer to a variable length colomn.
         // size (output) the size of the returned variable length column.
         // return null in case of an error.
