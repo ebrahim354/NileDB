@@ -9,12 +9,13 @@ enum TokenType {
 	INT_CONSTANT,
 	STR_CONSTANT,
 	IDENTIFIER,
+    INVALID
 };
 
 
 struct Token {
-    std::string val_;
-    TokenType type_;
+    std::string val_ = "";
+    TokenType type_ = INVALID;
 };
 
 
@@ -37,13 +38,13 @@ class Tokenizer {
             keywords_.insert("create");
             keywords_.insert("table");
             // datatypes
-            keywords_.insert("varchar");
-            keywords_.insert("int");
-            keywords_.insert("bigint");
-            keywords_.insert("float");
-            keywords_.insert("double");
-            keywords_.insert("timestamp");
-            keywords_.insert("boolean");
+            data_types_.insert("varchar");
+            data_types_.insert("int");
+            data_types_.insert("bigint");
+            data_types_.insert("float");
+            data_types_.insert("double");
+            data_types_.insert("timestamp");
+            data_types_.insert("boolean");
             // reserved symbols 
             symboles_.insert("<");
             symboles_.insert("<=");
@@ -63,8 +64,12 @@ class Tokenizer {
         ~Tokenizer(){}
 
         bool isKeyword(std::string& t){
-            return keywords_.count(t);
+            return keywords_.count(t) || data_types_.count(t);
         }
+        bool isDataType(std::string& t){
+            return data_types_.count(t);
+        }
+
         bool isSymbol(std::string& t){
             return symboles_.count(t);
         }
@@ -107,6 +112,9 @@ class Tokenizer {
                 while(!isWhitespace(input[pos])){
                     if(input[pos] == '"'){
                         inside_string_literal = !inside_string_literal;
+                        // don't add the double quotes to the string literal token.
+                        pos++;
+                        continue;
                     }
                     if(input[pos] == '.' || input[pos] == ','){
                         std::string tmp; 
@@ -132,6 +140,7 @@ class Tokenizer {
     private:
         std::set<std::string> keywords_;
         std::set<std::string> symboles_;
+        std::set<std::string> data_types_;
 
 };
 
