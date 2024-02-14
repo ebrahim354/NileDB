@@ -93,15 +93,21 @@ class Tokenizer {
 
         // tokens must be separated by at least one whitespace charecter.
         // accept for '.' and ',' symbols.
+        // for example: <= is one token and < = is considered two tokens and will result an error,
+        // this should be fine for now and will be extended later when it becaomes a problem.
         std::vector<Token> tokenize(std::string& input){
             std::vector<Token> result;
             size_t pos = 0;
+            bool inside_string_literal = false;
+            std::string cur_token = "";
             while(pos < input.size()){
-                while(isWhitespace(input[pos])){
+                while(isWhitespace(input[pos]) && !inside_string_literal){
                     pos++;
                 }
-                std::string cur_token = "";
                 while(!isWhitespace(input[pos])){
+                    if(input[pos] == '"'){
+                        inside_string_literal = !inside_string_literal;
+                    }
                     if(input[pos] == '.' || input[pos] == ','){
                         std::string tmp; 
                         tmp = input[pos++];
