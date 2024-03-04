@@ -136,8 +136,8 @@ class Table {
             return this->insertRecord(rid, new_record);
         }
         // we allow only forward scans for now via tableIterator.advance().
-        TableIterator begin() {
-            return TableIterator(cache_manager_, first_page_id_);
+        TableIterator* begin() {
+            return new TableIterator(cache_manager_, first_page_id_);
         }
     private:
         CacheManager* cache_manager_;

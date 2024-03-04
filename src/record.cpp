@@ -17,7 +17,7 @@ struct RecordID {
  *  meaning that if we have 8 columns we would have 1 byte bitmap, and in case of 9 columns that means 2 bytes etc.
  *  then comes the actual variable length columns, in case of delete or update we just delete them then update them
  *  then append them to the end of the record the update the offset array.
- *  the size of the  is already stored inside the containing page.
+ *  the size of the record is already stored inside the containing page.
  */
 
  //  this class is just a container to help upper levels of the system to decypher the data easier.
@@ -38,6 +38,8 @@ class Record {
         bool isInvalidRecord(){
             return data_ == nullptr;
         }
+
+
 
         // a pointer to a variable length colomn.
         // size (output) the size of the returned variable length column.

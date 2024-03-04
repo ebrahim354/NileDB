@@ -177,8 +177,11 @@ class Parser {
         FieldDefNode* fieldDef(){
             auto f = field();
             auto t = type();
-            if(!f || !t) 
+            if(!f || !t){ 
+                if(f) delete f;
+                if(t) delete t;
                 return  nullptr;
+            }
             FieldDefNode* fd = new FieldDefNode();
             fd->field_ = f;
             fd->type_  = t;
@@ -216,10 +219,19 @@ class Parser {
         TermNode* term(){
             if(cur_size_ - cur_pos_ < 2 ) return nullptr;
             ASTNode* left = expression();
+            if(!left) return nullptr;
             Token op = tokens_[cur_pos_++];
             ASTNode* right = expression();
+            if(!right){
+                delete left;
+                return nullptr;
+            }
             // works only for the = operator for now, extend later..
-            if(!left || !right || op.val_ != "=") return nullptr;
+            if(op.val_ != "=") {
+                delete left;
+                delete right;
+                return nullptr;
+            }
             return new TermNode(left, right,op);
         }
 

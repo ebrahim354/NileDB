@@ -17,7 +17,6 @@ class TableIterator {
                 next_page_number_ = cur_page_->getNextPageNumber();
                 prev_page_number_ = cur_page_->getPrevPageNumber();
             }
-            cur_slot_idx_ = 0;
         }
         ~TableIterator(){
             if(cur_page_)
@@ -53,10 +52,10 @@ class TableIterator {
             }
             return true;
         }
-        // 1 in case of an error
-        bool advance(){
-            if(!hasNext()) return 1;
-            return true;
+        // 0 in case of no more records.
+        int advance(){
+            if(!hasNext()) return 0;
+            return 1;
         }
 
         Record getCurRecordCpy(){
@@ -72,7 +71,7 @@ class TableIterator {
         uint32_t next_page_number_;
         uint32_t prev_page_number_;
         uint32_t cur_num_of_slots_;
-        uint32_t cur_slot_idx_;
+        uint32_t cur_slot_idx_ = -1;
 };
 
 
