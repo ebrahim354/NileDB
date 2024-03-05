@@ -1,5 +1,6 @@
 #pragma once
 #include "tokenizer.cpp"
+#include "catalog.cpp"
 #include <cstdint>
 
 // The grammer rules are defined as structures, each struct is following the name convention: CategoryNameNode,
@@ -10,6 +11,9 @@
 // different kinds of category are just structs that inherit the ASTNode's main attributes with 
 // additional specialized attributes.
 // inheritance is just an easy solution for now, It should be removed entirely when it starts to cause problems.
+// The current implementation is going to cause a lot of memory leaks because we are using the heap with the "new"
+// keyword without deleting nodes after we are done or in cases of an error, That is bad but we will replace heap
+// allocations with some sort of an arena allocator or just handle the leaks later.
 
 
 enum CategoryType {
@@ -43,10 +47,10 @@ enum CategoryType {
 
 
 struct ASTNode {
-    ASTNode(CategoryType ct, Token val = {}): category_(ct), value_(val)
+    ASTNode(CategoryType ct, Token val = {}): category_(ct), token_(val)
     {}
     CategoryType category_;
-    Token value_; 
+    Token token_; 
 };
 
 struct TermNode : ASTNode {
@@ -73,7 +77,7 @@ struct FieldDefNode : ASTNode {
 struct FieldDefListNode : ASTNode {
     FieldDefListNode(): ASTNode(FIELD_DEF_LIST)
     {}
-    FieldDefNode* field_ = nullptr;
+    FieldDefNode* field_def_ = nullptr;
     FieldDefListNode* next_ = nullptr;
 };
 
@@ -107,7 +111,8 @@ struct PredicateNode : ASTNode {
     PredicateNode* next_ = nullptr;
 };
 
-// NJMP 
+
+// SQL statements.
 struct SelectStatementNode : ASTNode {
 
     SelectStatementNode(): ASTNode(SELECT_STATEMENT)
@@ -155,11 +160,11 @@ struct InsertStatementNode : ASTNode {
 
 class Parser {
     public:
-        Parser(){}
+        Parser(Catalog* c): catalog_(c)
+        {}
         ~Parser(){}
 
         ASTNode* field(){
-            // add check for the a valid field using the catalog.
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].type_ == IDENTIFIER) {
                 return new ASTNode(FIELD, tokens_[cur_pos_++]);
             }
@@ -189,9 +194,13 @@ class Parser {
         }
 
 
+        // the user of this method is the one who should check to see if it's ok to use, this table name or not
+        // using the catalog.
+        // for example: a create statement should check if this table name is used before or not to avoid duplication,
+        // however a select statement should check if this table name exists to search inside of it.
+        // this usage is applied for all premitive Categories.
         ASTNode* table(){
-            // add check for the a valid table name using the catalog.
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].type_ == IDENTIFIER) {
+            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].type_ == IDENTIFIER){
                 return new ASTNode(TABLE, tokens_[cur_pos_++]);
             }
             return nullptr;
@@ -242,7 +251,7 @@ class Parser {
             nw_p->term_ = t;
             // add support for different predicates later.
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "and"){
-                nw_p->value_ = tokens_[cur_pos_++];
+                nw_p->token_ = tokens_[cur_pos_++];
                 nw_p->next_ = predicate();
             }
             return nw_p;
@@ -253,7 +262,7 @@ class Parser {
             FieldDefNode* f = fieldDef();
             if(!f) return nullptr;
             FieldDefListNode* nw_fdl = new FieldDefListNode();
-            nw_fdl->field_ = f;
+            nw_fdl->field_def_ = f;
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
                 cur_pos_++;
                 nw_fdl->next_ = fieldDefList();
@@ -267,7 +276,7 @@ class Parser {
             FieldListNode* nw_fl = new FieldListNode();
             nw_fl->field_ = f;
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
-                nw_fl->value_ = tokens_[cur_pos_++];
+                nw_fl->token_ = tokens_[cur_pos_++];
                 nw_fl->next_ = fieldList();
             }
             return nw_fl;
@@ -277,9 +286,9 @@ class Parser {
             ASTNode* table = this->table();
             if(!table) return nullptr;
             TableListNode* nw_tl = new TableListNode();
-            nw_tl->value_ = table->value_;
+            nw_tl->token_ = table->token_;
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
-                nw_tl->value_ = tokens_[cur_pos_++];
+                nw_tl->token_ = tokens_[cur_pos_++];
                 nw_tl->next_ = tableList();
             }
             return nw_tl;
@@ -289,9 +298,9 @@ class Parser {
             ASTNode* c = this->constant();
             if(!c) return nullptr;
             ConstListNode* nw_cl = new ConstListNode();
-            nw_cl->value_ = c->value_;
+            nw_cl->token_ = c->token_;
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
-                nw_cl->value_ = tokens_[cur_pos_++];
+                nw_cl->token_ = tokens_[cur_pos_++];
                 nw_cl->next_ = constList();
             }
             return nw_cl;
@@ -329,9 +338,10 @@ class Parser {
             cur_pos_++;
 
             auto t = this->table();
-            if(!t) return nullptr;
 
-            if(!t || cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "(")
+            if(!t   || cur_pos_ >= cur_size_ 
+                    || tokens_[cur_pos_].val_ != "(" 
+                    && !catalog_->isValidTable(t->token_.val_))
                 return nullptr;
 
             FieldDefListNode* field_defs = fieldDefList();
@@ -446,11 +456,11 @@ class Parser {
                 return insertStatement();
             else if(v == "delete")
                 return deleteStatement();
+            else if(v == "update")
+                return updateStatement();
             // only creating tables is supported for now.
             else if(v == "create")
                 return createTableStatement();
-            else if(v == "update")
-                return updateStatement();
 
             // current statement is not supported yet.
             return nullptr;
@@ -458,6 +468,7 @@ class Parser {
     private:
         Tokenizer tokenizer_ {};
         std::vector<Token> tokens_;
+        Catalog* catalog_;
         uint32_t cur_pos_;
         uint32_t cur_size_;
 };

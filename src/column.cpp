@@ -28,8 +28,7 @@ class Column {
         const std::vector<Constraint>& getConstraints() { return constraints_     ; }
         bool                           isVarLength()    { return type_ == VARCHAR ; }
 
-    private:
-        uint8_t getSizeFromType(Type t){
+        static uint8_t getSizeFromType(Type t){
             switch(t){
                 // size in bytes:
                 case BOOLEAN: 
@@ -45,6 +44,8 @@ class Column {
                     return -1;
             }
         }
+
+    private:
         std::string name_;
         Type type_ = INVALID;
         uint8_t size_ = 0; // in bytes.

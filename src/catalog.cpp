@@ -2,12 +2,11 @@
 #include "cache_manager.cpp"
 #include "table.cpp"
 #include "column.cpp"
-#include "execution_engine.cpp"
+#include "seq_scan.cpp"
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <vector>
-
 
 
 /* The system catalog is just a special table with hard coded schema and table name,
@@ -110,6 +109,12 @@ class TableSchema {
             for(auto c : columns){
                 size_ += c.getSize();
             }
+        }
+
+        bool isValidCol(std::string& col_name){
+            for(auto c : columns_)
+                if(c.getName() == col_name) return true;
+            return false;
         }
 
         void addColumn(Column c){
@@ -265,7 +270,7 @@ class Catalog {
             }
         }
 
-        TableSchema* CreateTable(const std::string &table_name, std::vector<Column> &columns) {
+        TableSchema* createTable(const std::string &table_name, std::vector<Column> &columns) {
                 if (tables_.count(table_name))
                     return nullptr;
                 // initialize the table
@@ -298,10 +303,27 @@ class Catalog {
                 return schema;
         }
 
-        TableSchema* GetTableSchema(const std::string &table_name) {
+        TableSchema* getTableSchema(const std::string &table_name) {
             if (!tables_.count(table_name))
                 return nullptr;
             return tables_[table_name];
+        }
+
+        bool isValidTable(const std::string& table_name) {
+            if (!tables_.count(table_name)) return false;
+            return true;
+        }
+
+        Type stringToType(std::string t){
+            if(t == "BOOLEAN")        return BOOLEAN;
+            else if(t == "INT")       return INT;
+            else if(t == "BIGINT")    return BIGINT;
+            else if(t == "FLOAT")     return FLOAT;
+            else if(t == "DOUBLE")    return DOUBLE;
+            else if(t == "TIMESTAMP") return TIMESTAMP;
+            else if(t == "VARCHAR")   return VARCHAR;
+
+            return INVALID;
         }
 
         // provide delete and alter table later.

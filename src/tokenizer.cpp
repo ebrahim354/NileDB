@@ -9,13 +9,13 @@ enum TokenType {
 	INT_CONSTANT,
 	STR_CONSTANT,
 	IDENTIFIER,
-    INVALID
+    INVALID_TOKEN
 };
 
 
 struct Token {
     std::string val_ = "";
-    TokenType type_ = INVALID;
+    TokenType type_ = INVALID_TOKEN;
 };
 
 

@@ -1,6 +1,7 @@
 #pragma once
-#include "table.cpp"
-#include "table_iterator.cpp"
+#include "catalog.cpp"
+#include "parser.cpp"
+#include <deque>
 
 /* The execution engine that holds all execution operators that could be 
  * (sequential scan, index scan) which are access operators,
@@ -15,23 +16,47 @@
  * around the that data, But for now we are just going to pass everything to the constructor.
  */
 
-class SequentialScan {
+class ExecutionEngine {
     public:
-        SequentialScan(Table* t){
-            it = t->begin();
-        }
-        ~SequentialScan() {
-            delete it;
-        }
-        // r output record
-        // return false in case of an error or end of scan.
-        bool next(Record *r) {
-            if(!it->advance()) return false;
-            *r = it->getCurRecordCpy();
-            return true;
+        ExecutionEngine(Catalog* catalog): catalog_(catalog)
+        {}
+        ~ExecutionEngine() {}
+        
+        bool execut(ASTNode* statement_root){
+            if(!statement_root) return false;
+            // just hard coded handlers for now.
+            if(statement_root->category_ == CREATE_TABLE_STATEMENT){
+                CreateTableStatementNode* create_table = reinterpret_cast<CreateTableStatementNode*>(statement_root);
+                std::string table_name = create_table->table_->token_.val_;
+                auto fields = create_table->field_defs_;
+                std::deque<std::string> col_names;
+                std::deque<Type> col_types;
+                while(fields != nullptr){
+                    // a little too much nesting (fix that later).
+                    std::string name = fields->field_def_->field_->token_.val_;
+                    Type type = catalog_->stringToType(fields->field_def_->type_->token_.val_);
+                    if(type == INVALID) return false;
+                    // variable columns first;
+                    if(type == VARCHAR) {
+                        col_names.push_front(name);
+                        col_types.push_front(type);
+                    } else {
+                        col_names.push_back(name);
+                        col_types.push_back(type);
+                    }
+                }
+                std::vector<Column> columns;
+                uint8_t offset_ptr = 0;
+                for(int i = 0; i < col_names.size(); ++i){
+                    // assume no constraints for now.
+                    columns.push_back(Column(col_names[i], col_types[i], offset_ptr));
+                    offset_ptr += Column::getSizeFromType(col_types[i]);
+                }
+                catalog_->createTable(table_name, columns);
+            }
+            return false;
         }
     private:
-        TableIterator *it;
-        
+        Catalog* catalog_;
 };
 
