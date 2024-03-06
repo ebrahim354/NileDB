@@ -250,7 +250,7 @@ class Parser {
             PredicateNode* nw_p = new PredicateNode();
             nw_p->term_ = t;
             // add support for different predicates later.
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "and"){
+            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "AND"){
                 nw_p->token_ = tokens_[cur_pos_++];
                 nw_p->next_ = predicate();
             }
@@ -312,7 +312,7 @@ class Parser {
         
         SelectStatementNode* selectStatement(){
             FieldListNode* fields = fieldList();
-            if(!fields || cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "from")
+            if(!fields || cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "FROM")
                 return nullptr;
 
             cur_pos_++;
@@ -320,7 +320,7 @@ class Parser {
             PredicateNode* pred = nullptr;
             if(!tables)
                 return nullptr;
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "where"){
+            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
                 cur_pos_++;
                 pred = predicate();
             }
@@ -333,22 +333,29 @@ class Parser {
         }
 
         CreateTableStatementNode* createTableStatement(){
-            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "table")
+            std::cout << "CREATE STATEMENT" << std::endl;
+            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "TABLE")
                 return nullptr;
             cur_pos_++;
 
             auto t = this->table();
+            if( t == nullptr) std::cout << " INVALID TABLE " << std::endl;
 
             if(!t   || cur_pos_ >= cur_size_ 
-                    || tokens_[cur_pos_].val_ != "(" 
-                    && !catalog_->isValidTable(t->token_.val_))
+                    || tokens_[cur_pos_++].val_ != "(" 
+                    || catalog_->isValidTable(t->token_.val_))
                 return nullptr;
+            std::cout << " is valid table " << std::endl;
 
             FieldDefListNode* field_defs = fieldDefList();
+
+            if( field_defs == nullptr) std::cout << " INVALID fields " << std::endl;
+
             if(!field_defs || cur_pos_ >= cur_size_ 
-                       || tokens_[cur_pos_].val_ != ")")
+                       || tokens_[cur_pos_++].val_ != ")")
                 return nullptr;
             cur_pos_++;
+            std::cout << "valid statement" << std::endl;
 
             auto statement = new CreateTableStatementNode();
             statement->table_ = t;
@@ -446,20 +453,25 @@ class Parser {
 
         ASTNode* parse(std::string& query){
             tokens_ = tokenizer_.tokenize(query);
+            std::cout << "tokenizer returned" << std::endl;
+            for(size_t i = 0; i < tokens_.size(); ++i){
+                std::cout << tokens_[i].val_ << " " << tokens_[i].type_ << std::endl;
+            }
             cur_size_ = tokens_.size();
             if(cur_size_ == 0 || tokens_[0].type_ != KEYWORD) return nullptr;
             std::string v = tokens_[0].val_;
+            std::cout << v << std::endl;
             cur_pos_ = 1;
-            if(v == "select")
+            if(v == "SELECT")
                 return selectStatement();
-            else if(v == "insert")
+            else if(v == "INSERT")
                 return insertStatement();
-            else if(v == "delete")
+            else if(v == "DELETE")
                 return deleteStatement();
-            else if(v == "update")
+            else if(v == "UPDATE")
                 return updateStatement();
             // only creating tables is supported for now.
-            else if(v == "create")
+            else if(v == "CREATE")
                 return createTableStatement();
 
             // current statement is not supported yet.

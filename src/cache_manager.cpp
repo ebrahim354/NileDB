@@ -51,7 +51,7 @@ class CacheManager {
         const size_t pool_size_;
         Page *pages_;
         DiskManager *disk_manager_;
-        std::map<PageID, uint32_t> page_table_{};
+        std::map<PageID, uint32_t> page_table_;
         LRUKReplacer *replacer_;
         std::list<uint32_t> free_list_;
         std::mutex latch_;
@@ -61,9 +61,10 @@ class CacheManager {
 
 
 Page* CacheManager::newPage(std::string file_name){
+    std::cout << " new page call " << std::endl;
     const std::lock_guard<std::mutex> lock(latch_);
     Page *new_page = nullptr;
-    uint32_t new_frame = -1;
+    int32_t new_frame = -1;
     if (!free_list_.empty()) {
         new_frame = free_list_.back();
         free_list_.pop_back();
@@ -90,7 +91,11 @@ Page* CacheManager::newPage(std::string file_name){
         new_page = page_to_be_flushed;
     }
     int err = disk_manager_->allocateNewPage(file_name,new_page->data_, &new_page->page_id_);
-    if(err) return nullptr;
+    std::cout << file_name << " " << new_page->page_id_.page_num_  << std::endl;
+    if(err) {
+        std::cout << " could not allocate a new page " << std::endl;
+        return nullptr;
+    }
     page_table_.insert({new_page->page_id_, new_frame});
     new_page->pin_count_ = 1;
     new_page->is_dirty_ = false;
@@ -104,7 +109,7 @@ Page* CacheManager::fetchPage(PageID page_id){
     if (page_id.file_name_ == INVALID_PAGE_ID.file_name_ || page_id.page_num_ == INVALID_PAGE_ID.page_num_) {
         return nullptr;
     }
-    uint32_t frame = -1;
+    int32_t frame = -1;
     auto res = page_table_.find(page_id);
     if (res != page_table_.end()) {
         frame = res->second;
@@ -160,7 +165,7 @@ Page* CacheManager::fetchPage(PageID page_id){
 
 bool CacheManager::unpinPage(PageID page_id, bool is_dirty) {
     const std::lock_guard<std::mutex> lock(latch_);
-    uint32_t frame = -1;
+    int32_t frame = -1;
     auto res = page_table_.find(page_id);
     if (res != page_table_.end()) {
         frame = res->second;
@@ -184,7 +189,7 @@ bool CacheManager::unpinPage(PageID page_id, bool is_dirty) {
 
 bool CacheManager::flushPage(PageID page_id){
     const std::lock_guard<std::mutex> lock(latch_);
-    uint32_t frame = -1;
+    int32_t frame = -1;
     auto res = page_table_.find(page_id);
     if (res != page_table_.end()) {
         frame = res->second;
@@ -217,7 +222,7 @@ void CacheManager::flushAllPages() {
 
 bool CacheManager::deletePage(PageID page_id) {
     const std::lock_guard<std::mutex> lock(latch_);
-    uint32_t frame = -1;
+    int32_t frame = -1;
     auto res = page_table_.find(page_id);
     if (res != page_table_.end()) {
         frame = res->second;

@@ -81,25 +81,39 @@ class Table {
         // rid (output)
         // return 1 in case of an error.
         int insertRecord(RecordID* rid, Record &record){
+            std::cout << " insert record call " << std::endl;
             rid->page_id_ = first_page_id_;
             uint32_t page_num;
-            TableDataPage* table_page;
+            TableDataPage* table_page = nullptr;
             int no_free_space = free_space_map_->getFreePageNum(record.getRecordSize(), &page_num);
+            std::cout <<  " no free space " << no_free_space << std::endl;
             // no free pages
             // allocate a new one with the cache manager
             // or if there is free space fetch the page with enough free space.
             if(no_free_space) {
                 table_page = reinterpret_cast<TableDataPage*>(cache_manager_->newPage(first_page_id_.file_name_));
+                // couldn't fetch any pages for any reason.
+                if(table_page == nullptr) {
+                    std::cout << " could not fetch table_page " << std::endl;
+                    return 1;
+                }
                 rid->page_id_ = table_page->page_id_;
             } else {
                 rid->page_id_.page_num_ = page_num;
                 table_page = reinterpret_cast<TableDataPage*>(cache_manager_->fetchPage(rid->page_id_));
             }
             // couldn't fetch any pages for any reason.
-            if(table_page == nullptr) return 1;
+            if(table_page == nullptr) {
+                return 1;
+            }
+            std::cout << table_page->page_id_.file_name_ << std::endl;
             // should lock the page in write mode (TODO).
             int err = table_page->insertRecord(record.getFixedPtr(0), record.getRecordSize(), &rid->slot_number_);
-            if(err) return 1;
+            
+            if(err) {
+                std::cout << " could not insert the record to the page " << std::endl;
+                return 1;
+            }
             // unpin the page and return.
             cache_manager_->unpinPage(table_page->page_id_, true);
             // should unlock the page (TODO).
@@ -140,7 +154,7 @@ class Table {
             return new TableIterator(cache_manager_, first_page_id_);
         }
     private:
-        CacheManager* cache_manager_;
-        FreeSpaceMap* free_space_map_;
-        PageID first_page_id_;
+        CacheManager* cache_manager_ = nullptr;
+        PageID first_page_id_ = INVALID_PAGE_ID;
+        FreeSpaceMap* free_space_map_ = nullptr;
 };

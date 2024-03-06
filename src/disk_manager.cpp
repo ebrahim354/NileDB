@@ -24,7 +24,7 @@ struct FileMeta {
 
 class DiskManager {
     public:
-        DiskManager();
+        DiskManager(){}
         ~DiskManager();
         // returns 1 in case of failure and 0 in case of success.
         int readPage(PageID page_id, char* ouput_buffer);
@@ -88,11 +88,13 @@ int DiskManager::deallocatePage(PageID page_id) {
 }
 
 
+// file_name is a param to make the usage of function more clear, we can provide it inside page_id
+// but it's better to separate input from output.
 int DiskManager::allocateNewPage(std::string file_name, char* buffer , PageID *page_id){
-    // file_name is a param to make the usage of function more clear, we can provide it inside page_id
-    // but it's better to separate input from output.
+    std::cout << " allocate page call " << std::endl;
     int err = openFile(file_name);
     if(err) return 1;
+    std::cout << "hi" << std::endl;
     page_id->file_name_ = file_name;
     auto file_stream = &cached_files_[file_name].fs_;
     int next_free_page = cached_files_[file_name].freelist_ptr_;
@@ -106,7 +108,7 @@ int DiskManager::allocateNewPage(std::string file_name, char* buffer , PageID *p
             std::cerr << "I/O error while writing" << std::endl;
             return 1;
         }
-        page_id->page_num_ = offset_to_eof;
+        page_id->page_num_ = offset_to_eof / PAGE_SIZE;
         // num_of_pages_ value on the disk will be updated by the destructor
         // (adding fault and log handling might change this).
         cached_files_[file_name].num_of_pages_++;
@@ -120,9 +122,9 @@ int DiskManager::allocateNewPage(std::string file_name, char* buffer , PageID *p
         file_stream->seekp(next_free_offset);
         file_stream->read(bytes, sizeof(bytes));
 
-        int read_count = file_stream->gcount();
+        uint32_t read_count = file_stream->gcount();
         if (read_count < sizeof(bytes)) {
-            std::cerr << "Read page error: invalid read count" << std::endl;
+            std::cerr << "allocate new page error: invalid read count" << std::endl;
             return 1;
         }
 
@@ -183,6 +185,7 @@ int DiskManager::writePage(PageID page_id, char* input_buffer) {
 }
 
 int DiskManager::openFile(std::string file_name){
+    std::cout << "open file call" << std::endl;
     // bad file format.
     std::string::size_type n = file_name.rfind(FILE_EXT);
     if (n == std::string::npos) 
@@ -199,7 +202,7 @@ int DiskManager::openFile(std::string file_name){
     // file doesn't exist.
     // create a new one and return 1 on failure.
     if(!cached_files_[file_name].fs_.is_open()){
-        cached_files_[file_name].fs_.open(file_name, std::ios::binary | std::ios::out | std::ios::in);
+        cached_files_[file_name].fs_.open(file_name, std::ios::binary | std::ios::trunc | std::ios::out | std::ios::in);
         cached_files_[file_name].fs_.clear();
         if (!cached_files_[file_name].fs_.is_open()) {
             cached_files_.erase(file_name);
@@ -229,7 +232,7 @@ int DiskManager::openFile(std::string file_name){
     cached_files_[file_name].fs_.read(bytes, sizeof(bytes));
     int read_count = cached_files_[file_name].fs_.gcount();
     if (read_count < PAGE_SIZE) {
-        std::cerr << "Read page error: invalid read count" << std::endl;
+        std::cerr << "open file error: invalid read count" << std::endl;
         return 1;
     }
     memcpy(&cached_files_[file_name].freelist_ptr_, bytes,  sizeof(int));

@@ -27,6 +27,26 @@ class Column {
         uint16_t                       getOffset()      { return col_offset_      ; }
         const std::vector<Constraint>& getConstraints() { return constraints_     ; }
         bool                           isVarLength()    { return type_ == VARCHAR ; }
+        bool isNullable() { 
+            for (auto con : constraints_) 
+                if(con == NULLABLE) return true; 
+            return false;
+        }
+        bool isPrimaryKey() { 
+            for (auto con : constraints_) 
+                if(con == PRIMARY_KEY) return true; 
+            return false;
+        }
+        bool isForeignKey() { 
+            for (auto con : constraints_) 
+                if(con == FOREIGN_KEY) return true; 
+            return false;
+        }
+        bool isUnique() { 
+            for (auto con : constraints_) 
+                if(con == UNIQUE) return true; 
+            return false;
+        }
 
         static uint8_t getSizeFromType(Type t){
             switch(t){
@@ -48,8 +68,8 @@ class Column {
     private:
         std::string name_;
         Type type_ = INVALID;
-        uint8_t size_ = 0; // in bytes.
         uint16_t col_offset_ = 0;
-        std::vector<Constraint> constraints_;
+        std::vector<Constraint> constraints_ = {};
+        uint8_t size_ = 0; // in bytes.
 };
 

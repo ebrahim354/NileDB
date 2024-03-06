@@ -44,15 +44,18 @@ class ExecutionEngine {
                         col_names.push_back(name);
                         col_types.push_back(type);
                     }
+                    fields = fields->next_;
                 }
+                std::cout << " out of the loop " << std::endl;
                 std::vector<Column> columns;
                 uint8_t offset_ptr = 0;
-                for(int i = 0; i < col_names.size(); ++i){
+                for(size_t i = 0; i < col_names.size(); ++i){
                     // assume no constraints for now.
                     columns.push_back(Column(col_names[i], col_types[i], offset_ptr));
                     offset_ptr += Column::getSizeFromType(col_types[i]);
                 }
-                catalog_->createTable(table_name, columns);
+                TableSchema* sch = catalog_->createTable(table_name, columns);
+                if(sch != nullptr) return true;
             }
             return false;
         }

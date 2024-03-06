@@ -123,7 +123,7 @@ int TableDataPage::insertRecord(char* rec_data, uint32_t rec_size, uint32_t* slo
     if(getFreeSpaceSize() < rec_size) return 1; 
     bool found_empty_slot = false;
     // search for free slots.
-    for(int i = 0; i < getNumOfSlots(); ++i){
+    for(uint32_t i = 0; i < getNumOfSlots(); ++i){
         size_t slot_offset = SLOT_ARRAY_OFFSET_ + (i * SLOT_ENTRY_SIZE_);
         uint32_t record_offset = *reinterpret_cast<uint32_t*>(getPtrTo(slot_offset));
         if(record_offset == 0){
@@ -171,7 +171,7 @@ int TableDataPage::deleteRecord(uint32_t slot_idx){
     // shift everything starting from the free pointer by the size of the deleted record.
     memmove(getFreeSpacePtr()+record_size, getFreeSpacePtr(), getPtrTo(record_offset) - getFreeSpacePtr());
     // update the slot array with new positions.
-    for(int i = 0; i < getNumOfSlots(); ++i){
+    for(uint32_t i = 0; i < getNumOfSlots(); ++i){
         size_t cur_slot_offset = SLOT_ARRAY_OFFSET_ + (i * SLOT_ENTRY_SIZE_);
         uint32_t cur_record_offset = *reinterpret_cast<uint32_t*>(getPtrTo(slot_offset));
         if(cur_record_offset != 0 && cur_record_offset < record_offset){

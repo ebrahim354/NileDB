@@ -33,18 +33,15 @@ class Value {
         char* content_; 
         uint16_t size_;
         Type type_;
-        bool my_allocation = true;
-        Value(){
-            my_allocation = false;
-        } 
-        ~Value(){
-            if(my_allocation) delete content_;
-        }
+        Value(){} 
+        ~Value(){}
+        // handle memory leaks later.
         // constuctors for different value types.
         Value(std::string str){
             size_ = str.size(); 
             content_ = new char[size_];
-            memcpy(content_, str.c_str(), size_);
+            str.copy(content_, size_);
+//            memcpy(content_, str.c_str(), size_);
             type_ = VARCHAR;
         }
         Value(bool val){
@@ -174,7 +171,7 @@ class TableSchema {
             uint32_t fixed_part_size = size_;
             uint32_t var_part_size = 0;
             // we assume that the variable length columns are represented first.
-            for(int i = 0; i < columns_.size(); ++i){
+            for(size_t i = 0; i < columns_.size(); ++i){
                 if(columns_[i].isVarLength()) var_part_size += values[i].size_;
                 else break;
             }
@@ -184,7 +181,7 @@ class TableSchema {
             std::memset(data, 0, fixed_part_size + var_part_size);
             
             uint16_t cur_var_offset = fixed_part_size; 
-            for(int i = 0; i < values.size(); i++){
+            for(size_t i = 0; i < values.size(); i++){
                 if(columns_[i].isVarLength()){
                     // add 2 bytes for offset and 2 bytes for length
                     memcpy(data + columns_[i].getOffset(), &cur_var_offset, sizeof(cur_var_offset));
@@ -201,10 +198,10 @@ class TableSchema {
             return new Record(data, fixed_part_size + var_part_size);
         }
     private:
-        std::vector<Column> columns_;
         std::string table_name_;
-        uint32_t size_;
         Table* table_;
+        std::vector<Column> columns_;
+        uint32_t size_;
 };
 
 
@@ -218,26 +215,26 @@ class Catalog {
             FreeSpaceMap* meta_free_space = new FreeSpaceMap(0);
 
             // loading the hard coded meta data table schema.
-            PageID meta_pid = {.file_name_ = META_DATA_FILE, .page_num_ = 0};
-            meta_data_table_ = new Table(cm, meta_pid, meta_free_space);
+            PageID meta_pid = {.file_name_ = META_DATA_FILE, .page_num_ = 1};
+            auto meta_data_table = new Table(cm, meta_pid, meta_free_space);
 
-            std::vector<Column> meta_data_columns_;
-            meta_data_columns_.emplace_back(Column("table_name", VARCHAR, 0));
-            meta_data_columns_.emplace_back(Column("col_name"  , VARCHAR, 4));
-            meta_data_columns_.emplace_back(Column("col_type"  , INT    , 8));
-            meta_data_columns_.emplace_back(Column("col_offset", INT    , 12));
-            meta_data_columns_.emplace_back(Column("nullable"  , BOOLEAN, 16));
-            meta_data_columns_.emplace_back(Column("primary"   , BOOLEAN, 17));
-            meta_data_columns_.emplace_back(Column("foreign"   , BOOLEAN, 18));
-            meta_data_columns_.emplace_back(Column("unique"    , BOOLEAN, 19));
-            TableSchema* meta_table_schema = new TableSchema(META_DATA_TABLE, meta_data_table_, meta_data_columns_);
+            std::vector<Column> meta_data_columns;
+            meta_data_columns.emplace_back(Column("table_name", VARCHAR, 0));
+            meta_data_columns.emplace_back(Column("col_name"  , VARCHAR, 4));
+            meta_data_columns.emplace_back(Column("col_type"  , INT    , 8));
+            meta_data_columns.emplace_back(Column("col_offset", INT    , 12));
+            meta_data_columns.emplace_back(Column("nullable"  , BOOLEAN, 16));
+            meta_data_columns.emplace_back(Column("primary"   , BOOLEAN, 17));
+            meta_data_columns.emplace_back(Column("foreign"   , BOOLEAN, 18));
+            meta_data_columns.emplace_back(Column("unique"    , BOOLEAN, 19));
+            meta_table_schema_ = new TableSchema(META_DATA_TABLE, meta_data_table, meta_data_columns);
 
             // loading TableSchema of each table into memory.
-            SequentialScan scanner(meta_data_table_);
+            SequentialScan scanner(meta_data_table);
             Record *r = nullptr;
             while(scanner.next(r)){
                 std::vector<Value> values;
-                int err = meta_table_schema->translateToValues(*r, values);
+                int err = meta_table_schema_->translateToValues(*r, values);
                 if(err) break;
                 // extract the data of this row.
                 std::string table_name = values[0].getStringVal();
@@ -251,7 +248,7 @@ class Catalog {
 
                 // first time seeing this table? if yes then we need to initialize it.
                 if(!tables_.count(table_name)){
-                    PageID first_page = {.file_name_ = table_name+".ndb", .page_num_ = 0};
+                    PageID first_page = {.file_name_ = table_name+".ndb", .page_num_ = 1};
                     FreeSpaceMap* free_space = new FreeSpaceMap(0);
                     Table* table = new Table(cm, first_page, free_space);
                     TableSchema* schema = new TableSchema(table_name, table, {});
@@ -271,14 +268,16 @@ class Catalog {
         }
 
         TableSchema* createTable(const std::string &table_name, std::vector<Column> &columns) {
+                std::cout << " create table call " << std::endl;
                 if (tables_.count(table_name))
                     return nullptr;
                 // initialize the table
-                PageID first_page = {.file_name_ = table_name+".ndb", .page_num_ = 0};
+                PageID first_page = {.file_name_ = table_name+".ndb", .page_num_ = 1};
                 FreeSpaceMap* free_space = new FreeSpaceMap(0);
                 Table* table = new Table(cache_manager_, first_page, free_space);
                 TableSchema* schema = new TableSchema(table_name, table, {});
                 tables_.insert({table_name, schema});
+                std::cout << " inserted table in memory " << std::endl;
                 // persist the table schema in the meta data table.
                 // create a vector of Values per column,
                 // then insert it to the meta table.
@@ -289,15 +288,17 @@ class Catalog {
                     vals.emplace_back(Value(c.getType()));
                     vals.emplace_back(Value(c.getOffset()));
                     std::vector<Constraint> cons = c.getConstraints();
-                    vals.emplace_back(Value(cons[0]));
-                    vals.emplace_back(Value(cons[1]));
-                    vals.emplace_back(Value(cons[2]));
-                    vals.emplace_back(Value(cons[3]));
+                    vals.emplace_back(Value(c.isNullable()));
+                    vals.emplace_back(Value(c.isPrimaryKey()));
+                    vals.emplace_back(Value(c.isForeignKey()));
+                    vals.emplace_back(Value(c.isUnique()));
                     // translate the vals to a record and persist them.
-                    Record* record = schema->translateToRecord(vals);
+                    Record* record = meta_table_schema_->translateToRecord(vals);
+                    if(record == nullptr) std::cout << " invalid record " << std::endl;
                     // rid is not used for now.
-                    RecordID* rid = nullptr;
+                    RecordID* rid = new RecordID();
                     int err = table->insertRecord(rid, *record);
+                    std::cout << " persisted record to desk, err status : " << err << std::endl;
                     if(err) return nullptr;
                 }
                 return schema;
@@ -310,6 +311,7 @@ class Catalog {
         }
 
         bool isValidTable(const std::string& table_name) {
+            std::cout << " is valid table call " << std::endl;
             if (!tables_.count(table_name)) return false;
             return true;
         }
@@ -333,7 +335,7 @@ class Catalog {
         FreeSpaceMap* free_space_map_;
 
         // hard coded data:
-        Table* meta_data_table_;
-        std::vector<Column> meta_data_columns_;
+
+        TableSchema* meta_table_schema_;
 
 };

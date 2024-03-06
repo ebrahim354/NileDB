@@ -20,7 +20,7 @@ class LRUKReplacer {
             // std::cout << "replacer_size_: " << replacer_size_ << " k: " << k << std::endl;
         }
         ~LRUKReplacer() = default;
-        bool Evict(uint32_t *frame_id);
+        bool Evict(int32_t *frame_id);
         void RecordAccess(uint32_t frame_id);
         void SetEvictable(uint32_t frame_id, bool set_evictable);
         void Remove(uint32_t frame_id);
@@ -71,7 +71,7 @@ class LRUKReplacer {
         std::map<std::array<size_t, 3>, size_t> frames_;
 };
 
-bool LRUKReplacer:: Evict(uint32_t *frame_id) {
+bool LRUKReplacer:: Evict(int32_t *frame_id) {
     const std::lock_guard<std::mutex> lock(latch_);
     if (cur_size_ == 0U) {
         return false;
@@ -93,7 +93,7 @@ bool LRUKReplacer:: Evict(uint32_t *frame_id) {
 void LRUKReplacer::RecordAccess(uint32_t frame_id) {
     const std::lock_guard<std::mutex> lock(latch_);
     //    std::cout << "Record access: " << frame_id << std::endl;
-    if (frame_id < 0 || frame_id >= static_cast<int>(replacer_size_)) {
+    if (frame_id < 0 || frame_id >= static_cast<uint32_t>(replacer_size_)) {
         assert(1 && "invalid frame_id");
         return;
     }

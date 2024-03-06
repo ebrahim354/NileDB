@@ -1,5 +1,6 @@
 #pragma once
 #include "cache_manager.cpp" 
+#include "page.cpp"
 #include "table_data_page.cpp"
 #include "record.cpp"
 
@@ -8,8 +9,8 @@
 class TableIterator {
     public:
         TableIterator(CacheManager *cm, PageID page_id): 
-            cur_page_id_(page_id),
-            cache_manager_(cm)
+            cache_manager_(cm),
+            cur_page_id_(page_id)
         {
             cur_page_ = reinterpret_cast<TableDataPage*>(cache_manager_->fetchPage(cur_page_id_));
             if(cur_page_){
@@ -26,7 +27,7 @@ class TableIterator {
         bool hasNext() {
             // invalid current page.
             if(!cur_page_) return false;
-            char* tmp;
+            char* tmp = nullptr;
             // iterate through records of the current page.
             while(cur_slot_idx_ < cur_num_of_slots_ && cur_page_->getRecord(tmp, cur_slot_idx_)){
                 cur_slot_idx_++;
@@ -59,14 +60,14 @@ class TableIterator {
         }
 
         Record getCurRecordCpy(){
-            char* cur_data;
+            char* cur_data = nullptr;
             int err = cur_page_->getRecord(cur_data, cur_slot_idx_);
             if(err) return Record(nullptr, 0);
             return  Record(cur_data, cur_slot_idx_);
         }
     private:
-        CacheManager *cache_manager_;
-        PageID cur_page_id_;
+        CacheManager *cache_manager_ = nullptr;
+        PageID cur_page_id_ = INVALID_PAGE_ID;
         TableDataPage* cur_page_;
         uint32_t next_page_number_;
         uint32_t prev_page_number_;

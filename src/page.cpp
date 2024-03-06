@@ -8,6 +8,12 @@
 struct PageID{
     std::string file_name_{0};
     int32_t page_num_{0};
+
+    bool operator<(const PageID &other) const { 
+        int files_match = strcmp(file_name_.c_str(), other.file_name_.c_str());
+        if(files_match == 0)  return page_num_ < other.page_num_;
+        return (files_match < 0);
+    }
 };
 
 

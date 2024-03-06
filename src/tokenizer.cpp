@@ -1,5 +1,6 @@
 #pragma once
 #include "utils.cpp"
+#include <iostream>
 #include <set>
 
 
@@ -25,26 +26,26 @@ class Tokenizer {
         Tokenizer()
         {
             // reserved keywords
-            keywords_.insert("select");
-            keywords_.insert("from");
-            keywords_.insert("where");
-            keywords_.insert("and");
-            keywords_.insert("or");
-            keywords_.insert("into");
-            keywords_.insert("values");
-            keywords_.insert("delete");
-            keywords_.insert("update");
-            keywords_.insert("set");
-            keywords_.insert("create");
-            keywords_.insert("table");
+            keywords_.insert("SELECT");
+            keywords_.insert("FROM");
+            keywords_.insert("WHERE");
+            keywords_.insert("AND");
+            keywords_.insert("OR");
+            keywords_.insert("INTO");
+            keywords_.insert("VALUES");
+            keywords_.insert("DELETE");
+            keywords_.insert("UPDATE");
+            keywords_.insert("SET");
+            keywords_.insert("CREATE");
+            keywords_.insert("TABLE");
             // datatypes
-            data_types_.insert("varchar");
-            data_types_.insert("int");
-            data_types_.insert("bigint");
-            data_types_.insert("float");
-            data_types_.insert("double");
-            data_types_.insert("timestamp");
-            data_types_.insert("boolean");
+            data_types_.insert("VARCHAR");
+            data_types_.insert("INT");
+            data_types_.insert("BIGINT");
+            data_types_.insert("FLOAT");
+            data_types_.insert("DOUBLE");
+            data_types_.insert("TIMESTAMP");
+            data_types_.insert("BOOLEAN");
             // reserved symbols 
             symboles_.insert("<");
             symboles_.insert("<=");
@@ -106,10 +107,10 @@ class Tokenizer {
             bool inside_string_literal = false;
             std::string cur_token = "";
             while(pos < input.size()){
-                while(isWhitespace(input[pos]) && !inside_string_literal){
+                while(pos < input.size() && isWhitespace(input[pos]) && !inside_string_literal){
                     pos++;
                 }
-                while(!isWhitespace(input[pos])){
+                while(pos < input.size() && !isWhitespace(input[pos])){
                     if(input[pos] == '"'){
                         inside_string_literal = !inside_string_literal;
                         // don't add the double quotes to the string literal token.
