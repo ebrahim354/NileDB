@@ -167,6 +167,7 @@ class TableSchema {
         // return null in case of an error.
         // the user of the class should handle deleting the record after using it.
         Record* translateToRecord(std::vector<Value>& values){
+            std::cout << " translate to record call " << size_ << std::endl;
             if(values.size() != columns_.size()) return nullptr;
             uint32_t fixed_part_size = size_;
             uint32_t var_part_size = 0;
@@ -176,7 +177,7 @@ class TableSchema {
                 else break;
             }
             // The bitmap bytes.
-            fixed_part_size = (columns_.size() / 8) + (columns_.size() % 8);
+            fixed_part_size += (columns_.size() / 8) + (columns_.size() % 8);
             char* data = new char[fixed_part_size + var_part_size];
             std::memset(data, 0, fixed_part_size + var_part_size);
             
@@ -195,7 +196,11 @@ class TableSchema {
                 }
                 // should initialize the bitmap byte (TODO).
             }
+            std::cout << "fixed part size & var part size: " << fixed_part_size << " " << var_part_size << std::endl;
             return new Record(data, fixed_part_size + var_part_size);
+        }
+        Table* getTable(){
+            return table_;
         }
     private:
         std::string table_name_;
@@ -230,11 +235,12 @@ class Catalog {
             meta_table_schema_ = new TableSchema(META_DATA_TABLE, meta_data_table, meta_data_columns);
 
             // loading TableSchema of each table into memory.
-            SequentialScan scanner(meta_data_table);
-            Record *r = nullptr;
-            while(scanner.next(r)){
+            TableIterator* it = meta_data_table->begin();
+            while(it->advance()){
+                Record r = it->getCurRecordCpy();
+                std::cout << " meta data record scanning " << std::endl;
                 std::vector<Value> values;
-                int err = meta_table_schema_->translateToValues(*r, values);
+                int err = meta_table_schema_->translateToValues(r, values);
                 if(err) break;
                 // extract the data of this row.
                 std::string table_name = values[0].getStringVal();
@@ -287,7 +293,6 @@ class Catalog {
                     vals.emplace_back(Value(c.getName()));
                     vals.emplace_back(Value(c.getType()));
                     vals.emplace_back(Value(c.getOffset()));
-                    std::vector<Constraint> cons = c.getConstraints();
                     vals.emplace_back(Value(c.isNullable()));
                     vals.emplace_back(Value(c.isPrimaryKey()));
                     vals.emplace_back(Value(c.isForeignKey()));
@@ -295,9 +300,16 @@ class Catalog {
                     // translate the vals to a record and persist them.
                     Record* record = meta_table_schema_->translateToRecord(vals);
                     if(record == nullptr) std::cout << " invalid record " << std::endl;
+                    std::cout << " translated a schema to a record with size: " 
+                        << record->getRecordSize() << std::endl;
+                    for(int i = 0; i < record->getRecordSize(); i++){
+                        std::cout << +(char)(*record->getFixedPtr(i)) << ",";
+                    }
+                    std::cout << std::endl;
+
                     // rid is not used for now.
                     RecordID* rid = new RecordID();
-                    int err = table->insertRecord(rid, *record);
+                    int err = meta_table_schema_->getTable()->insertRecord(rid, *record);
                     std::cout << " persisted record to desk, err status : " << err << std::endl;
                     if(err) return nullptr;
                 }

@@ -3,6 +3,7 @@
 #include "page.cpp"
 #include "table_data_page.cpp"
 #include "record.cpp"
+#include <cstdint>
 
 
 // read only Iterator for data pages.
@@ -17,6 +18,10 @@ class TableIterator {
                 cur_num_of_slots_ = cur_page_->getNumOfSlots();
                 next_page_number_ = cur_page_->getNextPageNumber();
                 prev_page_number_ = cur_page_->getPrevPageNumber();
+                std::cout << " table iterator initialized " << std::endl;
+                std::cout << " file_name : "<< page_id.file_name_ << std::endl;
+                std::cout << " page_num : "<< page_id.page_num_ << std::endl;
+                std::cout << " cur_num_of_slots_ : "<< cur_num_of_slots_ << std::endl;
             }
         }
         ~TableIterator(){
@@ -28,10 +33,15 @@ class TableIterator {
             // invalid current page.
             if(!cur_page_) return false;
             char* tmp = nullptr;
+            auto next_slot = cur_slot_idx_+1;
+            uint32_t* rsize;
+
             // iterate through records of the current page.
-            while(cur_slot_idx_ < cur_num_of_slots_ && cur_page_->getRecord(tmp, cur_slot_idx_)){
-                cur_slot_idx_++;
+            while(next_slot < cur_num_of_slots_ && cur_page_->getRecord(&tmp, rsize, next_slot)){
+                cur_slot_idx_ = next_slot;
+                next_slot++;
             }
+            cur_slot_idx_ = next_slot;
             // didn't find records inside of current page and this is the last page.
             if(cur_slot_idx_ >= cur_num_of_slots_ && next_page_number_ == 0){
                 return false; 
@@ -61,18 +71,19 @@ class TableIterator {
 
         Record getCurRecordCpy(){
             char* cur_data = nullptr;
-            int err = cur_page_->getRecord(cur_data, cur_slot_idx_);
+            uint32_t* rsize;
+            int err = cur_page_->getRecord(&cur_data, rsize, cur_slot_idx_);
             if(err) return Record(nullptr, 0);
-            return  Record(cur_data, cur_slot_idx_);
+            return  Record(cur_data, *rsize);
         }
     private:
         CacheManager *cache_manager_ = nullptr;
         PageID cur_page_id_ = INVALID_PAGE_ID;
-        TableDataPage* cur_page_;
+        TableDataPage* cur_page_ = nullptr;
         uint32_t next_page_number_;
         uint32_t prev_page_number_;
         uint32_t cur_num_of_slots_;
-        uint32_t cur_slot_idx_ = -1;
+        int32_t cur_slot_idx_ = -1;
 };
 
 

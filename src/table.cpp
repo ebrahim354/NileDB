@@ -94,9 +94,12 @@ class Table {
                 table_page = reinterpret_cast<TableDataPage*>(cache_manager_->newPage(first_page_id_.file_name_));
                 // couldn't fetch any pages for any reason.
                 if(table_page == nullptr) {
-                    std::cout << " could not fetch table_page " << std::endl;
+                    std::cout << " could not create a new table_page " << std::endl;
                     return 1;
                 }
+                table_page->init();
+                // should set the next and prev page pointers but we assume that pages are connected for now.
+                // because I don't wan't to fetch the previous page to update it.
                 rid->page_id_ = table_page->page_id_;
             } else {
                 rid->page_id_.page_num_ = page_num;
@@ -114,7 +117,8 @@ class Table {
                 std::cout << " could not insert the record to the page " << std::endl;
                 return 1;
             }
-            // unpin the page and return.
+            // flush and unpin the page then return.
+            cache_manager_->flushPage(table_page->page_id_);
             cache_manager_->unpinPage(table_page->page_id_, true);
             // should unlock the page (TODO).
             // note: locking and unlocking the page should be added before doing any multithreaded operations.

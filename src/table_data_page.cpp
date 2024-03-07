@@ -1,11 +1,19 @@
 #pragma once
 #include "page.cpp" 
+#include <iostream>
 #include <cstdint>
 #include <cstring>
 
 
 class TableDataPage : public Page {
     public:
+        // assumes that the ResetMemory function is called before this by the cache manager.
+        void init(){
+            setPageNumber(this->page_id_.page_num_);
+            // last byte.
+            setFreeSpaceOffset(PAGE_SIZE - 1);
+            // prev page number and next page number should be initialized by the user of the class.
+        }
         void setPageNumber(uint32_t page_number);
         void setPrevPageNumber(uint32_t prev_page_number);
         void setNextPageNumber(uint32_t next_page_number);
@@ -20,7 +28,7 @@ class TableDataPage : public Page {
         // return value should not be negative.
         size_t   getFreeSpaceSize();
         // returns 0 in case of success or 1 otherwise.
-        int      getRecord(char* rec_data, uint32_t slot_idx);
+        int      getRecord(char** rec_data, uint32_t* size, uint32_t slot_idx);
         // slot_idx (output). 
         // returns 1 in case of error.
         int      insertRecord(char* rec_data, uint32_t rec_size, uint32_t* slot_idx);
@@ -101,11 +109,14 @@ size_t TableDataPage::getFreeSpaceSize(){
     char* end_of_slots_ptr = getPtrTo(end_of_slots_offset);
     char* free_space_ptr = getFreeSpacePtr();
 
+    // should add 1 because the free space ptr is pointing at an actual byte, But who cares.
+    //        ^
+    // ........
     return free_space_ptr - end_of_slots_ptr;
 }
 
 // returns 0 in case of success or 1 otherwise.
-int TableDataPage::getRecord(char* rec_data, uint32_t slot_idx){
+int TableDataPage::getRecord(char** rec_data, uint32_t* size, uint32_t slot_idx){
     // out of bound error.
     if(slot_idx >= getNumOfSlots())  return 1;
     size_t slot_offset = SLOT_ARRAY_OFFSET_ + (slot_idx * SLOT_ENTRY_SIZE_);
@@ -113,13 +124,15 @@ int TableDataPage::getRecord(char* rec_data, uint32_t slot_idx){
     // access of a deleted record.
     if(record_offset == 0) return 1;
 
-    rec_data = getPtrTo(record_offset);
+    *size = *reinterpret_cast<uint32_t*>(getPtrTo(slot_offset + ( SLOT_ENTRY_SIZE_ / 2 )));
+    *rec_data = getPtrTo(record_offset);
     return 0;
 }
 
 // slot_idx (output). 
 // returns 1 in case of error.
 int TableDataPage::insertRecord(char* rec_data, uint32_t rec_size, uint32_t* slot_idx){
+    std::cout << " page insert record call " << std::endl;
     if(getFreeSpaceSize() < rec_size) return 1; 
     bool found_empty_slot = false;
     // search for free slots.
@@ -149,7 +162,7 @@ int TableDataPage::insertRecord(char* rec_data, uint32_t rec_size, uint32_t* slo
     auto new_free_space_offset = getFreeSpaceOffset() - rec_size;
     char* new_record_ptr = getFreeSpacePtr() - rec_size;
     memcpy(new_record_ptr, rec_data, rec_size);
-    setFreeSpaceOffset(new_free_space_offset);
+    setFreeSpaceOffset(new_free_space_offset-1);
     // update the slot array to the new free ptr. (sounds weird but correct),
     // the slot array grows this way ----->> <<----- the free space grows that way,
     // starting from the last inserted record.

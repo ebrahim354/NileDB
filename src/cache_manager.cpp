@@ -22,6 +22,7 @@ class CacheManager {
             }
 
         ~CacheManager() {
+            flushAllPages();
             delete[] pages_;
             delete replacer_;
         }
@@ -122,7 +123,13 @@ Page* CacheManager::fetchPage(PageID page_id){
     }
     if (!free_list_.empty()) {
         char page_data[PAGE_SIZE]{};
-        disk_manager_->readPage(page_id, page_data);
+        int err_reading_page = disk_manager_->readPage(page_id, page_data);
+        // page id is not valid.
+        if(err_reading_page) {
+            std::cout << "couldn't fetch page number : " << page_id.page_num_ 
+                << " from the file: " << page_id.file_name_ << std::endl;
+            return nullptr;
+        }
 
         frame = free_list_.back();
         free_list_.pop_back();
@@ -139,7 +146,13 @@ Page* CacheManager::fetchPage(PageID page_id){
     }
     if (replacer_->Evict(&frame)) {
         char page_data[PAGE_SIZE]{};
-        disk_manager_->readPage(page_id, page_data);
+        int err_reading_page = disk_manager_->readPage(page_id, page_data);
+        // page id is not valid.
+        if(err_reading_page) {
+            std::cout << "couldn't fetch page number : " << page_id.page_num_ 
+                << " from the file: " << page_id.file_name_ << std::endl;
+            return nullptr;
+        }
 
         replacer_->RecordAccess(frame);
         replacer_->SetEvictable(frame, false);

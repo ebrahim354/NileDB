@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <string.h>
 #include <sys/types.h>
+#include<unistd.h>
+#include <thread>
 #include <unordered_map>
 #include "page.cpp"
 
@@ -49,14 +51,12 @@ DiskManager::~DiskManager(){
     for(auto &file : cached_files_){
         // need to write the changes of free list pointer and number of pages before closing.
         // will be changed by adding fault handling.
-        char bytes[8]; 
-        for(int i = 0; i < 4; ++i){
-            bytes[3 - i] = (file.second.freelist_ptr_ >> (i * 8));
-        }
-        for(int i = 0; i < 4; ++i){
-            bytes[7 - i] = (file.second.num_of_pages_ >> (i * 8));
-        }
+        char* bytes = new char[8];
+        memcpy(bytes, &file.second.freelist_ptr_, sizeof(int));
+        memcpy(bytes+sizeof(int), &file.second.num_of_pages_, sizeof(int));
+        file.second.fs_.seekp(0);
         file.second.fs_.write(bytes, sizeof(int) * 2);
+        file.second.fs_.flush();
         file.second.fs_.close();
     }
 }
@@ -75,6 +75,7 @@ int DiskManager::deallocatePage(PageID page_id) {
 
     file_stream->seekp(page_num * PAGE_SIZE);
     file_stream->write(bytes, sizeof(int));
+    file_stream->flush();
 
     if (file_stream->bad()) {
         std::cerr << "I/O error while writing" << std::endl;
@@ -91,10 +92,9 @@ int DiskManager::deallocatePage(PageID page_id) {
 // file_name is a param to make the usage of function more clear, we can provide it inside page_id
 // but it's better to separate input from output.
 int DiskManager::allocateNewPage(std::string file_name, char* buffer , PageID *page_id){
-    std::cout << " allocate page call " << std::endl;
+    std::cout << " allocate page call " << file_name << std::endl;
     int err = openFile(file_name);
     if(err) return 1;
-    std::cout << "hi" << std::endl;
     page_id->file_name_ = file_name;
     auto file_stream = &cached_files_[file_name].fs_;
     int next_free_page = cached_files_[file_name].freelist_ptr_;
@@ -103,6 +103,7 @@ int DiskManager::allocateNewPage(std::string file_name, char* buffer , PageID *p
     if(next_free_page == 0){
         file_stream->seekp(offset_to_eof);
         file_stream->write(buffer, PAGE_SIZE);
+        file_stream->flush();
 
         if (file_stream->bad()) {
             std::cerr << "I/O error while writing" << std::endl;
@@ -113,14 +114,14 @@ int DiskManager::allocateNewPage(std::string file_name, char* buffer , PageID *p
         // (adding fault and log handling might change this).
         cached_files_[file_name].num_of_pages_++;
     } else {
-        char bytes[sizeof(int)]; 
+        char* bytes = new char[sizeof(int)]; 
         int next;
         // seek to start of page -> read first 4 bytes
         // -> seek back to the start -> write the buffer (slow for now but should work 
         // maybe replaced with a freelist array at the meta page instead).
         int next_free_offset = next_free_page * PAGE_SIZE;
         file_stream->seekp(next_free_offset);
-        file_stream->read(bytes, sizeof(bytes));
+        file_stream->read(bytes, sizeof(int));
 
         uint32_t read_count = file_stream->gcount();
         if (read_count < sizeof(bytes)) {
@@ -130,6 +131,7 @@ int DiskManager::allocateNewPage(std::string file_name, char* buffer , PageID *p
 
         file_stream->seekp(next_free_offset);
         file_stream->write(buffer, PAGE_SIZE);
+        file_stream->flush();
 
         if (file_stream->bad()) {
             std::cerr << "I/O error while writing" << std::endl;
@@ -147,6 +149,7 @@ int DiskManager::allocateNewPage(std::string file_name, char* buffer , PageID *p
 
 
 int DiskManager::readPage(PageID page_id, char* output_buffer) {
+    std::cout << "read page call : "  << page_id.file_name_ << " " << page_id.page_num_ << std::endl;
     std::string file_name =  page_id.file_name_;
     uint32_t page_num = page_id.page_num_;
     int offset = page_num * PAGE_SIZE;
@@ -159,7 +162,8 @@ int DiskManager::readPage(PageID page_id, char* output_buffer) {
 
     int read_count = file_stream->gcount();
     if (read_count < PAGE_SIZE) {
-        std::cerr << "Read page error: invalid read count" << std::endl;
+        file_stream->clear();
+        std::cout << "Read page error: invalid read count: " << read_count << std::endl;
         memset(output_buffer + read_count, 0, PAGE_SIZE - read_count);
         return 1;
     }
@@ -167,6 +171,7 @@ int DiskManager::readPage(PageID page_id, char* output_buffer) {
 }
 
 int DiskManager::writePage(PageID page_id, char* input_buffer) {
+    std::cout << "write page call : "  << page_id.file_name_ << " " << page_id.page_num_ << std::endl;
     std::string file_name =  page_id.file_name_;
     uint32_t page_num = page_id.page_num_;
     int offset = page_num * PAGE_SIZE;
@@ -178,6 +183,7 @@ int DiskManager::writePage(PageID page_id, char* input_buffer) {
     file_stream->write(input_buffer, PAGE_SIZE);
     if (file_stream->bad()) {
         std::cerr << "I/O error while writing" << std::endl;
+        file_stream->clear();
         return 1;
     }
     file_stream->flush();
@@ -185,7 +191,7 @@ int DiskManager::writePage(PageID page_id, char* input_buffer) {
 }
 
 int DiskManager::openFile(std::string file_name){
-    std::cout << "open file call" << std::endl;
+    std::cout << "open file call: " << file_name << std::endl;
     // bad file format.
     std::string::size_type n = file_name.rfind(FILE_EXT);
     if (n == std::string::npos) 
@@ -193,6 +199,7 @@ int DiskManager::openFile(std::string file_name){
     // cache miss
     // open the file
     if (!cached_files_.count(file_name)) {
+        std::cout << " file is not cached " << std::endl;
         cached_files_[file_name] = {
             .fs_ = std::fstream (file_name, std::ios::binary | std::ios::out | std::ios::in),
             .freelist_ptr_ = 0,
@@ -202,41 +209,58 @@ int DiskManager::openFile(std::string file_name){
     // file doesn't exist.
     // create a new one and return 1 on failure.
     if(!cached_files_[file_name].fs_.is_open()){
-        cached_files_[file_name].fs_.open(file_name, std::ios::binary | std::ios::trunc | std::ios::out | std::ios::in);
+        cached_files_[file_name].fs_ = std::fstream
+            (file_name, std::ios::binary | std::ios::trunc | std::ios::out | std::ios::in);
         cached_files_[file_name].fs_.clear();
         if (!cached_files_[file_name].fs_.is_open()) {
             cached_files_.erase(file_name);
             return 1;
         }
 
-        char first_page[PAGE_SIZE]{};
-        // assigning second int to 1;
-        first_page[0+sizeof(int)] = first_page[1+sizeof(int)] =   first_page[2+sizeof(int)] = 0x0;
-        first_page[2+sizeof(int)] = 0x01;
-        // write first page with zeros.
+        char* first_page = new char[PAGE_SIZE];
+        int one = 1;
+        int zero = 0;
+        // assigning first 4 bytes to 0  => next free page for allocatation.
+        memcpy(first_page, &zero, sizeof(int));
+        // assigning second 4 bytes to 1 => cur number of pages inside of the file.
+        memcpy(first_page+sizeof(int), &one, sizeof(int));
+        
         // this is kind of expensive but happens when creating tables only.
+        cached_files_[file_name].fs_.seekp(0);
         cached_files_[file_name].fs_.write(first_page, PAGE_SIZE);
-
+        cached_files_[file_name].fs_.flush();
         if (cached_files_[file_name].fs_.bad()) {
-            std::cerr << "I/O error while writing" << std::endl;
+            std::cout << "I/O error while writing" << std::endl;
             cached_files_.erase(file_name);
             return 1;
         }
-        cached_files_[file_name].freelist_ptr_= 0;
-        cached_files_[file_name].num_of_pages_= 1;
+
+        cached_files_[file_name].fs_.close();
+        cached_files_[file_name].fs_ = std::fstream(file_name, std::ios::binary | std::ios::out | std::ios::in);
+        std::cout << " file didn't exist so we created a new file " << std::endl;
         return 0;
     }
     // at this point we need to get the next free page of this file.
     // read the first and secocnd 4 bytes (sizeof int) then put them into the cache.
-    char bytes[sizeof(int) * 2]; 
-    cached_files_[file_name].fs_.read(bytes, sizeof(bytes));
+    char* bytes =  new char[sizeof(int) * 2]; 
+    // seek to the begining of the file.
+    cached_files_[file_name].fs_.seekp(0);
+    cached_files_[file_name].fs_.read(bytes, 8);
     int read_count = cached_files_[file_name].fs_.gcount();
-    if (read_count < PAGE_SIZE) {
-        std::cerr << "open file error: invalid read count" << std::endl;
+
+    int next_free_page = -1;
+    int num_of_pages = -1;
+    memcpy(&next_free_page, bytes, sizeof(int));
+    memcpy(&num_of_pages, bytes+sizeof(int), sizeof(int));
+    if (read_count < 8) {
+        std::cout << "open file error: invalid read count : " << read_count << " " << next_free_page << " " <<
+            num_of_pages << std::endl;
+        cached_files_[file_name].fs_.clear();
         return 1;
     }
-    memcpy(&cached_files_[file_name].freelist_ptr_, bytes,  sizeof(int));
-    memcpy(&cached_files_[file_name].num_of_pages_, bytes + sizeof(int), sizeof(int));
+    std::cout << "a valid read" << std::endl;
+    cached_files_[file_name].freelist_ptr_ = next_free_page;
+    cached_files_[file_name].num_of_pages_ = num_of_pages;
 
     return 0;
 }
