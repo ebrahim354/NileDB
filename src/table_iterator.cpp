@@ -21,6 +21,7 @@ class TableIterator {
                 std::cout << " table iterator initialized " << std::endl;
                 std::cout << " file_name : "<< page_id.file_name_ << std::endl;
                 std::cout << " page_num : "<< page_id.page_num_ << std::endl;
+                std::cout << " next page num : "<< cur_page_->getNextPageNumber() << std::endl;
                 std::cout << " cur_num_of_slots_ : "<< cur_num_of_slots_ << std::endl;
             }
         }
@@ -33,9 +34,8 @@ class TableIterator {
             // invalid current page.
             if(!cur_page_) return false;
             char* tmp = nullptr;
-            auto next_slot = cur_slot_idx_+1;
-            uint32_t* rsize;
-
+            int32_t next_slot = cur_slot_idx_+1;
+            uint32_t* rsize =  new uint32_t(0);
             // iterate through records of the current page.
             while(next_slot < cur_num_of_slots_ && cur_page_->getRecord(&tmp, rsize, next_slot)){
                 cur_slot_idx_ = next_slot;
@@ -51,13 +51,18 @@ class TableIterator {
                 cache_manager_->unpinPage(cur_page_id_, false);
                 cur_page_id_.page_num_ = next_page_number_;
                 cur_page_ = reinterpret_cast<TableDataPage*>(cache_manager_->fetchPage(cur_page_id_));
-                // invalid nex_page_number or an error for some reason.
-                if(!cur_page_) return false;
+                // invalid next_page_number or an error for some reason.
+                if(!cur_page_) {
+                    std::cout << " invalid next page number " << std::endl;
+                    return false;
+                }
 
                 cur_num_of_slots_ = cur_page_->getNumOfSlots();
                 next_page_number_ = cur_page_->getNextPageNumber();
                 prev_page_number_ = cur_page_->getPrevPageNumber();
-                cur_slot_idx_ = 0;
+                cur_slot_idx_ = -1;
+                std::cout << " recursion :) " << std::endl;
+                std::cout << cur_num_of_slots_ << std::endl;
                 // search inside of the next page recursively, then return the final result.
                 return hasNext();
             }
@@ -71,7 +76,7 @@ class TableIterator {
 
         Record getCurRecordCpy(){
             char* cur_data = nullptr;
-            uint32_t* rsize;
+            uint32_t* rsize = new uint32_t(0);
             int err = cur_page_->getRecord(&cur_data, rsize, cur_slot_idx_);
             if(err) return Record(nullptr, 0);
             return  Record(cur_data, *rsize);

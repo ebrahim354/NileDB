@@ -99,6 +99,7 @@ int DiskManager::allocateNewPage(std::string file_name, char* buffer , PageID *p
     auto file_stream = &cached_files_[file_name].fs_;
     int next_free_page = cached_files_[file_name].freelist_ptr_;
     int offset_to_eof = (cached_files_[file_name].num_of_pages_) * PAGE_SIZE;
+    std::cout << "num_of_pages_: " << cached_files_[file_name].num_of_pages_ << std::endl;
     // no free pages => append to the end.
     if(next_free_page == 0){
         file_stream->seekp(offset_to_eof);
@@ -112,7 +113,14 @@ int DiskManager::allocateNewPage(std::string file_name, char* buffer , PageID *p
         page_id->page_num_ = offset_to_eof / PAGE_SIZE;
         // num_of_pages_ value on the disk will be updated by the destructor
         // (adding fault and log handling might change this).
+
         cached_files_[file_name].num_of_pages_++;
+        char* bytes = new char[8];
+        memcpy(bytes, &cached_files_[file_name].freelist_ptr_, sizeof(int));
+        memcpy(bytes+sizeof(int), &cached_files_[file_name].num_of_pages_, sizeof(int));
+        file_stream->seekp(0);
+        file_stream->write(bytes, sizeof(int) * 2);
+        file_stream->flush();
     } else {
         char* bytes = new char[sizeof(int)]; 
         int next;
@@ -237,6 +245,8 @@ int DiskManager::openFile(std::string file_name){
 
         cached_files_[file_name].fs_.close();
         cached_files_[file_name].fs_ = std::fstream(file_name, std::ios::binary | std::ios::out | std::ios::in);
+        cached_files_[file_name].freelist_ptr_ = 0;
+        cached_files_[file_name].num_of_pages_ = 1;
         std::cout << " file didn't exist so we created a new file " << std::endl;
         return 0;
     }

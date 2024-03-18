@@ -122,6 +122,31 @@ class TableSchema {
             });
         }
 
+        std::string typeToString(Type t){
+            if(t == BOOLEAN)        return "BOOLEAN";
+            else if(t == INT)       return "INT";
+            else if(t == BIGINT)    return "BIGINT";
+            else if(t == FLOAT)     return "FLOAT";
+            else if(t == DOUBLE)    return "DOUBLE";
+            else if(t == TIMESTAMP) return "TIMESTAMP";
+            else if(t == VARCHAR)   return "VARCHAR";
+            return "INVALID";
+        }
+        void printSchema(){
+            std::cout << " number of columns : " <<  columns_.size() << std::endl;
+            for(int i = 0; i < columns_.size(); i++){
+                std::cout << "col num : " << i << std::endl;
+                std::cout << "name: " << columns_[i].getName() << " offset: " << columns_[i].getOffset() << std::endl;
+                std::cout << "type: " << typeToString(columns_[i].getType()) << std::endl;
+                std::cout << "constraints\n";
+                std::cout << "primary_key: " << columns_[i].isPrimaryKey() 
+                          << " foreign_key: " << columns_[i].isForeignKey();
+                std::cout << " nullable: " << columns_[i].isNullable() << " unique: " 
+                          << columns_[i].isUnique() << std::endl;
+                std::cout << "-----------------------------------------------------------------" << std::endl;
+            }
+        }
+
         // get a pointer to a spicific value inside of a record using the schema. 
         // Type conversion is done by the user of the function.
         // return nullptr in case of an error or the value is equal to null (handle cases separately later).
@@ -281,7 +306,7 @@ class Catalog {
                 PageID first_page = {.file_name_ = table_name+".ndb", .page_num_ = 1};
                 FreeSpaceMap* free_space = new FreeSpaceMap(0);
                 Table* table = new Table(cache_manager_, first_page, free_space);
-                TableSchema* schema = new TableSchema(table_name, table, {});
+                TableSchema* schema = new TableSchema(table_name, table, columns);
                 tables_.insert({table_name, schema});
                 std::cout << " inserted table in memory " << std::endl;
                 // persist the table schema in the meta data table.
@@ -338,6 +363,13 @@ class Catalog {
             else if(t == "VARCHAR")   return VARCHAR;
 
             return INVALID;
+        }
+        std::vector<std::string> getTableNames(){
+            std::vector<std::string> output;
+            for(auto& t : tables_){
+                output.push_back(t.first);
+            }
+            return output;
         }
 
         // provide delete and alter table later.

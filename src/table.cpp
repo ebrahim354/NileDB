@@ -98,8 +98,32 @@ class Table {
                     return 1;
                 }
                 table_page->init();
+                // this is the last page.
+                table_page->setNextPageNumber(0);
+                // we assume this is also the first page and will be updated if not.
+                table_page->setPrevPageNumber(0);
+                // fetch the previous page if this page is not the first page.
+                // this methods assumes that pages are connected which is not always the case, and it needs to be
+                // improved.
                 // should set the next and prev page pointers but we assume that pages are connected for now.
-                // because I don't wan't to fetch the previous page to update it.
+                
+                // if you are not the first page:
+                if(table_page->page_id_.page_num_ != 1){
+                    std::cout << " not first page: "  << table_page->page_id_.page_num_ << std::endl;
+                    std::cout << "-----------------------------" << std::endl;
+                    auto prev_page_id = table_page->page_id_;
+                    prev_page_id.page_num_--;
+                    TableDataPage* prev_page = reinterpret_cast<TableDataPage*>
+                        (cache_manager_->fetchPage(prev_page_id));
+                    prev_page->setNextPageNumber(table_page->getPageNumber());
+                    table_page->setPrevPageNumber(prev_page->getPageNumber());
+                    cache_manager_->flushPage(prev_page->page_id_);
+                    cache_manager_->unpinPage(prev_page->page_id_, true);
+                    std::cout << "prev page : " << prev_page->getPageNumber() 
+                        << " next : " << prev_page->getNextPageNumber() << std::endl;
+                }
+                // if you are the first page and you just got created that means,
+                // you are the first and last so we don't need to update any other pages.
                 rid->page_id_ = table_page->page_id_;
             } else {
                 rid->page_id_.page_num_ = page_num;

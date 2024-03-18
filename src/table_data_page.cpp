@@ -9,6 +9,7 @@ class TableDataPage : public Page {
     public:
         // assumes that the ResetMemory function is called before this by the cache manager.
         void init(){
+            std::cout << " init data page call with page num: "  << page_id_.page_num_ << std::endl;
             setPageNumber(this->page_id_.page_num_);
             // last byte.
             setFreeSpaceOffset(PAGE_SIZE - 1);
@@ -124,7 +125,9 @@ int TableDataPage::getRecord(char** rec_data, uint32_t* size, uint32_t slot_idx)
     // access of a deleted record.
     if(record_offset == 0) return 1;
 
-    *size = *reinterpret_cast<uint32_t*>(getPtrTo(slot_offset + ( SLOT_ENTRY_SIZE_ / 2 )));
+    uint32_t tmp = *reinterpret_cast<uint32_t*>(getPtrTo(slot_offset + ( SLOT_ENTRY_SIZE_ / 2 )));
+    memcpy(size, &tmp, sizeof(uint32_t));
+
     *rec_data = getPtrTo(record_offset);
     return 0;
 }

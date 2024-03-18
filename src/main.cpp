@@ -40,22 +40,29 @@ int main() {
     Parser* parser = new Parser(catalog);
     ExecutionEngine* engine = new ExecutionEngine(catalog);
     QueryProcessor* query_processor_ = new QueryProcessor(parser, engine);
+    /*
     if(query_processor_->handleQuery("CREATE TABLE TEST ( tst INT )"))
         std::cout << "SUCCESS" << std::endl;
     else
         std::cout << "FAIL" << std::endl;
-    /*
+        */
     bool prompt_is_running = true;
     while(prompt_is_running){
         std::cout << "> ";
         std::string query;
         std::getline(std::cin, query);
-        if(query_processor_->handleQuery(query))
+        if(query == "\\t"){
+            std::vector<std::string> tables = catalog->getTableNames();
+            for(int i = 0; i < tables.size(); ++i){
+                std::cout << tables[i] << std::endl;
+                catalog->getTableSchema(tables[i])->printSchema();
+            }
+        }
+        else if(query_processor_->handleQuery(query))
             std::cout << "SUCCESS" << std::endl;
         else
             std::cout << "FAIL" << std::endl;
     }
-    */
     return 0;
 }
 
