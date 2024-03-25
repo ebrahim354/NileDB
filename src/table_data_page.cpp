@@ -1,6 +1,5 @@
 #pragma once
 #include "page.cpp" 
-#include <iostream>
 #include <cstdint>
 #include <cstring>
 
@@ -9,7 +8,6 @@ class TableDataPage : public Page {
     public:
         // assumes that the ResetMemory function is called before this by the cache manager.
         void init(){
-            std::cout << " init data page call with page num: "  << page_id_.page_num_ << std::endl;
             setPageNumber(this->page_id_.page_num_);
             // last byte.
             setFreeSpaceOffset(PAGE_SIZE - 1);
@@ -135,7 +133,6 @@ int TableDataPage::getRecord(char** rec_data, uint32_t* size, uint32_t slot_idx)
 // slot_idx (output). 
 // returns 1 in case of error.
 int TableDataPage::insertRecord(char* rec_data, uint32_t rec_size, uint32_t* slot_idx){
-    std::cout << " page insert record call " << std::endl;
     if(getFreeSpaceSize() < rec_size) return 1; 
     bool found_empty_slot = false;
     // search for free slots.

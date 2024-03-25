@@ -19,7 +19,8 @@
 enum CategoryType {
     FIELD,
     TABLE,
-    CONSTANT,
+    STRING_CONSTANT,
+    INTEGER_CONSTANT,
     EXPRESSION,
     TERM,
     PREDICATE,
@@ -118,7 +119,7 @@ struct SelectStatementNode : ASTNode {
     SelectStatementNode(): ASTNode(SELECT_STATEMENT)
     {}
     FieldListNode* fields_;
-    TableListNode*  tables_;
+    TableListNode* tables_;
     PredicateNode* predicate_;
 };
 
@@ -151,6 +152,7 @@ struct InsertStatementNode : ASTNode {
 
     InsertStatementNode(): ASTNode(INSERT_STATEMENT)
     {}
+    ASTNode*  table_;
     FieldListNode* fields_;
     ConstListNode*  values_;
 };
@@ -207,10 +209,12 @@ class Parser {
         }
         
         ASTNode* constant(){
-            if(cur_pos_ < cur_size_ 
-                    && (tokens_[cur_pos_].type_ == STR_CONSTANT || tokens_[cur_pos_].type_ == INT_CONSTANT)) {
-                return new ASTNode(CONSTANT, tokens_[cur_pos_++]);
-            }
+            if(cur_pos_ >= cur_size_)
+                return nullptr;
+            if(tokens_[cur_pos_].type_ == STR_CONSTANT)
+                return new ASTNode(STRING_CONSTANT, tokens_[cur_pos_++]);
+            if(tokens_[cur_pos_].type_ == INT_CONSTANT)
+                return new ASTNode(INTEGER_CONSTANT, tokens_[cur_pos_++]);
             return nullptr;
         }
 
@@ -284,7 +288,7 @@ class Parser {
 
         TableListNode* tableList(){
             ASTNode* table = this->table();
-            if(!table) return nullptr;
+            if(!table || !catalog_->isValidTable(table->token_.val_)) return nullptr;
             TableListNode* nw_tl = new TableListNode();
             nw_tl->token_ = table->token_;
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
@@ -299,6 +303,7 @@ class Parser {
             if(!c) return nullptr;
             ConstListNode* nw_cl = new ConstListNode();
             nw_cl->token_ = c->token_;
+            nw_cl->category_ = c->category_;
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
                 nw_cl->token_ = tokens_[cur_pos_++];
                 nw_cl->next_ = constList();
@@ -333,29 +338,24 @@ class Parser {
         }
 
         CreateTableStatementNode* createTableStatement(){
-            std::cout << "CREATE STATEMENT" << std::endl;
             if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "TABLE")
                 return nullptr;
             cur_pos_++;
 
             auto t = this->table();
-            if( t == nullptr) std::cout << " INVALID TABLE " << std::endl;
 
             if(!t   || cur_pos_ >= cur_size_ 
                     || tokens_[cur_pos_++].val_ != "(" 
                     || catalog_->isValidTable(t->token_.val_))
                 return nullptr;
-            std::cout << " is valid table " << std::endl;
 
             FieldDefListNode* field_defs = fieldDefList();
 
-            if( field_defs == nullptr) std::cout << " INVALID fields " << std::endl;
 
             if(!field_defs || cur_pos_ >= cur_size_ 
                        || tokens_[cur_pos_++].val_ != ")")
                 return nullptr;
             cur_pos_++;
-            std::cout << "valid statement" << std::endl;
 
             auto statement = new CreateTableStatementNode();
             statement->table_ = t;
@@ -366,14 +366,17 @@ class Parser {
 
 
         InsertStatementNode* insertStatement(){
-            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "into")
+            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "INTO")
                 return nullptr;
             cur_pos_++;
 
             ASTNode* t = table();
-            if(!t || cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "(")
+            if(!t || cur_pos_ >= cur_size_ 
+                    || tokens_[cur_pos_++].val_ != "(" 
+                    || !catalog_->isValidTable(t->token_.val_))
                 return nullptr;
 
+            
             FieldListNode* fields = fieldList();
             if(!fields || cur_pos_ >= cur_size_ 
                        || tokens_[cur_pos_].val_ != ")")
@@ -382,7 +385,7 @@ class Parser {
 
             ConstListNode* values = nullptr;
             if(cur_pos_+1 < cur_size_ 
-                    && tokens_[cur_pos_].val_ == "values" 
+                    && tokens_[cur_pos_].val_ == "VALUES" 
                     && tokens_[cur_pos_+1].val_ == "("){
                 cur_pos_+=2;
                 values = constList();
@@ -393,12 +396,13 @@ class Parser {
             InsertStatementNode* statement = new InsertStatementNode();
             statement->fields_ = fields;
             statement->values_ = values;
+            statement->table_ = t; 
             return statement; 
         }
 
 
         DeleteStatementNode* deleteStatement(){
-            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "from")
+            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "FROM")
                 return nullptr;
             cur_pos_++;
 
@@ -406,7 +410,7 @@ class Parser {
             if(!table)
                 return nullptr;
             PredicateNode* pred = nullptr;
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "where"){
+            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
                 cur_pos_++;
                 pred = predicate();
             }
@@ -421,7 +425,7 @@ class Parser {
             ASTNode* t = this->table(); 
             if(!t) return nullptr;
 
-            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "set")
+            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "SET")
                 return nullptr;
             cur_pos_++;
 
@@ -437,7 +441,7 @@ class Parser {
 
 
             PredicateNode* pred = nullptr;
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "where"){
+            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
                 cur_pos_++;
                 pred = predicate();
             }
@@ -453,14 +457,9 @@ class Parser {
 
         ASTNode* parse(std::string& query){
             tokens_ = tokenizer_.tokenize(query);
-            std::cout << "tokenizer returned" << std::endl;
-            for(size_t i = 0; i < tokens_.size(); ++i){
-                std::cout << tokens_[i].val_ << " " << tokens_[i].type_ << std::endl;
-            }
             cur_size_ = tokens_.size();
             if(cur_size_ == 0 || tokens_[0].type_ != KEYWORD) return nullptr;
             std::string v = tokens_[0].val_;
-            std::cout << v << std::endl;
             cur_pos_ = 1;
             if(v == "SELECT")
                 return selectStatement();

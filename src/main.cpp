@@ -18,9 +18,8 @@ class QueryProcessor{
 
         bool handleQuery(std::string query){
             auto tree = parser_->parse(query);
-            std::cout << "parser returned" << std::endl;
             if(tree == nullptr) std::cout << "INVALID AST" << std::endl;
-            return engine_->execut(tree);
+            return engine_->execute(tree);
         }
 
     private:

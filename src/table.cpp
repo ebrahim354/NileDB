@@ -81,12 +81,10 @@ class Table {
         // rid (output)
         // return 1 in case of an error.
         int insertRecord(RecordID* rid, Record &record){
-            std::cout << " insert record call " << std::endl;
             rid->page_id_ = first_page_id_;
             uint32_t page_num;
             TableDataPage* table_page = nullptr;
             int no_free_space = free_space_map_->getFreePageNum(record.getRecordSize(), &page_num);
-            std::cout <<  " no free space " << no_free_space << std::endl;
             // no free pages
             // allocate a new one with the cache manager
             // or if there is free space fetch the page with enough free space.
@@ -109,8 +107,6 @@ class Table {
                 
                 // if you are not the first page:
                 if(table_page->page_id_.page_num_ != 1){
-                    std::cout << " not first page: "  << table_page->page_id_.page_num_ << std::endl;
-                    std::cout << "-----------------------------" << std::endl;
                     auto prev_page_id = table_page->page_id_;
                     prev_page_id.page_num_--;
                     TableDataPage* prev_page = reinterpret_cast<TableDataPage*>
@@ -119,8 +115,6 @@ class Table {
                     table_page->setPrevPageNumber(prev_page->getPageNumber());
                     cache_manager_->flushPage(prev_page->page_id_);
                     cache_manager_->unpinPage(prev_page->page_id_, true);
-                    std::cout << "prev page : " << prev_page->getPageNumber() 
-                        << " next : " << prev_page->getNextPageNumber() << std::endl;
                 }
                 // if you are the first page and you just got created that means,
                 // you are the first and last so we don't need to update any other pages.
@@ -133,7 +127,6 @@ class Table {
             if(table_page == nullptr) {
                 return 1;
             }
-            std::cout << table_page->page_id_.file_name_ << std::endl;
             // should lock the page in write mode (TODO).
             int err = table_page->insertRecord(record.getFixedPtr(0), record.getRecordSize(), &rid->slot_number_);
             

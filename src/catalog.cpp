@@ -2,7 +2,6 @@
 #include "cache_manager.cpp"
 #include "table.cpp"
 #include "column.cpp"
-#include "seq_scan.cpp"
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -108,6 +107,16 @@ class TableSchema {
             }
         }
 
+        bool checkValidValues(std::vector<std::string>& fields, std::vector<Value>& vals) {
+            if(fields.size() != columns_.size() || fields.size() != vals.size()) return false;
+
+            for(size_t i = 0; i < columns_.size(); ++i){
+                if(columns_[i].getName() != fields[i] || columns_[i].getType() != vals[i].type_)
+                    return false;
+            }
+            return true;
+        }
+
         bool isValidCol(std::string& col_name){
             for(auto c : columns_)
                 if(c.getName() == col_name) return true;
@@ -147,6 +156,13 @@ class TableSchema {
             }
         }
 
+        void printTableHeader(){
+            for(size_t i = 0; i < columns_.size(); ++i){
+                std::cout << columns_[i].getName();
+                if(i != columns_.size() - 1) std::cout << " | ";
+            }
+            std::cout << "\n-----------------------------------------------------------------" << std::endl;
+        }
         // get a pointer to a spicific value inside of a record using the schema. 
         // Type conversion is done by the user of the function.
         // return nullptr in case of an error or the value is equal to null (handle cases separately later).
@@ -192,7 +208,6 @@ class TableSchema {
         // return null in case of an error.
         // the user of the class should handle deleting the record after using it.
         Record* translateToRecord(std::vector<Value>& values){
-            std::cout << " translate to record call " << size_ << std::endl;
             if(values.size() != columns_.size()) return nullptr;
             uint32_t fixed_part_size = size_;
             uint32_t var_part_size = 0;
@@ -221,7 +236,6 @@ class TableSchema {
                 }
                 // should initialize the bitmap byte (TODO).
             }
-            std::cout << "fixed part size & var part size: " << fixed_part_size << " " << var_part_size << std::endl;
             return new Record(data, fixed_part_size + var_part_size);
         }
         Table* getTable(){
@@ -263,7 +277,6 @@ class Catalog {
             TableIterator* it = meta_data_table->begin();
             while(it->advance()){
                 Record r = it->getCurRecordCpy();
-                std::cout << " meta data record scanning " << std::endl;
                 std::vector<Value> values;
                 int err = meta_table_schema_->translateToValues(r, values);
                 if(err) break;
@@ -299,7 +312,6 @@ class Catalog {
         }
 
         TableSchema* createTable(const std::string &table_name, std::vector<Column> &columns) {
-                std::cout << " create table call " << std::endl;
                 if (tables_.count(table_name))
                     return nullptr;
                 // initialize the table
@@ -308,7 +320,6 @@ class Catalog {
                 Table* table = new Table(cache_manager_, first_page, free_space);
                 TableSchema* schema = new TableSchema(table_name, table, columns);
                 tables_.insert({table_name, schema});
-                std::cout << " inserted table in memory " << std::endl;
                 // persist the table schema in the meta data table.
                 // create a vector of Values per column,
                 // then insert it to the meta table.
@@ -324,6 +335,7 @@ class Catalog {
                     vals.emplace_back(Value(c.isUnique()));
                     // translate the vals to a record and persist them.
                     Record* record = meta_table_schema_->translateToRecord(vals);
+                    /*
                     if(record == nullptr) std::cout << " invalid record " << std::endl;
                     std::cout << " translated a schema to a record with size: " 
                         << record->getRecordSize() << std::endl;
@@ -331,11 +343,11 @@ class Catalog {
                         std::cout << +(char)(*record->getFixedPtr(i)) << ",";
                     }
                     std::cout << std::endl;
+                    */
 
                     // rid is not used for now.
                     RecordID* rid = new RecordID();
                     int err = meta_table_schema_->getTable()->insertRecord(rid, *record);
-                    std::cout << " persisted record to desk, err status : " << err << std::endl;
                     if(err) return nullptr;
                 }
                 return schema;
@@ -348,7 +360,6 @@ class Catalog {
         }
 
         bool isValidTable(const std::string& table_name) {
-            std::cout << " is valid table call " << std::endl;
             if (!tables_.count(table_name)) return false;
             return true;
         }

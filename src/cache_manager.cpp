@@ -62,7 +62,6 @@ class CacheManager {
 
 
 Page* CacheManager::newPage(std::string file_name){
-    std::cout << " new page call " << std::endl;
     const std::lock_guard<std::mutex> lock(latch_);
     Page *new_page = nullptr;
     int32_t new_frame = -1;
@@ -92,7 +91,6 @@ Page* CacheManager::newPage(std::string file_name){
         new_page = page_to_be_flushed;
     }
     int err = disk_manager_->allocateNewPage(file_name,new_page->data_, &new_page->page_id_);
-    std::cout << file_name << " " << new_page->page_id_.page_num_  << std::endl;
     if(err) {
         std::cout << " could not allocate a new page " << std::endl;
         return nullptr;

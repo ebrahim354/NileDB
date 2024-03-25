@@ -1,6 +1,5 @@
 #pragma once
 #include "utils.cpp"
-#include <iostream>
 #include <set>
 
 
@@ -27,6 +26,7 @@ class Tokenizer {
         {
             // reserved keywords
             keywords_.insert("SELECT");
+            keywords_.insert("INSERT");
             keywords_.insert("FROM");
             keywords_.insert("WHERE");
             keywords_.insert("AND");

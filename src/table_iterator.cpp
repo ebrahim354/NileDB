@@ -18,11 +18,6 @@ class TableIterator {
                 cur_num_of_slots_ = cur_page_->getNumOfSlots();
                 next_page_number_ = cur_page_->getNextPageNumber();
                 prev_page_number_ = cur_page_->getPrevPageNumber();
-                std::cout << " table iterator initialized " << std::endl;
-                std::cout << " file_name : "<< page_id.file_name_ << std::endl;
-                std::cout << " page_num : "<< page_id.page_num_ << std::endl;
-                std::cout << " next page num : "<< cur_page_->getNextPageNumber() << std::endl;
-                std::cout << " cur_num_of_slots_ : "<< cur_num_of_slots_ << std::endl;
             }
         }
         ~TableIterator(){
@@ -53,7 +48,6 @@ class TableIterator {
                 cur_page_ = reinterpret_cast<TableDataPage*>(cache_manager_->fetchPage(cur_page_id_));
                 // invalid next_page_number or an error for some reason.
                 if(!cur_page_) {
-                    std::cout << " invalid next page number " << std::endl;
                     return false;
                 }
 
@@ -61,8 +55,6 @@ class TableIterator {
                 next_page_number_ = cur_page_->getNextPageNumber();
                 prev_page_number_ = cur_page_->getPrevPageNumber();
                 cur_slot_idx_ = -1;
-                std::cout << " recursion :) " << std::endl;
-                std::cout << cur_num_of_slots_ << std::endl;
                 // search inside of the next page recursively, then return the final result.
                 return hasNext();
             }
