@@ -57,6 +57,10 @@ struct ASTNode {
 struct TermNode : ASTNode {
     TermNode(ASTNode* lhs, ASTNode* rhs, Token op): ASTNode(TERM, op), left_(lhs), right_(rhs)
     {}
+    void clean(){
+        delete left_;
+        delete right_;
+    }
     ASTNode* left_;
     ASTNode* right_;
 };
@@ -64,6 +68,10 @@ struct TermNode : ASTNode {
 struct FieldDefNode : ASTNode {
     FieldDefNode(): ASTNode(FIELD_DEF)
     {}
+    void clean() {
+        delete field_;
+        delete type_;
+    }
     ASTNode* field_;
     ASTNode* type_;
 };
@@ -78,6 +86,12 @@ struct FieldDefNode : ASTNode {
 struct FieldDefListNode : ASTNode {
     FieldDefListNode(): ASTNode(FIELD_DEF_LIST)
     {}
+    void clean (){
+        if(field_def_) field_def_->clean();
+        if(next_) next_->clean();
+        delete field_def_;
+        delete next_;
+    }
     FieldDefNode* field_def_ = nullptr;
     FieldDefListNode* next_ = nullptr;
 };
@@ -86,6 +100,10 @@ struct FieldDefListNode : ASTNode {
 struct ConstListNode : ASTNode {
     ConstListNode(): ASTNode(CONST_LIST)
     {}
+    void clean (){
+        if(next_) next_->clean();
+        delete next_;
+    }
     ConstListNode* next_ = nullptr;
 };
 
@@ -93,6 +111,10 @@ struct ConstListNode : ASTNode {
 struct TableListNode : ASTNode {
     TableListNode(): ASTNode(TABLE_LIST)
     {}
+    void clean (){
+        if(next_) next_->clean();
+        delete next_;
+    }
     TableListNode* next_ = nullptr;
 };
 
@@ -100,6 +122,11 @@ struct TableListNode : ASTNode {
 struct FieldListNode : ASTNode {
     FieldListNode(): ASTNode(SELECT_LIST)
     {}
+    void clean(){
+        if(next_) next_->clean();
+        delete field_;
+        delete next_;
+    }
     ASTNode* field_ = nullptr;
     FieldListNode* next_ = nullptr;
 };
@@ -108,6 +135,12 @@ struct FieldListNode : ASTNode {
 struct PredicateNode : ASTNode {
     PredicateNode(Token val = {}): ASTNode(PREDICATE, val)
     {}
+    void clean () {
+        if(next_) next_->clean();
+        if(term_) term_->clean();
+        delete term_;
+        delete next_;
+    }
     TermNode* term_ = nullptr;
     PredicateNode* next_ = nullptr;
 };
@@ -118,6 +151,15 @@ struct SelectStatementNode : ASTNode {
 
     SelectStatementNode(): ASTNode(SELECT_STATEMENT)
     {}
+
+    void clean (){
+        if(fields_) fields_->clean();
+        if(tables_) tables_->clean();
+        if(predicate_) predicate_->clean();
+        delete fields_;
+        delete tables_;
+        delete predicate_;
+    }
     FieldListNode* fields_;
     TableListNode* tables_;
     PredicateNode* predicate_;
@@ -127,6 +169,11 @@ struct CreateTableStatementNode : ASTNode {
 
     CreateTableStatementNode(): ASTNode(CREATE_TABLE_STATEMENT)
     {}
+    void clean() {
+        if(field_defs_) field_defs_->clean();
+        delete field_defs_;
+        delete table_;
+    }
     FieldDefListNode* field_defs_;
     ASTNode* table_;
 };
@@ -135,6 +182,11 @@ struct DeleteStatementNode : ASTNode {
 
     DeleteStatementNode(): ASTNode(DELETE_STATEMENT)
     {}
+    void clean (){
+        if(predicate_) predicate_->clean();
+        delete table_;
+        delete predicate_;
+    }
     ASTNode*  table_;
     PredicateNode* predicate_;
 };
@@ -143,6 +195,12 @@ struct UpdateStatementNode : ASTNode {
 
     UpdateStatementNode(): ASTNode(UPDATE_STATEMENT)
     {}
+    void clean (){
+        if(predicate_) predicate_->clean();
+        delete field_;
+        delete table_;
+        delete predicate_;
+    }
     ASTNode*  table_;
     ASTNode*  field_;
     PredicateNode* predicate_;
@@ -152,6 +210,13 @@ struct InsertStatementNode : ASTNode {
 
     InsertStatementNode(): ASTNode(INSERT_STATEMENT)
     {}
+    void clean (){
+        if(fields_) fields_->clean();
+        if(values_) values_->clean();
+        delete fields_;
+        delete values_;
+        delete table_;
+    }
     ASTNode*  table_;
     FieldListNode* fields_;
     ConstListNode*  values_;
@@ -185,8 +250,8 @@ class Parser {
             auto f = field();
             auto t = type();
             if(!f || !t){ 
-                if(f) delete f;
-                if(t) delete t;
+                delete f;
+                delete t;
                 return  nullptr;
             }
             FieldDefNode* fd = new FieldDefNode();
@@ -288,7 +353,10 @@ class Parser {
 
         TableListNode* tableList(){
             ASTNode* table = this->table();
-            if(!table || !catalog_->isValidTable(table->token_.val_)) return nullptr;
+            if(!table || !catalog_->isValidTable(table->token_.val_)) {
+                delete table;
+                return nullptr;
+            }
             TableListNode* nw_tl = new TableListNode();
             nw_tl->token_ = table->token_;
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
@@ -316,24 +384,25 @@ class Parser {
 
         
         SelectStatementNode* selectStatement(){
-            FieldListNode* fields = fieldList();
-            if(!fields || cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "FROM")
-                return nullptr;
-
-            cur_pos_++;
-            TableListNode* tables = tableList();
-            PredicateNode* pred = nullptr;
-            if(!tables)
-                return nullptr;
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
-                cur_pos_++;
-                pred = predicate();
-            }
             // if there is no filter predicate it is just going to be null.
             SelectStatementNode* statement = new SelectStatementNode();
-            statement->fields_ = fields;
-            statement->tables_ = tables;
-            statement->predicate_ = pred;
+
+            statement->fields_ = fieldList();
+            if(!statement->fields_ || cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "FROM"){
+                statement->clean();
+                return nullptr;
+            }
+
+            cur_pos_++;
+            statement->tables_ = tableList();
+            if(!statement->tables_){
+                statement->clean();
+                return nullptr;
+            }
+            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
+                cur_pos_++;
+                statement->predicate_ = predicate();
+            }
             return statement; 
         }
 
@@ -341,25 +410,27 @@ class Parser {
             if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "TABLE")
                 return nullptr;
             cur_pos_++;
+            auto statement = new CreateTableStatementNode();
 
-            auto t = this->table();
+            statement->table_ = table();
 
-            if(!t   || cur_pos_ >= cur_size_ 
+            if(!statement->table_   || cur_pos_ >= cur_size_ 
                     || tokens_[cur_pos_++].val_ != "(" 
-                    || catalog_->isValidTable(t->token_.val_))
+                    || catalog_->isValidTable(statement->table_->token_.val_)){
+                statement->clean();
                 return nullptr;
+            }
 
-            FieldDefListNode* field_defs = fieldDefList();
+            statement->field_defs_ = fieldDefList();
 
 
-            if(!field_defs || cur_pos_ >= cur_size_ 
-                       || tokens_[cur_pos_++].val_ != ")")
+            if(!statement->field_defs_ || cur_pos_ >= cur_size_ 
+                       || tokens_[cur_pos_++].val_ != ")"){
+                statement->clean();
                 return nullptr;
+            }
             cur_pos_++;
 
-            auto statement = new CreateTableStatementNode();
-            statement->table_ = t;
-            statement->field_defs_ = field_defs;
             return statement;
         }
 
@@ -370,33 +441,36 @@ class Parser {
                 return nullptr;
             cur_pos_++;
 
-            ASTNode* t = table();
-            if(!t || cur_pos_ >= cur_size_ 
+            InsertStatementNode* statement = new InsertStatementNode();
+
+            statement->table_ = table();
+            if(!statement->table_ || cur_pos_ >= cur_size_ 
                     || tokens_[cur_pos_++].val_ != "(" 
-                    || !catalog_->isValidTable(t->token_.val_))
+                    || !catalog_->isValidTable(statement->table_->token_.val_)){
+                statement->clean();
                 return nullptr;
+            }
 
             
-            FieldListNode* fields = fieldList();
-            if(!fields || cur_pos_ >= cur_size_ 
-                       || tokens_[cur_pos_].val_ != ")")
+            statement->fields_ = fieldList();
+            if(!statement->fields_ || cur_pos_ >= cur_size_ 
+                       || tokens_[cur_pos_].val_ != ")"){
+                statement->clean();
                 return nullptr;
+            }
             cur_pos_++;
 
-            ConstListNode* values = nullptr;
             if(cur_pos_+1 < cur_size_ 
                     && tokens_[cur_pos_].val_ == "VALUES" 
                     && tokens_[cur_pos_+1].val_ == "("){
                 cur_pos_+=2;
-                values = constList();
-                if(!values || cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")")
+                statement->values_ = constList();
+                if(!statement->values_ || cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")"){
+                    statement->clean();
                     return nullptr;
+                }
                 cur_pos_++;
             }
-            InsertStatementNode* statement = new InsertStatementNode();
-            statement->fields_ = fields;
-            statement->values_ = values;
-            statement->table_ = t; 
             return statement; 
         }
 
@@ -406,51 +480,55 @@ class Parser {
                 return nullptr;
             cur_pos_++;
 
-            ASTNode* table = this->table(); 
-            if(!table)
-                return nullptr;
-            PredicateNode* pred = nullptr;
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
-                cur_pos_++;
-                pred = predicate();
-            }
             // if there is no filter predicate it is just going to be null.
             DeleteStatementNode* statement = new DeleteStatementNode();
-            statement->table_ = table;
-            statement->predicate_ = pred;
+
+            statement->table_ = table(); 
+            if(!statement->table_)
+                return nullptr;
+            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
+                cur_pos_++;
+                statement->predicate_ = predicate();
+            }
             return statement; 
         }
 
         UpdateStatementNode* updateStatement(){
-            ASTNode* t = this->table(); 
-            if(!t) return nullptr;
+            // if there is no filter predicate it is just going to be null.
+            UpdateStatementNode* statement = new UpdateStatementNode();
 
-            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "SET")
+            statement->table_ = this->table(); 
+            if(!statement->table_) return nullptr;
+
+            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "SET"){
+                statement->clean();
                 return nullptr;
+            }
             cur_pos_++;
 
-            ASTNode* f = this->field();
-            if(!f) return nullptr;
-
-            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "=")
+            statement->field_ = field();
+            if(!statement->field_) {
+                statement->clean();
                 return nullptr;
+            }
+
+            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "="){
+                statement->clean();
+                return nullptr;
+            }
             cur_pos_++;
 
             ASTNode* ex = expression();
-            if(!ex) return nullptr;
-
-
-            PredicateNode* pred = nullptr;
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
-                cur_pos_++;
-                pred = predicate();
+            if(!ex) {
+                statement->clean();
+                return nullptr;
             }
 
-            // if there is no filter predicate it is just going to be null.
-            UpdateStatementNode* statement = new UpdateStatementNode();
-            statement->table_ = t;
-            statement->field_ = f;
-            statement->predicate_ = pred;
+
+            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
+                cur_pos_++;
+                statement->predicate_ = predicate();
+            }
             return statement; 
         }
 

@@ -58,6 +58,7 @@ DiskManager::~DiskManager(){
         file.second.fs_.write(bytes, sizeof(int) * 2);
         file.second.fs_.flush();
         file.second.fs_.close();
+        delete[] bytes;
     }
 }
 
@@ -254,6 +255,7 @@ int DiskManager::openFile(std::string file_name){
     int num_of_pages = -1;
     memcpy(&next_free_page, bytes, sizeof(int));
     memcpy(&num_of_pages, bytes+sizeof(int), sizeof(int));
+    delete[] bytes;
     if (read_count < 8) {
         std::cout << "open file error: invalid read count : " << read_count << " " << next_free_page << " " <<
             num_of_pages << std::endl;

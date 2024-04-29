@@ -14,7 +14,7 @@ class FreeSpaceMap {
             array_ = new uint8_t[size]; 
         }
         ~FreeSpaceMap(){
-            delete array_;
+            delete[] array_;
         }
 
         // return 1 on error.

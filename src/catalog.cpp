@@ -106,6 +106,9 @@ class TableSchema {
                 size_ += c.getSize();
             }
         }
+        ~TableSchema() {
+            delete table_; 
+        }
 
         bool checkValidValues(std::vector<std::string>& fields, std::vector<Value>& vals) {
             if(fields.size() != columns_.size() || fields.size() != vals.size()) return false;
@@ -256,11 +259,12 @@ class Catalog {
         {
             
             // change the size after adding free space map support.
-            FreeSpaceMap* meta_free_space = new FreeSpaceMap(0);
+            free_space_map_ = new FreeSpaceMap(0);
+
 
             // loading the hard coded meta data table schema.
             PageID meta_pid = {.file_name_ = META_DATA_FILE, .page_num_ = 1};
-            auto meta_data_table = new Table(cm, meta_pid, meta_free_space);
+            auto meta_data_table = new Table(cm, meta_pid, free_space_map_);
 
             std::vector<Column> meta_data_columns;
             meta_data_columns.emplace_back(Column("table_name", VARCHAR, 0));
@@ -308,6 +312,14 @@ class Catalog {
                 if(unique) cons.push_back(UNIQUE); 
                 
                 tables_[table_name]->addColumn(Column(col_name, col_type, col_offset, cons));
+            }
+            delete it;
+        }
+        ~Catalog() {
+            delete meta_table_schema_;
+            delete free_space_map_;
+            for(auto table : tables_){
+                delete tables_[table.first];
             }
         }
 
