@@ -203,6 +203,7 @@ struct UpdateStatementNode : ASTNode {
     }
     ASTNode*  table_;
     ASTNode*  field_;
+    ASTNode*  expression_;
     PredicateNode* predicate_;
 };
 
@@ -518,8 +519,8 @@ class Parser {
             }
             cur_pos_++;
 
-            ASTNode* ex = expression();
-            if(!ex) {
+            statement->expression_ = expression();
+            if(!statement->expression_) {
                 statement->clean();
                 return nullptr;
             }

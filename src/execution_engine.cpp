@@ -147,6 +147,72 @@ class ExecutionEngine {
             return true;
         }
 
+        bool delete_handler(ASTNode* statement_root){
+            DeleteStatementNode* delete_statement = reinterpret_cast<DeleteStatementNode*>(statement_root);
+
+            auto table_ptr = delete_statement->table_; 
+            // did not find any tables.
+            if(table_ptr == nullptr) return false;
+            std::string table_name = table_ptr->token_.val_;
+            TableSchema* schema = catalog_->getTableSchema(table_name);
+
+            TableIterator* it = schema->getTable()->begin();
+            while(it->advance()){
+                RecordID rid = it->getCurRecordID();
+                schema->getTable()->deleteRecord(rid);
+            }
+            // handle filters later.
+            
+            return true;
+        }
+
+        bool update_handler(ASTNode* statement_root){
+            UpdateStatementNode* update_statement = reinterpret_cast<UpdateStatementNode*>(statement_root);
+
+            std::string table_name = update_statement->table_->token_.val_;
+            TableSchema* schema = catalog_->getTableSchema(table_name);
+            // did not find any tables with that name.
+            if(schema == nullptr) return false;
+            auto field_ptr = update_statement->field_;
+            std::string field_name = field_ptr->token_.val_;
+            auto val_ptr = update_statement->expression_;
+            std::string val_str = val_ptr->token_.val_;
+            // check valid column.
+            if(!schema->isValidCol(field_name)) 
+                return false;
+            // we consider int and string types for now.
+            Type val_type = INVALID;
+            if(val_ptr->category_ == STRING_CONSTANT) val_type = VARCHAR;
+            else if(val_ptr->category_ == INTEGER_CONSTANT) val_type = INT;
+            // invalid or not supported type;
+            if( val_type == INVALID ) return false;
+            Value val;
+            if(val_type == INT) val = Value(stoi(val_str));
+            else if(val_type == VARCHAR) val = Value(val);
+
+            if(!schema->checkValidValue(field_name, val)) return false;
+
+
+            TableIterator* it = schema->getTable()->begin();
+            while(it->advance()){
+                RecordID rid = it->getCurRecordID();
+                // rid is not used for now.
+                Record cpy = it->getCurRecordCpy();
+                std::vector<Value> values;
+                int err = schema->translateToValues(cpy, values);
+                int idx = schema->getColIdx(field_name, val);
+                if(idx < 0) return false;
+                values[idx] = val;
+                Record* new_rec = schema->translateToRecord(values);
+
+                err = schema->getTable()->updateRecord(&rid, *new_rec);
+                if(err) return false;
+            }
+            return true;
+            // handle filters later.
+        }
+
+
         bool execute(ASTNode* statement_root){
             if(!statement_root) return false;
 
@@ -157,6 +223,10 @@ class ExecutionEngine {
                     return insert_handler(statement_root);
                 case SELECT_STATEMENT:
                     return select_handler(statement_root);
+                case DELETE_STATEMENT:
+                    return delete_handler(statement_root);
+                case UPDATE_STATEMENT:
+                    return update_handler(statement_root);
                 default:
                     return false;
             }

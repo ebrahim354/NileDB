@@ -120,6 +120,24 @@ class TableSchema {
             return true;
         }
 
+        bool checkValidValue(std::string& field, Value& val) {
+            for(size_t i = 0; i < columns_.size(); ++i){
+                if(columns_[i].getName() == field && columns_[i].getType() != val.type_)
+                    return true;
+            }
+            return false;
+        }
+        
+        int getColIdx(std::string& field, Value& val){
+            for(size_t i = 0; i < columns_.size(); ++i){
+                if(columns_[i].getName() == field && columns_[i].getType() != val.type_){
+                    return i;
+                }
+            }
+            return -1;
+
+        }
+
         bool isValidCol(std::string& col_name){
             for(auto c : columns_)
                 if(c.getName() == col_name) return true;

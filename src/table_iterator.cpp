@@ -73,6 +73,10 @@ class TableIterator {
             if(err) return Record(nullptr, 0);
             return  Record(cur_data, *rsize);
         }
+
+        RecordID getCurRecordID(){
+            return RecordID(cur_page_id_, cur_slot_idx_);
+        }
     private:
         CacheManager *cache_manager_ = nullptr;
         PageID cur_page_id_ = INVALID_PAGE_ID;
