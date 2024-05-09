@@ -24,6 +24,7 @@
  */
 
 #define META_DATA_FILE "NILEDB_META_DATA.ndb"
+#define META_DATA_FSM "NILEDB_META_DATA_fsm.ndb"
 #define META_DATA_TABLE "NILEDB_META_DATA"
 
 
@@ -277,7 +278,8 @@ class Catalog {
         {
             
             // change the size after adding free space map support.
-            free_space_map_ = new FreeSpaceMap(0);
+            PageID meta_fsm_pid = {.file_name_ = META_DATA_FSM, .page_num_ = 1};
+            free_space_map_ = new FreeSpaceMap(cm, meta_fsm_pid);
 
 
             // loading the hard coded meta data table schema.
@@ -315,7 +317,8 @@ class Catalog {
                 // first time seeing this table? if yes then we need to initialize it.
                 if(!tables_.count(table_name)){
                     PageID first_page = {.file_name_ = table_name+".ndb", .page_num_ = 1};
-                    FreeSpaceMap* free_space = new FreeSpaceMap(0);
+                    PageID first_fsm_page = {.file_name_ = table_name+"_fsm.ndb", .page_num_ = 1};
+                    FreeSpaceMap* free_space = new FreeSpaceMap(cm, first_fsm_page);
                     Table* table = new Table(cm, first_page, free_space);
                     TableSchema* schema = new TableSchema(table_name, table, {});
                     tables_.insert({table_name, schema});
@@ -346,7 +349,8 @@ class Catalog {
                     return nullptr;
                 // initialize the table
                 PageID first_page = {.file_name_ = table_name+".ndb", .page_num_ = 1};
-                FreeSpaceMap* free_space = new FreeSpaceMap(0);
+                PageID first_fsm_page = {.file_name_ = table_name+"_fsm.ndb", .page_num_ = 1};
+                FreeSpaceMap* free_space = new FreeSpaceMap(cache_manager_, first_fsm_page);
                 Table* table = new Table(cache_manager_, first_page, free_space);
                 TableSchema* schema = new TableSchema(table_name, table, columns);
                 tables_.insert({table_name, schema});
