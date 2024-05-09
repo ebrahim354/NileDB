@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <math.h>
 #include <cstring>
 #include "cache_manager.cpp"
 #include "page.cpp"
@@ -8,19 +9,84 @@
 #include "table_data_page.cpp"
 
 #define MAX_FRACTION 256
+
+
+
+// first 4 bytes in the first page are the number of pages of the table let's call it ( n ).
+// next n bytes are the fractions per n pages of the table.
+// the free space pages do not shrink by convention ( I should probably make a FreeSpaceMapPage class ).
 class FreeSpaceMap {
     public:
-        FreeSpaceMap(uint32_t size): size_(size){
-            array_ = new uint8_t[size]; 
+        FreeSpaceMap(CacheManager* cm, PageID first_page_id): cm_(cm), first_page_id_(first_page_id){
+            Page* page = cm_->fetchPage(first_page_id_);
+            char* d = page->data_;
+            size_ = *reinterpret_cast<uint32_t*>(page->data_);
+            array_ = new uint8_t[size_]; 
+            int i = 4;
+            int tot = 0;
+            PageID page_id_ptr = first_page_id_;
+            while(i < PAGE_SIZE && tot < size_){
+                array_[tot] = *reinterpret_cast<uint8_t*>(page->data_+i);
+                i++;
+                tot++;
+                if(i == PAGE_SIZE){
+                    cm_->unpinPage(page_id_ptr, false);
+                    page_id_ptr.page_num_++;
+                    page = cm_->fetchPage(page_id_ptr);
+                    i = 0;
+                }
+            }
+            if(i != 0) 
+                cm_->unpinPage(page_id_ptr, false);
         }
         ~FreeSpaceMap(){
             delete[] array_;
         }
 
+
+        int addPage(uint8_t fraction){
+            Page* last_page = nullptr;
+            Page* first_page = cm_->fetchPage(first_page_id_);
+            if((size_+4) % PAGE_SIZE == 0) last_page = cm_->newPage(first_page_id_.file_name_);
+            else last_page = getPageAtOffset(size_);
+
+            if(!last_page) return 1;
+
+            uint32_t slot = (size_+4)%PAGE_SIZE;
+            size_++;
+            memcpy(last_page->data_+slot, &fraction, sizeof(fraction));
+            memcpy(first_page->data_, &size_, sizeof(size_));
+            
+            // this is so slow but only happens once per new fsm page so it's fine.
+            uint8_t* old_array = array_;
+            array_ = new uint8_t[size_]; 
+            memcpy(array_, old_array, (size_-1) * sizeof(uint8_t));
+            array_[size_-1] = fraction;
+            delete [] old_array;
+            cm_->flushPage(last_page->page_id_);
+            cm_->flushPage(first_page->page_id_);
+            cm_->unpinPage(last_page->page_id_, true);
+            cm_->unpinPage(first_page->page_id_, true);
+            return 0;
+        }
+
+        Page* getPageAtOffset(uint32_t offset){
+            int page_num = ceil(double(offset+4)/PAGE_SIZE);
+            PageID pid = first_page_id_;
+            pid.page_num_ = page_num;
+            return cm_->fetchPage(pid);
+        }
         // return 1 on error.
-        bool setAtOffset(uint8_t* src, uint32_t offset, uint32_t n){
-            if(n + offset >=  size_) return 1;
-            memcpy(array_ + offset, src, n);
+        // offset is the table data page number.
+        int updateFreeSpace(uint32_t offset, uint32_t free_space){
+            if(offset >= size_) return 1;
+            uint8_t fraction = free_space / MAX_FRACTION;
+            array_[offset] = fraction;
+            Page* page = getPageAtOffset(offset);
+            uint32_t slot = (offset+4)%PAGE_SIZE;
+            memcpy(page->data_+slot, &fraction, sizeof(fraction));
+            cm_->flushPage(page->page_id_);
+            cm_->unpinPage(page->page_id_, true);
             return 0;
         }
         // page_num (output).
@@ -42,6 +108,8 @@ class FreeSpaceMap {
     private:
         uint8_t* array_;
         uint32_t size_;
+        CacheManager* cm_;
+        PageID first_page_id_;
 };
 
 /*
@@ -75,8 +143,6 @@ class Table {
 
         // should use the free space map to find the closest free space inside of the file
         // or just append it to the end of the file.
-        // updating the free space map is the responsibility of the DirectoryManager,
-        // the only free map usage here is for searching.
 
         // rid (output)
         // return 1 in case of an error.
@@ -119,6 +185,8 @@ class Table {
                 // if you are the first page and you just got created that means,
                 // you are the first and last so we don't need to update any other pages.
                 rid->page_id_ = table_page->page_id_;
+                // empty page.
+                free_space_map_->addPage(MAX_FRACTION - 1);
             } else {
                 rid->page_id_.page_num_ = page_num;
                 table_page = reinterpret_cast<TableDataPage*>(cache_manager_->fetchPage(rid->page_id_));
@@ -134,6 +202,7 @@ class Table {
                 std::cout << " could not insert the record to the page " << std::endl;
                 return 1;
             }
+            free_space_map_->updateFreeSpace(table_page->page_id_.page_num_, table_page->getFreeSpaceSize());
             // flush and unpin the page then return.
             cache_manager_->flushPage(table_page->page_id_);
             cache_manager_->unpinPage(table_page->page_id_, true);
