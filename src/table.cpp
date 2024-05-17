@@ -19,6 +19,8 @@ class FreeSpaceMap {
     public:
         FreeSpaceMap(CacheManager* cm, PageID first_page_id): cm_(cm), first_page_id_(first_page_id){
             Page* page = cm_->fetchPage(first_page_id_);
+            if(!page)
+                return;
             char* d = page->data_;
             size_ = *reinterpret_cast<uint32_t*>(page->data_);
             array_ = new uint8_t[size_]; 
@@ -106,10 +108,10 @@ class FreeSpaceMap {
         }
         
     private:
-        uint8_t* array_;
-        uint32_t size_;
-        CacheManager* cm_;
-        PageID first_page_id_;
+        uint8_t* array_ = nullptr;
+        uint32_t size_ = 0;
+        CacheManager* cm_ = nullptr;
+        PageID first_page_id_ = INVALID_PAGE_ID;
 };
 
 /*
