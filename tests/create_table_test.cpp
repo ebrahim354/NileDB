@@ -14,11 +14,11 @@ int main() {
     query_processor->handleQuery(input1);
 
 
-    delete disk_manager;
-    delete cache_manager;
-    delete catalog;
-    delete parser;
-    delete engine;
     delete query_processor;
+    delete engine;
+    delete parser;
+    delete catalog;
+    delete cache_manager;
+    delete disk_manager;
     return 0;
 }

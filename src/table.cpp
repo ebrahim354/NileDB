@@ -8,7 +8,7 @@
 #include "record.cpp"
 #include "table_data_page.cpp"
 
-#define MAX_FRACTION 256
+#define MAX_FRACTION 255
 
 
 
@@ -49,6 +49,10 @@ class FreeSpaceMap {
         int addPage(uint8_t fraction){
             Page* last_page = nullptr;
             Page* first_page = cm_->fetchPage(first_page_id_);
+            if(!first_page) first_page = cm_->newPage(first_page_id_.file_name_);
+            // something is wrong with the file name or just can't allocate a first fsm page, just return an error.
+            if(!first_page) return 1;
+
             if((size_+4) % PAGE_SIZE == 0) last_page = cm_->newPage(first_page_id_.file_name_);
             else last_page = getPageAtOffset(size_);
 
@@ -81,8 +85,10 @@ class FreeSpaceMap {
         // return 1 on error.
         // offset is the table data page number.
         int updateFreeSpace(uint32_t offset, uint32_t free_space){
+            // table pages are 1 indexed, and we are using  zero indexes :(.
+            offset--;
             if(offset >= size_) return 1;
-            uint8_t fraction = free_space / MAX_FRACTION;
+            uint8_t fraction = free_space / (PAGE_SIZE / MAX_FRACTION);
             array_[offset] = fraction;
             Page* page = getPageAtOffset(offset);
             uint32_t slot = (offset+4)%PAGE_SIZE;
@@ -94,12 +100,13 @@ class FreeSpaceMap {
         // page_num (output).
         // return 1 in case of an error.
         int getFreePageNum(uint32_t freespace_needed, uint32_t* page_num){
-            uint8_t fraction = freespace_needed / MAX_FRACTION;
-            fraction += (freespace_needed % MAX_FRACTION);
+            uint8_t fraction = freespace_needed / (PAGE_SIZE / MAX_FRACTION);
+            fraction += (freespace_needed % (PAGE_SIZE / MAX_FRACTION));
             for(uint32_t i = 0; i < size_; ++i){
                  // if the fraction of a page is 0 that means it's a freelist or full page skip it.
                 if(array_[i] >= fraction) {
-                    *page_num = i;
+                    // pages are number starting with 1 not 0.
+                    *page_num = i+1;
                     return 0;
                 }
             }
@@ -150,7 +157,7 @@ class Table {
         // return 1 in case of an error.
         int insertRecord(RecordID* rid, Record &record){
             rid->page_id_ = first_page_id_;
-            uint32_t page_num;
+            uint32_t page_num = 0;
             TableDataPage* table_page = nullptr;
             int no_free_space = free_space_map_->getFreePageNum(record.getRecordSize(), &page_num);
             // no free pages
@@ -204,7 +211,11 @@ class Table {
                 std::cout << " could not insert the record to the page " << std::endl;
                 return 1;
             }
-            free_space_map_->updateFreeSpace(table_page->page_id_.page_num_, table_page->getFreeSpaceSize());
+            err = free_space_map_->updateFreeSpace(table_page->page_id_.page_num_, table_page->getFreeSpaceSize());
+            if(err){
+                std::cout << "could not update free space map" << std::endl;
+                return 1;
+            }
             // flush and unpin the page then return.
             cache_manager_->flushPage(table_page->page_id_);
             cache_manager_->unpinPage(table_page->page_id_, true);
