@@ -2,6 +2,7 @@
 #include "cache_manager.cpp"
 #include "table.cpp"
 #include "column.cpp"
+#include <sstream>
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -163,6 +164,22 @@ class TableSchema {
             else if(t == VARCHAR)   return "VARCHAR";
             return "INVALID";
         }
+
+        void printSchema(std::stringstream& ss){
+            ss << " number of columns : " <<  columns_.size() << std::endl;
+            for(int i = 0; i < columns_.size(); i++){
+                ss << "col num : " << i << std::endl;
+                ss << "name: " << columns_[i].getName() << " offset: " << columns_[i].getOffset() << std::endl;
+                ss << "type: " << typeToString(columns_[i].getType()) << std::endl;
+                ss << "constraints\n";
+                ss << "primary_key: " << columns_[i].isPrimaryKey() 
+                          << " foreign_key: " << columns_[i].isForeignKey();
+                ss << " nullable: " << columns_[i].isNullable() << " unique: " 
+                          << columns_[i].isUnique() << std::endl;
+                ss << "-----------------------------------------------------------------" << std::endl;
+            }
+        }
+
         void printSchema(){
             std::cout << " number of columns : " <<  columns_.size() << std::endl;
             for(int i = 0; i < columns_.size(); i++){

@@ -92,7 +92,7 @@ Page* CacheManager::newPage(std::string file_name){
     }
     int err = disk_manager_->allocateNewPage(file_name,new_page->data_, &new_page->page_id_);
     if(err) {
-        std::cout << " could not allocate a new page " << std::endl;
+        // std::cout << " could not allocate a new page " << std::endl;
         return nullptr;
     }
     page_table_.insert({new_page->page_id_, new_frame});
@@ -124,8 +124,8 @@ Page* CacheManager::fetchPage(PageID page_id){
         int err_reading_page = disk_manager_->readPage(page_id, page_data);
         // page id is not valid.
         if(err_reading_page) {
-            std::cout << "couldn't fetch page number : " << page_id.page_num_ 
-                << " from the file: " << page_id.file_name_ << std::endl;
+            //std::cout << "couldn't fetch page number : " << page_id.page_num_ 
+            // << " from the file: " << page_id.file_name_ << std::endl;
             return nullptr;
         }
 
@@ -147,8 +147,8 @@ Page* CacheManager::fetchPage(PageID page_id){
         int err_reading_page = disk_manager_->readPage(page_id, page_data);
         // page id is not valid.
         if(err_reading_page) {
-            std::cout << "couldn't fetch page number : " << page_id.page_num_ 
-                << " from the file: " << page_id.file_name_ << std::endl;
+            //std::cout << "couldn't fetch page number : " << page_id.page_num_ 
+            //   << " from the file: " << page_id.file_name_ << std::endl;
             return nullptr;
         }
 

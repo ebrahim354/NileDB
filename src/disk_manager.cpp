@@ -232,7 +232,7 @@ int DiskManager::openFile(std::string file_name){
         cached_files_[file_name].fs_.write(first_page, PAGE_SIZE);
         cached_files_[file_name].fs_.flush();
         if (cached_files_[file_name].fs_.bad()) {
-            std::cout << "I/O error while writing" << std::endl;
+            // std::cout << "I/O error while writing" << std::endl;
             cached_files_.erase(file_name);
             return 1;
         }
@@ -257,8 +257,8 @@ int DiskManager::openFile(std::string file_name){
     memcpy(&num_of_pages, bytes+sizeof(int), sizeof(int));
     delete[] bytes;
     if (read_count < 8) {
-        std::cout << "open file error: invalid read count : " << read_count << " " << next_free_page << " " <<
-            num_of_pages << std::endl;
+        //std::cout << "open file error: invalid read count : " << read_count << " " << next_free_page << " " <<
+        //   num_of_pages << std::endl;
         cached_files_[file_name].fs_.clear();
         return 1;
     }
