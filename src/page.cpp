@@ -20,6 +20,11 @@ struct PageID{
         if(files_match == 0)  return page_num_ == other.page_num_;
         return 0;
     }
+    bool operator!=(const PageID &other) const { 
+        int files_match = strcmp(file_name_.c_str(), other.file_name_.c_str());
+        if(files_match == 0)  return page_num_ != other.page_num_;
+        return 1;
+    }
   
 };
 
