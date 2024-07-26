@@ -5,7 +5,13 @@
 #include <string>
 // char_n  => fixed length string (less than page size).
 // varchar => variable length string (less than page size).
+
+
 enum Type { INVALID = -1, BOOLEAN, INT, BIGINT, FLOAT, DOUBLE, TIMESTAMP, VARCHAR}; 
+bool checkSameType(Type lhs, Type rhs) {
+    return lhs == rhs;
+}
+
 enum Constraint { NULLABLE = 0, PRIMARY_KEY, FOREIGN_KEY, UNIQUE };
 
 
