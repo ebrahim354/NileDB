@@ -1,5 +1,5 @@
 dev:
-	g++ src/main.cpp -Wall -std=c++2a -pthread -o bin/NDB -g
+	g++ src/main.cpp -Wall -Wextra -Werror -std=c++2a -pthread -o bin/NDB -g
 release:
 	g++ src/main.cpp -std=c++2a -pthread -o bin/NDB
 create_table_test:

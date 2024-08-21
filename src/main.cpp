@@ -1,50 +1,22 @@
 #include <iostream>
 #include <string>
-#include "cache_manager.cpp"
-#include "catalog.cpp"
-#include "disk_manager.cpp"
-#include "parser.cpp"
-#include "execution_engine.cpp"
-#include "query_processor.cpp"
-
-
-
-
-
+#include "NileDB.cpp"
 
 
 int main() {
-    
-
-    DiskManager* disk_manager = new DiskManager();
-    CacheManager* cache_manager = new CacheManager(1024, disk_manager, 512);
-    Catalog* catalog = new Catalog(cache_manager);
-    Parser* parser = new Parser(catalog);
-    ExecutionEngine* engine = new ExecutionEngine(catalog);
-    QueryProcessor* query_processor_ = new QueryProcessor(parser, engine);
-    /*
-    if(query_processor_->handleQuery("CREATE TABLE TEST ( tst INT )"))
-        std::cout << "SUCCESS" << std::endl;
-    else
-        std::cout << "FAIL" << std::endl;
-        */
+    // ndb is heap allocated to allow multi-threading(TODO).    
+    NileDB *ndb = new NileDB();
     bool prompt_is_running = true;
     while(prompt_is_running){
         std::cout << "> ";
         std::string query;
         std::getline(std::cin, query);
-        if(query == "\\t"){
-            std::vector<std::string> tables = catalog->getTableNames();
-            for(int i = 0; i < tables.size(); ++i){
-                std::cout << tables[i] << std::endl;
-                catalog->getTableSchema(tables[i])->printSchema();
-            }
-        }
-        else if(query_processor_->handleQuery(query))
-            std::cout << "SUCCESS" << std::endl;
-        else
-            std::cout << "FAIL" << std::endl;
+        if(query[0] == '\\')
+            std::cout << (ndb->CMD(query) ? "SUCCESS" : "FAIL") << std::endl;
+        else 
+            std::cout << (ndb->SQL(query) ? "SUCCESS" : "FAIL") << std::endl;
     }
+    delete ndb;
     return 0;
 }
 
