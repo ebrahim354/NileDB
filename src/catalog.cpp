@@ -49,11 +49,21 @@ class TableSchema {
             delete table_; 
         }
 
+        // TODO: change columns to be a set instead of doing this.
+        int colExist(std::string& col_name) {
+            for(size_t i = 0; i < columns_.size(); ++i){
+                if(columns_[i].getName() == col_name)
+                    return i;
+            }
+            return -1;
+        }
+
         bool checkValidValues(std::vector<std::string>& fields, std::vector<Value>& vals) {
             if(fields.size() != columns_.size() || fields.size() != vals.size()) return false;
-
-            for(size_t i = 0; i < columns_.size(); ++i){
-                if(columns_[i].getName() != fields[i] || columns_[i].getType() != vals[i].type_)
+            for(size_t i = 0; i < fields.size(); ++i){
+                int col_idx = colExist(fields[i]);
+                if(col_idx == -1) return false;
+                if(columns_[col_idx].getName() != fields[i] || columns_[col_idx].getType() != vals[i].type_)
                     return false;
             }
             return true;
@@ -354,7 +364,7 @@ class Catalog {
 
         Type stringToType(std::string t){
             if(t == "BOOLEAN")        return BOOLEAN;
-            else if(t == "INT")       return INT;
+            else if(t == "INTEGER")   return INT;
             else if(t == "BIGINT")    return BIGINT;
             else if(t == "FLOAT")     return FLOAT;
             else if(t == "DOUBLE")    return DOUBLE;

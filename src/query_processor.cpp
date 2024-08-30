@@ -9,9 +9,17 @@ class QueryProcessor{
         ~QueryProcessor(){}
 
         bool handleQuery(std::string query){
+            std::cout << "[INFO] Parsing query" << std::endl;
             auto tree = parser_->parse(query);
-            if(tree == nullptr) std::cout << "INVALID AST" << std::endl;
-            return engine_->execute(tree);
+            if(tree == nullptr) {
+                std::cout << "[ERROR] Invalid AST" << std::endl;
+                return false;
+            }
+            std::cout << "[INFO] Executing query" << std::endl;
+            bool status = engine_->execute(tree);
+            if(!status)
+                std::cout << "[ERROR] Query can't be executed" << std::endl;
+            return status;
         }
 
     private:

@@ -26,6 +26,7 @@ class Tokenizer {
         {
             // reserved keywords
             keywords_.insert("SELECT");
+            keywords_.insert("ORDER BY");
             keywords_.insert("INSERT");
             keywords_.insert("FROM");
             keywords_.insert("WHERE");
@@ -40,7 +41,7 @@ class Tokenizer {
             keywords_.insert("TABLE");
             // datatypes
             data_types_.insert("VARCHAR");
-            data_types_.insert("INT");
+            data_types_.insert("INTEGER");
             data_types_.insert("BIGINT");
             data_types_.insert("FLOAT");
             data_types_.insert("DOUBLE");
@@ -57,7 +58,9 @@ class Tokenizer {
             symboles_.insert(")");
             symboles_.insert(";");
             symboles_.insert("+");
+            symboles_.insert("-");
             symboles_.insert("*");
+            symboles_.insert("/");
             symboles_.insert("%");
             symboles_.insert(".");
             symboles_.insert(",");
@@ -117,7 +120,9 @@ class Tokenizer {
                         pos++;
                         continue;
                     }
-                    if(input[pos] == '.' || input[pos] == ','){
+                    std::string s = "";
+                    s += input[pos];
+                    if(isSymbol(s)){
                         std::string tmp; 
                         tmp = input[pos++];
                         if(!cur_token.empty()){

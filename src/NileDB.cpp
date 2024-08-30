@@ -33,6 +33,7 @@ class NileDB {
             delete disk_manager_;
         }
         bool SQL(std::string query){
+            std::cout << "[INFO] runing the following query: " << query << std::endl;
             return query_processor_->handleQuery(query);
         }
         bool CMD(std::string command){

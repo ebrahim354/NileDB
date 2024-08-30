@@ -88,9 +88,15 @@ class ExecutionEngine {
                 value_ptr = value_ptr->next_;
             }
             // size of values do not match the size of the fields.
-            if(value_ptr || field_ptr) return false;
+            if(value_ptr || field_ptr) {
+                std::cout << "[ERROR] Size of values does not match size of fields" << std::endl;
+                return false;
+            }
             // invalid field list or val list.
-            if(!schema->checkValidValues(fields, vals)) return false;
+            if(!schema->checkValidValues(fields, vals)) {
+                std::cout << "[ERROR] Invalid field list or val list" << std::endl;
+                return false;
+            }
 
             Record* record = schema->translateToRecord(vals);
             // rid is not used for now.

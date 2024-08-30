@@ -58,8 +58,8 @@ struct TermNode : ASTNode {
     TermNode(ASTNode* lhs, ASTNode* rhs, Token op): ASTNode(TERM, op), left_(lhs), right_(rhs)
     {}
     void clean(){
-        delete left_;
-        delete right_;
+        if(left_) delete left_;
+        if(right_) delete right_;
     }
     ASTNode* left_;
     ASTNode* right_;
@@ -112,8 +112,10 @@ struct TableListNode : ASTNode {
     TableListNode(): ASTNode(TABLE_LIST)
     {}
     void clean (){
-        if(next_) next_->clean();
-        delete next_;
+        if(next_) {
+            next_->clean();
+            delete next_;
+        }
     }
     TableListNode* next_ = nullptr;
 };
@@ -160,9 +162,9 @@ struct SelectStatementNode : ASTNode {
         delete tables_;
         delete predicate_;
     }
-    FieldListNode* fields_;
-    TableListNode* tables_;
-    PredicateNode* predicate_;
+    FieldListNode* fields_ = nullptr;
+    TableListNode* tables_ = nullptr;
+    PredicateNode* predicate_ = nullptr;
 };
 
 struct CreateTableStatementNode : ASTNode {
@@ -174,8 +176,8 @@ struct CreateTableStatementNode : ASTNode {
         delete field_defs_;
         delete table_;
     }
-    FieldDefListNode* field_defs_;
-    ASTNode* table_;
+    FieldDefListNode* field_defs_ = nullptr;
+    ASTNode* table_ = nullptr;
 };
 
 struct DeleteStatementNode : ASTNode {
@@ -187,8 +189,8 @@ struct DeleteStatementNode : ASTNode {
         delete table_;
         delete predicate_;
     }
-    ASTNode*  table_;
-    PredicateNode* predicate_;
+    ASTNode*  table_ = nullptr;
+    PredicateNode* predicate_ = nullptr;
 };
 
 struct UpdateStatementNode : ASTNode {
@@ -201,10 +203,10 @@ struct UpdateStatementNode : ASTNode {
         delete table_;
         delete predicate_;
     }
-    ASTNode*  table_;
-    ASTNode*  field_;
-    ASTNode*  expression_;
-    PredicateNode* predicate_;
+    ASTNode*  table_ = nullptr;
+    ASTNode*  field_ = nullptr;
+    ASTNode*  expression_ = nullptr;
+    PredicateNode* predicate_ = nullptr;
 };
 
 struct InsertStatementNode : ASTNode {
@@ -219,8 +221,8 @@ struct InsertStatementNode : ASTNode {
         delete table_;
     }
     ASTNode*  table_;
-    FieldListNode* fields_;
-    ConstListNode*  values_;
+    FieldListNode* fields_ = nullptr;
+    ConstListNode*  values_ = nullptr;
 };
 
 
@@ -374,7 +376,7 @@ class Parser {
             nw_cl->token_ = c->token_;
             nw_cl->category_ = c->category_;
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
-                nw_cl->token_ = tokens_[cur_pos_++];
+                cur_pos_++;
                 nw_cl->next_ = constList();
             }
             return nw_cl;
@@ -431,7 +433,6 @@ class Parser {
                 return nullptr;
             }
             cur_pos_++;
-
             return statement;
         }
 
@@ -548,7 +549,6 @@ class Parser {
                 return deleteStatement();
             else if(v == "UPDATE")
                 return updateStatement();
-            // only creating tables is supported for now.
             else if(v == "CREATE")
                 return createTableStatement();
 
