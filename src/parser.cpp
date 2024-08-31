@@ -21,9 +21,9 @@ enum CategoryType {
     TABLE,
     STRING_CONSTANT,
     INTEGER_CONSTANT,
-    FACTOR,     // factor       := field  | const 
-    TERM,       // term         := factor | term        {*,/} factor
-    EXPRESSION, // expression   := term   | expression  {+,-} term
+    FACTOR,     // factor       := field  | const           | "(" epxression ")"
+    TERM,       // term         := factor | term        "*" | "/" factor
+    EXPRESSION, // expression   := term   | expression  "+" | "-" term
     PREDICATE,
 
     SELECT_STATEMENT,
@@ -304,8 +304,20 @@ class Parser {
 
         ASTNode* factor(){
             ASTNode* f = nullptr;
+            if(cur_pos_ >= cur_size_) return nullptr;
+            if(tokens_[cur_pos_].val_ == "("){
+                cur_pos_++;
+                auto ex = expression();
+                if(!ex) return nullptr;
+                if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")") {
+                    ex->clean();
+                    return nullptr;
+                }
+                cur_pos_++;
+                return ex;
+            }
             f = field();
-            if(!f) 
+            if(!f)
                 f = constant();
             if(f)
                 f->category_ = FACTOR;

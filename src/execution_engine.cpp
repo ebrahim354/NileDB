@@ -116,7 +116,9 @@ class ExecutionEngine {
 
         int evaluate_term(ASTNode* term){
             TermNode* t = reinterpret_cast<TermNode*>(term);
-            int res = str_to_int(t->cur_->token_.val_);
+            int res = 0;
+            if(t->cur_->category_ == EXPRESSION) res = evaluate_expression(t->cur_);
+            else                                 res = str_to_int(t->cur_->token_.val_);
             std::string op = t->token_.val_;
             t = t->next_;
             while(t){
