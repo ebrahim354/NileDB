@@ -136,8 +136,8 @@ struct TableListNode : ASTNode {
 };
 
 // a linked list of fields linked with the ',' sympol.
-struct FieldListNode : ASTNode {
-    FieldListNode(): ASTNode(SELECT_LIST)
+struct SelectListNode : ASTNode {
+    SelectListNode(): ASTNode(SELECT_LIST)
     {}
     void clean(){
         if(next_)  next_->clean();
@@ -146,6 +146,18 @@ struct FieldListNode : ASTNode {
         delete next_;
     }
     ExpressionNode* field_ = nullptr;
+    SelectListNode* next_ = nullptr;
+};
+
+struct FieldListNode : ASTNode {
+    FieldListNode(): ASTNode(FIELD_LIST)
+    {}
+    void clean(){
+        if(next_)  next_->clean();
+        delete field_;
+        delete next_;
+    }
+    ASTNode* field_ = nullptr;
     FieldListNode* next_ = nullptr;
 };
 
@@ -178,7 +190,7 @@ struct SelectStatementNode : ASTNode {
         delete tables_;
         delete predicate_;
     }
-    FieldListNode* fields_ = nullptr;
+    SelectListNode* fields_ = nullptr;
     TableListNode* tables_ = nullptr;
     PredicateNode* predicate_ = nullptr;
 };
@@ -389,8 +401,22 @@ class Parser {
             return nw_fdl;
         }
 
-        FieldListNode* fieldList(){
+        SelectListNode* selectList(){
             ExpressionNode* f = expression();
+            if(!f) return nullptr;
+            
+
+            SelectListNode* nw_fl = new SelectListNode();
+            nw_fl->field_ = f;
+            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
+                cur_pos_++;
+                nw_fl->next_ = selectList();
+            }
+            return nw_fl;
+        }
+
+        FieldListNode* fieldList(){
+            ASTNode* f = field();
             if(!f) return nullptr;
             
 
@@ -439,7 +465,7 @@ class Parser {
             // if there is no filter predicate it is just going to be null.
             SelectStatementNode* statement = new SelectStatementNode();
 
-            statement->fields_ = fieldList();
+            statement->fields_ = selectList();
             if(!statement->fields_){
                 statement->clean();
                 return nullptr;

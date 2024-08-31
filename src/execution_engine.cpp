@@ -155,7 +155,7 @@ class ExecutionEngine {
             bool fields_need_table = false;
             auto field_ptr = select->fields_;
             std::vector<std::string> fields;
-            std::vector<FieldListNode*> field_ptrs;
+            std::vector<SelectListNode*> field_ptrs;
             while(field_ptr != nullptr){
                 std::string field_name = field_ptr->field_->token_.val_;
                 TokenType field_type = field_ptr->field_->token_.type_;
