@@ -106,30 +106,94 @@ class ExecutionEngine {
             return false;
         }
 
+        int str_to_int(std::string& s){
+            if(!s.size()) return 0;
+            for(int i = 0; i < s.size(); i++) 
+                if (s[i] > '9' || s[i] < '0') 
+                    return 0;
+            return stoi(s);
+        }
+
+        int evaluate_term(ASTNode* term){
+            TermNode* t = reinterpret_cast<TermNode*>(term);
+            int res = str_to_int(t->cur_->token_.val_);
+            std::string op = t->token_.val_;
+            t = t->next_;
+            while(t){
+                int cur = str_to_int(t->cur_->token_.val_);
+                if(op == "*") res *= cur; 
+                if(op == "/") {
+                    if(cur != 0)
+                        res /= cur;
+                }
+                op = t->token_.val_;
+                t = t->next_;
+            }
+            return res;
+        }
+        int evaluate_expression(ASTNode* expression) {
+            ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(expression);
+            int res = evaluate_term(ex->cur_);
+            std::string op = ex->token_.val_;
+            ex = ex->next_;
+            while(ex){
+                int cur = evaluate_term(ex->cur_);
+                if(op == "+") res += cur; 
+                if(op == "-") res -= cur;
+                op = ex->token_.val_;
+                ex = ex->next_;
+            }
+            return res;
+        }
+
         bool select_handler(ASTNode* statement_root){
             SelectStatementNode* select = reinterpret_cast<SelectStatementNode*>(statement_root);
-            // handle filters later.
-            // handle joins later ( only select values from the first table on the list ).
+            // nothing to be selected.
+            if(select->fields_ == nullptr) return false;
+            bool fields_need_table = false;
+            auto field_ptr = select->fields_;
+            std::vector<std::string> fields;
+            std::vector<FieldListNode*> field_ptrs;
+            while(field_ptr != nullptr){
+                std::string field_name = field_ptr->field_->token_.val_;
+                TokenType field_type = field_ptr->field_->token_.type_;
+                //std::cout << field_name << " " << field_type << std::endl;
+                if(field_type == IDENTIFIER) fields_need_table = true;
 
+                fields.push_back(field_name);
+                field_ptrs.push_back(field_ptr);
+                field_ptr = field_ptr->next_;
+            }
+
+            // if they don't need a table evaluate them and send them back.
+            // TODO: it is better to create an in memory table or a schema-less global table that goes with the flow.
+            if(!fields_need_table){
+                for(int i = 0; i < field_ptrs.size(); i++) {
+                    auto field_ptr = field_ptrs[i];
+                    std::string field_name = field_ptr->field_->cur_->token_.val_;
+                    TokenType field_type = field_ptr->field_->token_.type_;
+                    std::cout << evaluate_expression(field_ptr->field_) << std::endl;
+                }
+                return true;
+            }
+            
+            // handle filters later.
+            // handle joins later ( only select values from the first table on the join list ).
             auto table_ptr = select->tables_; 
             // did not find any tables.
             if(table_ptr == nullptr) return false;
             std::string table_name = table_ptr->token_.val_;
             TableSchema* schema = catalog_->getTableSchema(table_name);
 
-            auto field_ptr = select->fields_;
-            std::vector<std::string> fields;
-            while(field_ptr != nullptr){
-                std::string field_name = field_ptr->field_->token_.val_;
+
+            // handle duplicate fields later.
+            for(int i = 0; i < fields.size(); i++){
+                std::string field_name = fields[i]; 
                 // check valid column.
                 if(!schema->isValidCol(field_name)) 
                     return false;
-
-                fields.push_back(field_name);
-                field_ptr = field_ptr->next_;
             }
-            // handle duplicate fields later.
-
+            
             TableIterator* it = schema->getTable()->begin();
             // print the schema at the top of the table
             schema->printTableHeader();

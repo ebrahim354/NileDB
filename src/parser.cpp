@@ -21,8 +21,9 @@ enum CategoryType {
     TABLE,
     STRING_CONSTANT,
     INTEGER_CONSTANT,
-    EXPRESSION,
-    TERM,
+    FACTOR,     // factor       := field  | const 
+    TERM,       // term         := factor | term        {*,/} factor
+    EXPRESSION, // expression   := term   | expression  {+,-} term
     PREDICATE,
 
     SELECT_STATEMENT,
@@ -55,15 +56,29 @@ struct ASTNode {
 };
 
 struct TermNode : ASTNode {
-    TermNode(ASTNode* lhs, ASTNode* rhs, Token op): ASTNode(TERM, op), left_(lhs), right_(rhs)
+    TermNode(ASTNode* lhs, TermNode* rhs = nullptr, Token op={}): ASTNode(TERM, op), cur_(lhs), next_(rhs)
     {}
     void clean(){
-        if(left_) delete left_;
-        if(right_) delete right_;
+        if(next_) next_->clean();
+        delete cur_;
+        delete next_;
     }
-    ASTNode* left_;
-    ASTNode* right_;
+    ASTNode* cur_ = nullptr;
+    TermNode* next_ = nullptr;
 };
+
+struct ExpressionNode : ASTNode {
+    ExpressionNode(TermNode* lhs, ExpressionNode* rhs=nullptr, Token op={}): ASTNode(EXPRESSION, op), cur_(lhs), next_(rhs)
+    {}
+    void clean(){
+        if(next_) next_->clean();
+        delete cur_;
+        delete next_;
+    }
+    TermNode* cur_ = nullptr;
+    ExpressionNode* next_ = nullptr;
+};
+
 
 struct FieldDefNode : ASTNode {
     FieldDefNode(): ASTNode(FIELD_DEF)
@@ -125,11 +140,12 @@ struct FieldListNode : ASTNode {
     FieldListNode(): ASTNode(SELECT_LIST)
     {}
     void clean(){
-        if(next_) next_->clean();
+        if(next_)  next_->clean();
+        if(field_) field_->clean();
         delete field_;
         delete next_;
     }
-    ASTNode* field_ = nullptr;
+    ExpressionNode* field_ = nullptr;
     FieldListNode* next_ = nullptr;
 };
 
@@ -286,34 +302,53 @@ class Parser {
             return nullptr;
         }
 
-        ASTNode* expression(){
-            ASTNode* ex = nullptr;
-            ex = field();
-            if(!ex) 
-                ex = constant();
-            if(ex)
-                ex->category_ = EXPRESSION;
-
-            return ex;
+        ASTNode* factor(){
+            ASTNode* f = nullptr;
+            f = field();
+            if(!f) 
+                f = constant();
+            if(f)
+                f->category_ = FACTOR;
+            return f;
         }
 
         TermNode* term(){
-            if(cur_size_ - cur_pos_ < 2 ) return nullptr;
-            ASTNode* left = expression();
-            if(!left) return nullptr;
-            Token op = tokens_[cur_pos_++];
-            ASTNode* right = expression();
-            if(!right){
-                delete left;
-                return nullptr;
+            ASTNode* cur = factor();
+            if(!cur) return nullptr;
+            TermNode* t = new TermNode(cur);
+
+            if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "*" || tokens_[cur_pos_].val_ == "/")) {
+                TermNode* next = nullptr;
+                t->token_ = tokens_[cur_pos_++];
+                next = term();
+                if(!next) {
+                    t->clean();
+                    delete cur;
+                    return nullptr;
+                }
+                t->next_ = next;
             }
-            // works only for the = operator for now, extend later..
-            if(op.val_ != "=") {
-                delete left;
-                delete right;
-                return nullptr;
+            t->cur_ = cur;
+            return t;
+        }
+
+        ExpressionNode* expression(){
+            TermNode* cur = term();
+            if(!cur) return nullptr;
+            ExpressionNode* ex = new ExpressionNode(cur);
+            if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "+" || tokens_[cur_pos_].val_ == "-")) { 
+                ExpressionNode* next = nullptr;
+                ex->token_ = tokens_[cur_pos_++];
+                next = expression();
+                if(!next) {
+                    ex->clean();
+                    delete cur;
+                    return nullptr;
+                }
+                ex->next_ = next;
             }
-            return new TermNode(left, right,op);
+            ex->cur_ = cur;
+            return ex;
         }
 
         PredicateNode* predicate(){
@@ -343,12 +378,14 @@ class Parser {
         }
 
         FieldListNode* fieldList(){
-            ASTNode* f = field();
+            ExpressionNode* f = expression();
             if(!f) return nullptr;
+            
+
             FieldListNode* nw_fl = new FieldListNode();
             nw_fl->field_ = f;
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
-                nw_fl->token_ = tokens_[cur_pos_++];
+                cur_pos_++;
                 nw_fl->next_ = fieldList();
             }
             return nw_fl;
@@ -391,17 +428,19 @@ class Parser {
             SelectStatementNode* statement = new SelectStatementNode();
 
             statement->fields_ = fieldList();
-            if(!statement->fields_ || cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "FROM"){
+            if(!statement->fields_){
                 statement->clean();
                 return nullptr;
+            }
+            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "FROM"){
+                cur_pos_++;
+                statement->tables_ = tableList();
+                if(!statement->tables_){
+                    statement->clean();
+                    return nullptr;
+                }
             }
 
-            cur_pos_++;
-            statement->tables_ = tableList();
-            if(!statement->tables_){
-                statement->clean();
-                return nullptr;
-            }
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
                 cur_pos_++;
                 statement->predicate_ = predicate();

@@ -34,6 +34,12 @@ class NileDB {
         }
         bool SQL(std::string query){
             std::cout << "[INFO] runing the following query: " << query << std::endl;
+            int diff = 'A' - 'a';
+            for(int i = 0; i < query.size(); i++){
+                if(query[i] >= 'a' && query[i] <= 'z'){
+                    query[i] += diff;
+                }
+            }
             return query_processor_->handleQuery(query);
         }
         bool CMD(std::string command){

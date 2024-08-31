@@ -74,6 +74,12 @@ class Tokenizer {
             return data_types_.count(t);
         }
 
+        bool isMathOp(std::string& op){
+            if(!isSymbol(op)) return false;
+            if(op == "+" || op == "-" || op == "*" || op == "/") return true;
+            return false;
+        }
+
         bool isSymbol(std::string& t){
             return symboles_.count(t);
         }
@@ -116,8 +122,7 @@ class Tokenizer {
                 while(pos < input.size() && !isWhitespace(input[pos])){
                     if(input[pos] == '"'){
                         inside_string_literal = !inside_string_literal;
-                        // don't add the double quotes to the string literal token.
-                        pos++;
+                        cur_token += input[pos++];
                         continue;
                     }
                     std::string s = "";
