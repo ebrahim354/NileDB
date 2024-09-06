@@ -11,10 +11,24 @@ int main() {
         std::cout << "> ";
         std::string query;
         std::getline(std::cin, query);
+        QueryResult result =  QueryResult();
         if(query[0] == '\\')
             std::cout << (ndb->CMD(query) ? "SUCCESS" : "FAIL") << std::endl;
-        else 
-            std::cout << (ndb->SQL(query) ? "SUCCESS" : "FAIL") << std::endl;
+        else{
+            bool status = ndb->SQL(query, &result);
+            if(!status){
+                std::cout << "FAIL" << std::endl;
+                continue;
+            }
+            for(int i = 0; i < result.size(); i++){
+                for(int j = 0; j < result[i].size(); j++){
+                    std::cout << result[i][j];
+                    if(j+1 != result[i].size()) std::cout << "|";
+                }
+                std::cout << std::endl;
+            }
+            std::cout << "SUCCESS" << std::endl;
+        }
     }
     delete ndb;
     return 0;

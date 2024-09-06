@@ -5,6 +5,15 @@
 #include <vector>
 
 
+// evaluates non numeric strings to 0
+int str_to_int(std::string& s){
+    if(!s.size()) return 0;
+    for(int i = 0; i < s.size(); i++) 
+        if (s[i] > '9' || s[i] < '0') 
+            return 0;
+    return stoi(s);
+}
+
 
 
 std::vector<std::string> strSplit(const std::string& str, char delimiter) {

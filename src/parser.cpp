@@ -331,8 +331,6 @@ class Parser {
             f = field();
             if(!f)
                 f = constant();
-            if(f)
-                f->category_ = FACTOR;
             return f;
         }
 

@@ -32,7 +32,7 @@ class NileDB {
             delete cache_manager_;
             delete disk_manager_;
         }
-        bool SQL(std::string query){
+        bool SQL(std::string query, QueryResult* result){
             std::cout << "[INFO] runing the following query: " << query << std::endl;
             int diff = 'A' - 'a';
             for(int i = 0; i < query.size(); i++){
@@ -40,7 +40,7 @@ class NileDB {
                     query[i] += diff;
                 }
             }
-            return query_processor_->handleQuery(query);
+            return query_processor_->handleQuery(query, result);
         }
         bool CMD(std::string command){
             if(command == "\\t"){

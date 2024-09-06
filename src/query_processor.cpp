@@ -8,7 +8,7 @@ class QueryProcessor{
             engine_(engine){}
         ~QueryProcessor(){}
 
-        bool handleQuery(std::string query){
+        bool handleQuery(std::string query, QueryResult* result){
             std::cout << "[INFO] Parsing query" << std::endl;
             auto tree = parser_->parse(query);
             if(tree == nullptr) {
@@ -16,7 +16,7 @@ class QueryProcessor{
                 return false;
             }
             std::cout << "[INFO] Executing query" << std::endl;
-            bool status = engine_->execute(tree);
+            bool status = engine_->execute(tree, result);
             if(!status)
                 std::cout << "[ERROR] Query can't be executed" << std::endl;
             return status;
