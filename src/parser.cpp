@@ -186,13 +186,16 @@ struct SelectStatementNode : ASTNode {
         if(fields_) fields_->clean();
         if(tables_) tables_->clean();
         if(predicate_) predicate_->clean();
+        if(order_by_list_) order_by_list_->clean();
         delete fields_;
         delete tables_;
         delete predicate_;
+        delete order_by_list_;
     }
     SelectListNode* fields_ = nullptr;
     TableListNode* tables_ = nullptr;
     PredicateNode* predicate_ = nullptr;
+    ConstListNode* order_by_list_ = nullptr;
 };
 
 struct CreateTableStatementNode : ASTNode {
@@ -481,6 +484,12 @@ class Parser {
                 cur_pos_++;
                 statement->predicate_ = predicate();
             }
+
+            if(cur_pos_+1 < cur_size_ && tokens_[cur_pos_].val_ == "ORDER" && tokens_[cur_pos_+1].val_ == "BY"){
+                cur_pos_+=2;
+                statement->order_by_list_ = constList();
+            }
+
             return statement; 
         }
 

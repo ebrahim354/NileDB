@@ -1,6 +1,7 @@
 #pragma once
 #include "catalog.cpp"
 #include "parser.cpp"
+#include "utils.cpp"
 #include <deque>
 
 
@@ -247,15 +248,46 @@ class ExecutionEngine {
             // nothing to be selected.
             if(select->fields_ == nullptr) return false;
             SelectExecutor* executor = new SelectExecutor(select, catalog_);
+
+            bool valid_order_by = true;
+            std::vector<int> order_by;
+
+            auto order_by_ptr = select->order_by_list_;
+            while(order_by_ptr){
+                std::string val = order_by_ptr->token_.val_;
+                int cur = str_to_int(val);
+                if(cur == 0) {
+                    valid_order_by = false;
+                    break;
+                }
+                order_by.push_back(cur-1); 
+                order_by_ptr = order_by_ptr->next_;
+            }
             while(!executor->errorStatus()){
                 std::vector<std::string> tmp = executor->next();
                 if(tmp.size() == 0) break;
+                if(order_by.size() > tmp.size()) {
+                    std::cout << "[ERROR] order by list should be between 1 and " <<  tmp.size() << std::endl;
+                    return false;
+                }
+                    
                 /*
                 for(int i = 0; i < tmp.size(); i++){
                     std::cout << tmp[i] << std::endl;
                 }*/
                 result->push_back(tmp);
             }
+            if(valid_order_by && executor->errorStatus() == 0) {
+                std::sort(result->begin(), result->end(), 
+                    [&order_by](std::vector<std::string>& lhs, std::vector<std::string>& rhs){
+                        for(int i = 0; i < order_by.size(); i++){
+                            if(lhs[order_by[i]] < rhs[order_by[i]]) return true;
+                            if(lhs[order_by[i]] == rhs[order_by[i]]) continue;
+                        }
+                        return false;
+                    });
+            }
+
             return (executor->errorStatus() == 0);
         }
 

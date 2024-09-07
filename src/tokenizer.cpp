@@ -26,7 +26,8 @@ class Tokenizer {
         {
             // reserved keywords
             keywords_.insert("SELECT");
-            keywords_.insert("ORDER BY");
+            keywords_.insert("ORDER");
+            keywords_.insert("BY");
             keywords_.insert("INSERT");
             keywords_.insert("FROM");
             keywords_.insert("WHERE");
