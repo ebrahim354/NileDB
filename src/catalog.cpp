@@ -49,6 +49,9 @@ class TableSchema {
             delete table_; 
         }
 
+        int numOfCols() {
+            return columns_.size();
+        }
         // TODO: change columns to be a set instead of doing this.
         int colExist(std::string& col_name) {
             for(size_t i = 0; i < columns_.size(); ++i){

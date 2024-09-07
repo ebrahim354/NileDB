@@ -85,7 +85,7 @@ class SelectExecutor {
                 if(op == "*") lhs_num *= rhs_num; 
                 if(op == "/") {
                     if(rhs_num != 0)
-                        rhs_num /= rhs_num;
+                        lhs_num /= rhs_num;
                 }
                 lhs = intToStr(lhs_num);
                 op = t->token_.val_;
@@ -196,13 +196,14 @@ class ExecutionEngine {
             TableSchema* schema = catalog_->getTableSchema(table_name);
             auto field_ptr = insert->fields_;
             auto value_ptr = insert->values_;
-            std::vector<std::string> fields;
-            std::vector<Value> vals;
+            std::vector<std::string> fields(schema->numOfCols());
+            std::vector<Value> vals(schema->numOfCols());
             while(field_ptr != nullptr && value_ptr != nullptr){
                 std::string field_name = field_ptr->field_->token_.val_;
                 // check valid column.
                 if(!schema->isValidCol(field_name)) 
                     return false;
+                int idx = schema->colExist(field_name);
 
                 std::string val = value_ptr->token_.val_;
                 // we consider int and string types for now.
@@ -212,9 +213,10 @@ class ExecutionEngine {
                 // invalid or not supported type;
                 if( val_type == INVALID ) return false;
 
-                fields.push_back(field_name);
-                if(val_type == INT) vals.push_back(Value(stoi(val)));
-                else if(val_type == VARCHAR) vals.push_back(Value(val));
+                if(idx > fields.size() || idx  < 0) return false;
+                fields[idx] = field_name;
+                if(val_type == INT) vals[idx] = (Value(stoi(val)));
+                else if(val_type == VARCHAR) vals[idx] = (Value(val));
 
                 field_ptr = field_ptr->next_;
                 value_ptr = value_ptr->next_;
