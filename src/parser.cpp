@@ -74,8 +74,10 @@ struct ExpressionNode : ASTNode {
         if(next_) next_->clean();
         delete cur_;
         delete next_;
+        delete as_;
     }
     TermNode* cur_ = nullptr;
+    ASTNode* as_ = nullptr;
     ExpressionNode* next_ = nullptr;
 };
 
@@ -129,9 +131,11 @@ struct TableListNode : ASTNode {
     void clean (){
         if(next_) {
             next_->clean();
+            delete as_;
             delete next_;
         }
     }
+    ASTNode* as_ = nullptr;
     TableListNode* next_ = nullptr;
 };
 
@@ -373,6 +377,17 @@ class Parser {
                 ex->next_ = next;
             }
             ex->cur_ = cur;
+            // optional AS keyword
+            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "AS"){
+                cur_pos_++;
+                auto f = field();
+                if(!f){
+                    ex->clean();
+                    delete ex;
+                    return nullptr;
+                }
+                ex->as_ = f;
+            }
             return ex;
         }
 
@@ -438,9 +453,24 @@ class Parser {
             }
             TableListNode* nw_tl = new TableListNode();
             nw_tl->token_ = table->token_;
+            delete table;
+            // optional as
+            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "AS"){
+                cur_pos_++;
+                ASTNode* as = this->table();
+                if(!as){
+                    nw_tl->clean();
+                    return nullptr;
+                }
+                nw_tl->as_ = as;
+            }
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
-                nw_tl->token_ = tokens_[cur_pos_++];
+                nw_tl->token_ = tokens_[++cur_pos_];
                 nw_tl->next_ = tableList();
+                if(!nw_tl->next_){
+                    nw_tl->clean();
+                    return nullptr;
+                }
             }
             return nw_tl;
         }
@@ -625,19 +655,23 @@ class Parser {
             if(cur_size_ == 0 || tokens_[0].type_ != KEYWORD) return nullptr;
             std::string v = tokens_[0].val_;
             cur_pos_ = 1;
+            ASTNode* ret = nullptr;
             if(v == "SELECT")
-                return selectStatement();
+                ret = selectStatement();
             else if(v == "INSERT")
-                return insertStatement();
+                ret = insertStatement();
             else if(v == "DELETE")
-                return deleteStatement();
+                ret =  deleteStatement();
             else if(v == "UPDATE")
-                return updateStatement();
+                ret = updateStatement();
             else if(v == "CREATE")
-                return createTableStatement();
+                ret = createTableStatement();
+
+            // invalid query even if it produces a valid AST.
+            if(cur_pos_ != cur_size_) return nullptr;
 
             // current statement is not supported yet.
-            return nullptr;
+            return ret;
         }
     private:
         Tokenizer tokenizer_ {};
