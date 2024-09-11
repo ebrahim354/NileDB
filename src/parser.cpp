@@ -17,15 +17,27 @@
 
 
 enum CategoryType {
-    FIELD,
-    TABLE,
+    FIELD,       
     STRING_CONSTANT,
     INTEGER_CONSTANT,
-    FACTOR,     // factor       := field  | const           | "(" epxression ")"
-    TERM,       // term         := factor | term        "*" | "/" factor
-    EXPRESSION, // expression   := term   | expression  "+" | "-" term
+                // grammer of expressions is copied with some modifications from the following link :
+                // https://craftinginterpreters.com/appendix-i.html
+                //
+                //
+                //
+                // item will be extendted later to have booleans and null
+    ITEM,       // item         := field  | STRING_CONSTANT | INTEGER_CONSTANT  | "(" expression ")"
+    UNARY,      // unary        := item   | ("-") uneray
+    FACTOR,     // factor       := unary  ( ( "/" | "*" ) unary  )*
+    TERM,       // term         := factor ( ( "+" | "-" ) factor )*
+    COMPARISON, // comparison   := term   ( ( "<" | ">" | "<=" | ">=" ) term )*
+    EQUALITY,   // equality     := comparison   ( ( "=" | "!=" ) comparison )*
+    AND,        // and          := equality     ( ( "AND" ) equality )*
+    OR,         // or           := and     ( ( "OR" ) and )*
+    EXPRESSION, // expression   := or 
     PREDICATE,
 
+    TABLE,
     SELECT_STATEMENT,
     SELECT_LIST,
     TABLE_LIST,
@@ -55,8 +67,17 @@ struct ASTNode {
     Token token_; 
 };
 
-struct TermNode : ASTNode {
-    TermNode(ASTNode* lhs, TermNode* rhs = nullptr, Token op={}): ASTNode(TERM, op), cur_(lhs), next_(rhs)
+struct UnaryNode : ASTNode {
+    UnaryNode(ASTNode* val, Token op={}): ASTNode(UNARY, op), cur_(val)
+    {}
+    void clean(){
+        delete cur_;
+    }
+    ASTNode* cur_ = nullptr;
+};
+
+struct FactorNode : ASTNode {
+    FactorNode(ASTNode* lhs, FactorNode* rhs = nullptr, Token op={}): ASTNode(FACTOR, op), cur_(lhs), next_(rhs)
     {}
     void clean(){
         if(next_) next_->clean();
@@ -64,21 +85,77 @@ struct TermNode : ASTNode {
         delete next_;
     }
     ASTNode* cur_ = nullptr;
-    TermNode* next_ = nullptr;
+    FactorNode* next_ = nullptr;
 };
 
-struct ExpressionNode : ASTNode {
-    ExpressionNode(TermNode* lhs, ExpressionNode* rhs=nullptr, Token op={}): ASTNode(EXPRESSION, op), cur_(lhs), next_(rhs)
+struct TermNode : ASTNode {
+    TermNode(FactorNode* lhs, TermNode* rhs = nullptr, Token op={}): ASTNode(TERM, op), cur_(lhs), next_(rhs)
     {}
     void clean(){
         if(next_) next_->clean();
         delete cur_;
         delete next_;
-        delete as_;
+    }
+    FactorNode* cur_ = nullptr;
+    TermNode* next_ = nullptr;
+};
+
+struct ComparisonNode : ASTNode {
+    ComparisonNode(TermNode* lhs, ComparisonNode* rhs = nullptr, Token op={}): ASTNode(COMPARISON, op), cur_(lhs), next_(rhs)
+    {}
+    void clean(){
+        if(next_) next_->clean();
+        delete cur_;
+        delete next_;
     }
     TermNode* cur_ = nullptr;
+    ComparisonNode* next_ = nullptr;
+};
+
+struct EqualityNode : ASTNode {
+    EqualityNode(ComparisonNode* lhs, EqualityNode* rhs = nullptr, Token op={}): ASTNode(EQUALITY, op), cur_(lhs), next_(rhs)
+    {}
+    void clean(){
+        if(next_) next_->clean();
+        delete cur_;
+        delete next_;
+    }
+    ComparisonNode* cur_ = nullptr;
+    EqualityNode* next_ = nullptr;
+};
+struct AndNode : ASTNode {
+    AndNode(EqualityNode* lhs, AndNode* rhs = nullptr, Token op={}): ASTNode(AND, op), cur_(lhs), next_(rhs)
+    {}
+    void clean(){
+        if(next_) next_->clean();
+        delete cur_;
+        delete next_;
+    }
+    EqualityNode* cur_ = nullptr;
+    AndNode* next_ = nullptr;
+};
+struct OrNode : ASTNode {
+    OrNode(AndNode* lhs, OrNode* rhs = nullptr, Token op={}): ASTNode(OR, op), cur_(lhs), next_(rhs)
+    {}
+    void clean(){
+        if(next_) next_->clean();
+        delete cur_;
+        delete next_;
+    }
+    AndNode* cur_ = nullptr;
+    OrNode* next_ = nullptr;
+};
+
+struct ExpressionNode : ASTNode {
+    ExpressionNode(OrNode* val, ExpressionNode* rhs=nullptr): ASTNode(EXPRESSION), cur_(val)
+    {}
+    void clean(){
+        if(cur_) cur_->clean();
+        delete cur_;
+        delete as_;
+    }
+    OrNode* cur_ = nullptr;
     ASTNode* as_ = nullptr;
-    ExpressionNode* next_ = nullptr;
 };
 
 
@@ -321,8 +398,8 @@ class Parser {
             return nullptr;
         }
 
-        ASTNode* factor(){
-            ASTNode* f = nullptr;
+        ASTNode* item(){
+            ASTNode* i = nullptr;
             if(cur_pos_ >= cur_size_) return nullptr;
             if(tokens_[cur_pos_].val_ == "("){
                 cur_pos_++;
@@ -335,18 +412,54 @@ class Parser {
                 cur_pos_++;
                 return ex;
             }
-            f = field();
-            if(!f)
-                f = constant();
+            i = field();
+            if(!i)
+                i = constant();
+            return i;
+        }
+
+        ASTNode* unary(){
+            if(cur_pos_ >= cur_size_) return nullptr;
+            if(tokens_[cur_pos_].val_ == "-"){
+                UnaryNode* u = nullptr;
+                u = new UnaryNode(nullptr, tokens_[cur_pos_]);
+                cur_pos_++;
+                ASTNode* val = item();
+                if(!val) return nullptr;
+                u->cur_ = val;
+                
+                cur_pos_++;
+                return u;
+            }
+            // no need to wrap it in a unary if we don't fine any unary operators.
+            return item();
+        }
+
+        FactorNode* factor(){
+            ASTNode* cur = unary();
+            if(!cur) return nullptr;
+            FactorNode* f = new FactorNode(cur);
+
+            if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "*" || tokens_[cur_pos_].val_ == "/")) {
+                FactorNode* next = nullptr;
+                f->token_ = tokens_[cur_pos_++];
+                next = factor();
+                if(!next) {
+                    f->clean();
+                    delete cur;
+                    return nullptr;
+                }
+                f->next_ = next;
+            }
+            f->cur_ = cur;
             return f;
         }
 
         TermNode* term(){
-            ASTNode* cur = factor();
+            FactorNode* cur = factor();
             if(!cur) return nullptr;
             TermNode* t = new TermNode(cur);
-
-            if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "*" || tokens_[cur_pos_].val_ == "/")) {
+            if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "+" || tokens_[cur_pos_].val_ == "-")) { 
                 TermNode* next = nullptr;
                 t->token_ = tokens_[cur_pos_++];
                 next = term();
@@ -361,21 +474,86 @@ class Parser {
             return t;
         }
 
-        ExpressionNode* expression(){
+        ComparisonNode* comparison(){
             TermNode* cur = term();
             if(!cur) return nullptr;
-            ExpressionNode* ex = new ExpressionNode(cur);
-            if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "+" || tokens_[cur_pos_].val_ == "-")) { 
-                ExpressionNode* next = nullptr;
-                ex->token_ = tokens_[cur_pos_++];
-                next = expression();
+            ComparisonNode* c = new ComparisonNode(cur);
+            if(cur_pos_ < cur_size_ && tokenizer_.isCompareOP(tokens_[cur_pos_].val_)) { 
+                ComparisonNode* next = nullptr;
+                c->token_ = tokens_[cur_pos_++];
+                next = comparison();
                 if(!next) {
-                    ex->clean();
+                    c->clean();
                     delete cur;
                     return nullptr;
                 }
-                ex->next_ = next;
+                c->next_ = next;
             }
+            c->cur_ = cur;
+            return c;
+        }
+
+        EqualityNode* equality(){
+            ComparisonNode* cur = comparison();
+            if(!cur) return nullptr;
+            EqualityNode* eq = new EqualityNode(cur);
+            if(cur_pos_ < cur_size_ && tokenizer_.isEqOP(tokens_[cur_pos_].val_)) { 
+                EqualityNode* next = nullptr;
+                eq->token_ = tokens_[cur_pos_++];
+                next = equality();
+                if(!next) {
+                    eq->clean();
+                    delete cur;
+                    return nullptr;
+                }
+                eq->next_ = next;
+            }
+            eq->cur_ = cur;
+            return eq;
+        }
+
+        AndNode* logic_and(){
+            EqualityNode* cur = equality();
+            if(!cur) return nullptr;
+            AndNode* land = new AndNode(cur);
+            if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "AND")) { 
+                AndNode* next = nullptr;
+                land->token_ = tokens_[cur_pos_++];
+                next = logic_and();
+                if(!next) {
+                    land->clean();
+                    delete cur;
+                    return nullptr;
+                }
+                land->next_ = next;
+            }
+            land->cur_ = cur;
+            return land;
+        }
+
+        OrNode* logic_or(){
+            AndNode* cur = logic_and();
+            if(!cur) return nullptr;
+            OrNode* lor = new OrNode(cur);
+            if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "OR")) { 
+                OrNode* next = nullptr;
+                lor->token_ = tokens_[cur_pos_++];
+                next = logic_or();
+                if(!next) {
+                    lor->clean();
+                    delete cur;
+                    return nullptr;
+                }
+                lor->next_ = next;
+            }
+            lor->cur_ = cur;
+            return lor;
+        }
+
+        ExpressionNode* expression(){
+            OrNode* cur = logic_or();
+            if(!cur) return nullptr;
+            ExpressionNode* ex = new ExpressionNode(cur);
             ex->cur_ = cur;
             // optional AS keyword
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "AS"){

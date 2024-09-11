@@ -81,6 +81,17 @@ class Tokenizer {
             return false;
         }
 
+        bool isCompareOP(std::string& op){
+            if(!isSymbol(op)) return false;
+            if(op == ">" || op == "<" || op == ">=" || op == "<=") return true;
+            return false;
+        }
+        bool isEqOP(std::string& op){
+            if(!isSymbol(op)) return false;
+            if(op == "=" || op == "!=") return true;
+            return false;
+        }
+
         bool isSymbol(std::string& t){
             return symboles_.count(t);
         }
