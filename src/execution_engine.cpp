@@ -48,11 +48,11 @@ class SelectExecutor {
             }
         }
 
-        std::string evaluate_factor(ASTNode* factor){
-            if(factor->category_ == FIELD) {
+        std::string evaluate_item(ASTNode* item){
+            if(item->category_ == FIELD) {
                 // only use the first table TODO: handle joins.
                 TableSchema* schema = tables_[0];
-                std::string field = factor->token_.val_;
+                std::string field = item->token_.val_;
                 // check if the field is available in the table or not.
                 int idx = schema->colExist(field);
                 
@@ -66,59 +66,147 @@ class SelectExecutor {
                 }
                 else  return cur_values_[idx].getStringVal();
             }
-            return factor->token_.val_;
+            return item->token_.val_;
         } 
 
-        std::string evaluate_term(ASTNode* term){
-            TermNode* t = reinterpret_cast<TermNode*>(term);
-            std::string lhs = "";
-            if(t->cur_->category_ == EXPRESSION) lhs = evaluate_expression(t->cur_);
-            else                                 lhs = evaluate_factor(t->cur_);
-            // should check lhs if it's a value or an identifier to fill it with the correct data.
-            std::string op = t->token_.val_;
-            t = t->next_;
-            while(t){
-                std::string rhs = "";
-                if(t->cur_->category_ == EXPRESSION) rhs = evaluate_expression(t->cur_);
-                else rhs = evaluate_factor(t->cur_);
-                int lhs_num = str_to_int(lhs);
-                int rhs_num = str_to_int(rhs);
-                if(op == "*") lhs_num *= rhs_num; 
-                if(op == "/") {
-                    if(rhs_num != 0)
-                        lhs_num /= rhs_num;
-                }
-                lhs = intToStr(lhs_num);
-                op = t->token_.val_;
-                t = t->next_;
-            }
-            return lhs;
-        }
-
-
         std::string evaluate_expression(ASTNode* expression) {
-            ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(expression);
-            std::string lhs = evaluate_term(ex->cur_);
-            std::string op = ex->token_.val_;
-            ex = ex->next_;
-            while(ex){
-                std::string rhs = evaluate_term(ex->cur_);
-                int lhs_num = str_to_int(lhs);
-                int rhs_num = str_to_int(rhs);
-                if(op == "+") lhs_num += rhs_num; 
-                if(op == "-") lhs_num -= rhs_num;
-                lhs = intToStr(lhs_num);
-                op = ex->token_.val_;
-                ex = ex->next_;
+            switch(expression->category_){
+                case EXPRESSION  : {
+                            ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(expression);
+                               return evaluate_expression(ex->cur_);
+                           }
+                case OR  : {
+                               OrNode* lor = reinterpret_cast<OrNode*>(expression);
+                               ASTNode* ptr = lor;
+                               std::string lhs; 
+                               while(ptr){
+                                   lhs = evaluate_expression(lor->cur_);
+                                   if(lhs != "0") break;
+                                   ptr = lor->next_;
+                                   if(!ptr) break;
+                                   if(ptr->category_ == OR){
+                                       lor = reinterpret_cast<OrNode*>(ptr);
+                                   } else {
+                                       lhs = evaluate_expression(ptr);
+                                       break;
+                                   };
+                               }
+                               return lhs != "0" ? "1" : "0";
+                           }
+                case AND : {
+                               AndNode* land = reinterpret_cast<AndNode*>(expression);
+                               ASTNode* ptr = land;
+                               std::string lhs;
+                               while(ptr){
+                                   lhs = evaluate_expression(land->cur_);
+                                   if(lhs == "0") break;
+                                   ptr = land->next_;
+                                   if(!ptr) break;
+                                   if(ptr->category_ == AND){
+                                       land = reinterpret_cast<AndNode*>(land->next_);
+                                   } else {
+                                       lhs = evaluate_expression(ptr);
+                                       break;
+                                   }
+                               }
+                               return lhs == "0" ? "0" : "1";
+                           } 
+                case EQUALITY : {
+                                    EqualityNode* eq = reinterpret_cast<EqualityNode*>(expression);
+                                    std::string op = eq->token_.val_;
+                                    std::string lhs = evaluate_expression(eq->cur_);
+                                    ASTNode* ptr = eq->next_;
+                                    while(ptr){
+                                        std::string rhs = evaluate_expression(ptr);
+                                        if(op == "=" && lhs == rhs) lhs = "1";
+                                        else if(op == "=" && lhs != rhs) lhs = "0";
+
+                                        if(op == "!=" && lhs == rhs) lhs = "0";
+                                        else if(op == "!=" && lhs != rhs) lhs = "1";
+
+                                        if(ptr->category_ == EQUALITY) {
+                                            EqualityNode* tmp = reinterpret_cast<EqualityNode*>(ptr);
+                                            op = ptr->token_.val_;
+                                            ptr = tmp->next_;
+                                        } else break;
+                                    }
+                                    return lhs;
+                                } 
+                case COMPARISON : {
+                                      ComparisonNode* comp = reinterpret_cast<ComparisonNode*>(expression);
+                                      std::string op = comp->token_.val_;
+                                      std::string lhs = evaluate_expression(comp->cur_);
+                                      ASTNode* ptr = comp->next_;
+                                      while(ptr){
+                                          std::string rhs = evaluate_expression(ptr);
+                                          lhs = compareStr(lhs, rhs, op);
+                                          if(ptr->category_ == COMPARISON){
+                                              ComparisonNode* tmp = reinterpret_cast<ComparisonNode*>(ptr);
+                                              op = ptr->token_.val_;
+                                              ptr = tmp->next_;
+                                          } else break;
+                                      }
+                                      return lhs;
+                                  } 
+                case TERM : {
+                                TermNode* t = reinterpret_cast<TermNode*>(expression);
+                                std::string lhs = evaluate_expression(t->cur_);
+                                std::string op = t->token_.val_;
+                                ASTNode* ptr = t->next_;
+                                while(ptr){
+                                    std::string rhs = evaluate_expression(ptr);
+                                    int lhs_num = str_to_int(lhs);
+                                    int rhs_num = str_to_int(rhs);
+                                    if(op == "+") lhs_num += rhs_num; 
+                                    if(op == "-") lhs_num -= rhs_num;
+                                    lhs = intToStr(lhs_num);
+                                    if(ptr->category_ == TERM){
+                                        TermNode* tmp = reinterpret_cast<TermNode*>(ptr);
+                                        op = ptr->token_.val_;
+                                        ptr = tmp->next_;
+                                    } else break;
+                                }
+                                return lhs;
+                            } 
+                case FACTOR : {
+                                  FactorNode* f = reinterpret_cast<FactorNode*>(expression);
+                                  std::string lhs = evaluate_expression(f->cur_);
+                                  std::string op = f->token_.val_;
+                                  ASTNode* ptr = f->next_;
+                                  while(ptr){
+                                      std::string rhs = evaluate_expression(ptr);
+                                      int lhs_num = str_to_int(lhs);
+                                      int rhs_num = str_to_int(rhs);
+                                      if(op == "*") lhs_num *= rhs_num; 
+                                      if(op == "/" && rhs_num != 0) lhs_num /= rhs_num;
+                                      lhs = intToStr(lhs_num);
+                                      if(ptr->category_ == FACTOR){
+                                          FactorNode* tmp = reinterpret_cast<FactorNode*>(ptr);
+                                          op = ptr->token_.val_;
+                                          ptr = tmp->next_;
+                                      } else break;
+                                  }
+                                  return lhs;
+                              } 
+                case UNARY : {
+                                 UnaryNode* u = reinterpret_cast<UnaryNode*>(expression);
+                                 std::string cur = evaluate_expression(u->cur_);
+                                 return "-"+cur;
+                             } 
+                default:{
+                             return evaluate_item(expression);
+                        }
             }
-            return lhs;
         }
         std::vector<std::string> next(){
             // advance our current iterator once if we have tables.
             if(table_iterators_.size() > 0){
                 TableIterator* it = table_iterators_[0];
                 // no more records.
-                if(!it->advance()) return {};
+                if(!it->advance()) {
+                    finished_ = 1;
+                    return {};
+                };
                 Record r = it->getCurRecordCpy();
                 cur_values_.clear();
                 int err = tables_[0]->translateToValues(r, cur_values_);
@@ -126,7 +214,7 @@ class SelectExecutor {
                     error_status = 1;
                     return {};
                 }
-            }
+            } else finished_ = 1;
 
             std::vector<std::string> output;
             for(int i = 0; i < fields_.size(); i++){
@@ -137,6 +225,9 @@ class SelectExecutor {
         bool errorStatus(){
             return error_status;
         }
+        bool finished(){
+            return finished_;
+        }
     private:
         SelectStatementNode* select_ = nullptr;
         Catalog* catalog_ = nullptr;
@@ -144,6 +235,7 @@ class SelectExecutor {
         std::vector<TableSchema*> tables_;
         std::vector<TableIterator*> table_iterators_;
         bool error_status = 0;
+        bool finished_ = 0;
         std::vector<Value> cur_values_;
 };
 
@@ -263,7 +355,7 @@ class ExecutionEngine {
                 order_by.push_back(cur-1); 
                 order_by_ptr = order_by_ptr->next_;
             }
-            while(!executor->errorStatus()){
+            while(!executor->errorStatus() && !executor->finished()){
                 std::vector<std::string> tmp = executor->next();
                 if(tmp.size() == 0) break;
                 if(order_by.size() > tmp.size()) {

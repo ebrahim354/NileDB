@@ -55,6 +55,7 @@ class Tokenizer {
             symboles_.insert(">=");
             symboles_.insert("=");
             symboles_.insert("!=");
+            symboles_.insert("!");
             symboles_.insert("(");
             symboles_.insert(")");
             symboles_.insert(";");
@@ -142,6 +143,13 @@ class Tokenizer {
                     if(isSymbol(s)){
                         std::string tmp; 
                         tmp = input[pos++];
+                        if(pos < input.size()){
+                            std::string t = "";
+                            t += tmp;
+                            t += input[pos];
+                            if(isSymbol(t)) tmp += input[pos++];
+                        }
+
                         if(!cur_token.empty()){
                             result.push_back({.val_ = cur_token, .type_ = getTokenType(cur_token)});
                             cur_token.clear();
