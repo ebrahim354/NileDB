@@ -708,7 +708,6 @@ class Parser {
                 statement->clean();
                 return nullptr;
             }
-            cur_pos_++;
             return statement;
         }
 

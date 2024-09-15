@@ -69,11 +69,11 @@ class SelectExecutor {
             return item->token_.val_;
         } 
 
-        std::string evaluate_expression(ASTNode* expression) {
+        std::string evaluate_expression(ASTNode* expression, bool only_one = true) {
             switch(expression->category_){
                 case EXPRESSION  : {
                             ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(expression);
-                               return evaluate_expression(ex->cur_);
+                               return evaluate_expression(ex->cur_, false);
                            }
                 case OR  : {
                                OrNode* lor = reinterpret_cast<OrNode*>(expression);
@@ -150,11 +150,12 @@ class SelectExecutor {
                                   } 
                 case TERM : {
                                 TermNode* t = reinterpret_cast<TermNode*>(expression);
-                                std::string lhs = evaluate_expression(t->cur_);
+                                std::string lhs = evaluate_expression(t->cur_, t->cur_->category_ == TERM);
+                                if(only_one) return lhs;
                                 std::string op = t->token_.val_;
                                 ASTNode* ptr = t->next_;
                                 while(ptr){
-                                    std::string rhs = evaluate_expression(ptr);
+                                    std::string rhs = evaluate_expression(ptr, ptr->category_ == TERM);
                                     int lhs_num = str_to_int(lhs);
                                     int rhs_num = str_to_int(rhs);
                                     if(op == "+") lhs_num += rhs_num; 
@@ -170,11 +171,12 @@ class SelectExecutor {
                             } 
                 case FACTOR : {
                                   FactorNode* f = reinterpret_cast<FactorNode*>(expression);
-                                  std::string lhs = evaluate_expression(f->cur_);
+                                  std::string lhs = evaluate_expression(f->cur_, f->cur_->category_ == FACTOR);
+                                  if(only_one) return lhs;
                                   std::string op = f->token_.val_;
                                   ASTNode* ptr = f->next_;
                                   while(ptr){
-                                      std::string rhs = evaluate_expression(ptr);
+                                      std::string rhs = evaluate_expression(ptr, ptr->category_ == FACTOR);
                                       int lhs_num = str_to_int(lhs);
                                       int rhs_num = str_to_int(rhs);
                                       if(op == "*") lhs_num *= rhs_num; 
