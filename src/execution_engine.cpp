@@ -25,6 +25,7 @@ class SelectExecutor {
     public:
         SelectExecutor(SelectStatementNode* statment, Catalog* catalog): select_(statment), catalog_(catalog){
             auto field_ptr = select_->fields_;
+            where_ = select_->where_;
             while(field_ptr != nullptr){
                 ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(field_ptr->field_);
                 fields_.push_back(field_ptr);
@@ -220,7 +221,8 @@ class SelectExecutor {
 
             std::vector<std::string> output;
             for(int i = 0; i < fields_.size(); i++){
-                output.push_back(evaluate_expression(fields_[i]->field_));
+                if(!where_ || evaluate_expression(where_) != "0")
+                    output.push_back(evaluate_expression(fields_[i]->field_));
             }
             return output;
         }
@@ -234,6 +236,7 @@ class SelectExecutor {
         SelectStatementNode* select_ = nullptr;
         Catalog* catalog_ = nullptr;
         std::vector<SelectListNode*> fields_;
+        ExpressionNode* where_ = nullptr;
         std::vector<TableSchema*> tables_;
         std::vector<TableIterator*> table_iterators_;
         bool error_status = 0;

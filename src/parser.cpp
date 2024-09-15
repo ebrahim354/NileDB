@@ -259,16 +259,16 @@ struct SelectStatementNode : ASTNode {
     void clean (){
         if(fields_) fields_->clean();
         if(tables_) tables_->clean();
-        if(predicate_) predicate_->clean();
+        if(where_) where_->clean();
         if(order_by_list_) order_by_list_->clean();
         delete fields_;
         delete tables_;
-        delete predicate_;
+        delete where_;
         delete order_by_list_;
     }
     SelectListNode* fields_ = nullptr;
     TableListNode* tables_ = nullptr;
-    PredicateNode* predicate_ = nullptr;
+    ExpressionNode* where_ = nullptr;
     ConstListNode* order_by_list_ = nullptr;
 };
 
@@ -674,7 +674,7 @@ class Parser {
 
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
                 cur_pos_++;
-                statement->predicate_ = predicate();
+                statement->where_ = expression();
             }
 
             if(cur_pos_+1 < cur_size_ && tokens_[cur_pos_].val_ == "ORDER" && tokens_[cur_pos_+1].val_ == "BY"){
