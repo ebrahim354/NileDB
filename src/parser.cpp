@@ -219,6 +219,7 @@ struct SelectListNode : ASTNode {
         delete field_;
         delete next_;
     }
+    bool star_ = false;
     ExpressionNode* field_ = nullptr;
     SelectListNode* next_ = nullptr;
 };
@@ -580,12 +581,19 @@ class Parser {
         }
 
         SelectListNode* selectList(){
-            ExpressionNode* f = expression();
-            if(!f) return nullptr;
+            bool star = false;
+            ExpressionNode* f = nullptr;
+            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "*"){
+                cur_pos_++;
+                star = true;
+            } else f = expression();
+
+            if(!star && !f) return nullptr;
             
 
             SelectListNode* nw_fl = new SelectListNode();
             nw_fl->field_ = f;
+            nw_fl->star_ = star;
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
                 cur_pos_++;
                 nw_fl->next_ = selectList();

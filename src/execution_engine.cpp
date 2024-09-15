@@ -24,14 +24,6 @@ typedef std::vector<std::vector<std::string>> QueryResult;
 class SelectExecutor {
     public:
         SelectExecutor(SelectStatementNode* statment, Catalog* catalog): select_(statment), catalog_(catalog){
-            auto field_ptr = select_->fields_;
-            where_ = select_->where_;
-            while(field_ptr != nullptr){
-                ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(field_ptr->field_);
-                fields_.push_back(field_ptr);
-                field_ptr = field_ptr->next_;
-            }
-            // handle filters later.
             // handle joins later ( only select values from the first table on the join list ).
             TableListNode* table_ptr = select_->tables_; 
             while(table_ptr != nullptr){
@@ -39,6 +31,7 @@ class SelectExecutor {
                 TableSchema* schema = catalog_->getTableSchema(table_name);
                 if(!schema) {
                     std::cout << "[ERROR] Invalid table name " << table_name << std::endl;
+                    error_status = true;
                     break;
                 }
                 TableIterator* it = schema->getTable()->begin();
@@ -47,6 +40,34 @@ class SelectExecutor {
                 table_iterators_.push_back(it);
                 table_ptr = table_ptr->next_;
             }
+
+            SelectListNode* field_ptr = select_->fields_;
+            where_ = select_->where_;
+            while(field_ptr != nullptr){
+                if(field_ptr->star_){
+                    // spread to all the available fields.
+                    if(tables_.size() == 0){
+                        std::cout << "[ERROR] No table specified for *" << std::endl;
+                        error_status = true;
+                        break;
+                    }
+                    spreadStar();
+                } else fields_.push_back(field_ptr);
+                field_ptr = field_ptr->next_;
+            }
+        }
+
+        void spreadStar(){
+            for(int i = 0; i < tables_.size(); i++){
+                std::vector<std::string> cols = tables_[i]->getCols();
+                for(int j = 0; j < cols.size(); j++){ 
+                    SelectListNode* field = new SelectListNode();
+                    // looks so bad but works.
+                    field->field_ = new ExpressionNode(new ASTNode(FIELD, {.val_ = cols[j], .type_ = IDENTIFIER}));
+                    fields_.push_back(field);
+                }
+            }
+            
         }
 
         std::string evaluate_item(ASTNode* item){

@@ -144,6 +144,13 @@ class TableSchema {
                 std::cout << "-----------------------------------------------------------------" << std::endl;
             }
         }
+        std::vector<std::string> getCols(){
+            std::vector<std::string> cols;
+            for(size_t i = 0; i < columns_.size(); ++i){
+                 cols.push_back(columns_[i].getName());
+            }
+            return cols;
+        }
 
         void printTableHeader(){
             for(size_t i = 0; i < columns_.size(); ++i){
