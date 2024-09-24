@@ -10,6 +10,11 @@ class QueryProcessor{
 
         bool handleQuery(std::string query, QueryResult* result){
             std::cout << "[INFO] Parsing query" << std::endl;
+            if(query.substr(0, 6) == "SELECT"){
+                QueryData* data = parser_->new_parse(query);
+                return true;
+            }
+
             auto tree = parser_->parse(query);
             if(tree == nullptr) {
                 std::cout << "[ERROR] Invalid AST" << std::endl;

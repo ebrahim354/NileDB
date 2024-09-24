@@ -97,6 +97,27 @@ class Value {
             }
         }
 
+        bool operator!=(const Value &rhs) const { 
+            if(!checkSameType(type_, rhs.type_)) return false;
+            // not the best solution to our current problem.
+            switch (type_) {
+                case VARCHAR: 
+                    return getStringVal() != rhs.getStringVal();
+                case BOOLEAN:
+                    return getBoolVal()   != rhs.getBoolVal();
+                case INT:
+                    return getIntVal()    != rhs.getIntVal();
+                case BIGINT:
+                    return getBigIntVal() != rhs.getBigIntVal();
+                case FLOAT:
+                    return getFloatVal()  != rhs.getFloatVal();
+                case DOUBLE:
+                    return getDoubleVal() != rhs.getDoubleVal();
+                default :
+                    return false;
+            }
+        }
+
         // return true of lhs (this) < rhs else return false.
         bool operator<(const Value &rhs) const { 
             if(!checkSameType(type_, rhs.type_)) return false;
@@ -119,6 +140,27 @@ class Value {
             }
         }
 
+        bool operator<=(const Value &rhs) const { 
+            if(!checkSameType(type_, rhs.type_)) return false;
+            // not the best solution to our current problem.
+            switch (type_) {
+                case VARCHAR: 
+                    return getStringVal() <= rhs.getStringVal();
+                case BOOLEAN:
+                    return getBoolVal()   <= rhs.getBoolVal();
+                case INT:
+                    return getIntVal()    <= rhs.getIntVal();
+                case BIGINT:
+                    return getBigIntVal() <= rhs.getBigIntVal();
+                case FLOAT:
+                    return getFloatVal()  <= rhs.getFloatVal();
+                case DOUBLE:
+                    return getDoubleVal() <= rhs.getDoubleVal();
+                default :
+                    return false;
+            }
+        }
+
         // return true of lhs (this) > rhs else return false.
         bool operator>(const Value &rhs) const { 
             if(!checkSameType(type_, rhs.type_)) return false;
@@ -136,6 +178,27 @@ class Value {
                     return getFloatVal()  > rhs.getFloatVal();
                 case DOUBLE:
                     return getDoubleVal() > rhs.getDoubleVal();
+                default :
+                    return false;
+            }
+        }
+
+        bool operator>=(const Value &rhs) const { 
+            if(!checkSameType(type_, rhs.type_)) return false;
+            // not the best solution to our current problem.
+            switch (type_) {
+                case VARCHAR: 
+                    return getStringVal() >= rhs.getStringVal();
+                case BOOLEAN:
+                    return getBoolVal()   >= rhs.getBoolVal();
+                case INT:
+                    return getIntVal()    >= rhs.getIntVal();
+                case BIGINT:
+                    return getBigIntVal() >= rhs.getBigIntVal();
+                case FLOAT:
+                    return getFloatVal()  >= rhs.getFloatVal();
+                case DOUBLE:
+                    return getDoubleVal() >= rhs.getDoubleVal();
                 default :
                     return false;
             }

@@ -1,7 +1,8 @@
 #pragma once
 #include "catalog.cpp"
 #include "parser.cpp"
-#include "utils.cpp"
+#include "expression.cpp"
+#include "algebra_engine.cpp"
 #include <deque>
 
 
@@ -20,6 +21,9 @@ typedef std::vector<std::vector<std::string>> QueryResult;
  * The larger the project gets the more data we are going to need, Which might require using a wrapper class 
  * around the that data, But for now we are just going to pass everything to the constructor.
  */
+
+
+/*
 
 class SelectExecutor {
     public:
@@ -264,6 +268,178 @@ class SelectExecutor {
         bool finished_ = 0;
         std::vector<Value> cur_values_;
 };
+*/
+
+enum ExecutorType {
+    SEQUENTIAL_SCAN_EXECUTOR,
+    FILTER_EXECUTOR,
+    PROJECTION_EXECUTOR,
+    SORT_EXECUTOR,
+};
+
+struct Executor {
+    public:
+        Executor(AlgebraOperation* op, ExecutorType type, TableSchema* output_schema): 
+            op_(op), type_(type), output_schema_(output_schema)
+        {}
+        ~Executor() {}
+        virtual void init() = 0;
+        virtual std::vector<Value> next() = 0;
+
+        ExecutorType type_;
+        AlgebraOperation* op_ = nullptr;
+        TableSchema* output_schema_ = nullptr;
+        bool error_status_ = 0;
+        bool finished_ = 0;
+};
+
+class SeqScanExecutor : Executor {
+    public:
+        SeqScanExecutor(AlgebraOperation* op, TableSchema* table): Executor(op, SEQUENTIAL_SCAN_EXECUTOR, table), table_(table)
+        {}
+        ~SeqScanExecutor()
+        {}
+
+        void init() {
+            it_ = table_->getTable()->begin();
+        }
+
+        std::vector<Value> next() {
+            // no more records.
+            if(!it_->advance()) {
+                finished_ = 1;
+                return {};
+            };
+            Record r = it_->getCurRecordCpy();
+            std::vector<Value> output;
+            int err = table_->translateToValues(r, output);
+            if(err) {
+                error_status_ = 1;
+                return {};
+            }
+            return output;
+        }
+    private:
+        TableSchema* table_ = nullptr;
+        TableIterator* it_ = nullptr;
+};
+
+
+class FilterExecutor : Executor {
+    public:
+        FilterExecutor(AlgebraOperation* op, TableSchema* output_schema): Executor(op, FILTER_EXECUTOR, output_schema)
+        {
+            auto cur_ = reinterpret_cast<FilterOperation*>(op_);
+            Executor* child_executor_ = cur_->child_->executor_;
+            filter_ = cur_->filter_;
+        }
+        ~FilterExecutor()
+        {}
+
+        void init() {
+            child_executor_->init();
+            
+        }
+
+        std::vector<Value> next() {
+            while(true){
+                std::vector<Value> output; 
+                output = child_executor_->next();
+                error_status_ = child_executor_->error_status_;
+                finished_ = child_executor_->finished_;
+
+                if(error_status_ || finished_)  return {};
+                if(evaluate_expression(filter_, output_schema_, output).getBoolVal() != false)
+                    return output;
+            }
+        }
+    private:
+        Executor* child_executor_ = nullptr;
+        ExpressionNode* filter_ = nullptr;
+};
+
+class ProjectionExecutor : Executor {
+    public:
+        ProjectionExecutor(AlgebraOperation* op, TableSchema* output_schema): Executor(op, PROJECTION_EXECUTOR, output_schema)
+        {
+            cur_ = reinterpret_cast<ProjectionOperation*>(op_);
+            Executor* child_executor_ = cur_->child_->executor_;
+        }
+        ~ProjectionExecutor()
+        {}
+
+        void init() {
+            child_executor_->init();
+        }
+
+        std::vector<Value> next() {
+            if(error_status_ || finished_)  return {};
+
+            std::vector<Value> child_output; 
+            child_output = child_executor_->next();
+            error_status_ = child_executor_->error_status_;
+            finished_ = child_executor_->finished_;
+
+            std::vector<Value> output;
+            for(int i = 0; i < cur_->fields_.size(); i++){
+                output.push_back(evaluate_expression(cur_->fields_[i], output_schema_, child_output));
+            }
+            return output;
+        }
+    private:
+        Executor* child_executor_ = nullptr;
+        ProjectionOperation* cur_ = nullptr; 
+};
+
+class SortExecutor : Executor {
+    public:
+        SortExecutor(AlgebraOperation* op, TableSchema* output_schema): Executor(op, SORT_EXECUTOR, output_schema)
+        {
+            cur_ = reinterpret_cast<SortOperation*>(op_);
+            Executor* child_executor_ = cur_->child_->executor_;
+        }
+        ~SortExecutor()
+        {}
+
+        void init() {
+            if(idx_ != 0) {
+                idx_ = 0;
+                return;
+            }
+            child_executor_->init();
+
+            while(true){
+                std::vector<Value> tuple; 
+                tuple = child_executor_->next();
+                error_status_ = child_executor_->error_status_;
+                finished_ = child_executor_->finished_;
+                if(error_status_)  return;
+                tuples_.push_back(tuple);
+                if(finished_) break;
+            }
+
+            std::vector<int> order_by = cur_->order_by_list_;
+
+            std::sort(tuples_.begin(), tuples_.end(), 
+                    [&order_by](std::vector<Value>& lhs, std::vector<Value>& rhs){
+                        for(int i = 0; i < order_by.size(); i++){
+                            if(lhs[order_by[i]] < rhs[order_by[i]]) return true;
+                            if(lhs[order_by[i]] == rhs[order_by[i]]) continue;
+                        }
+                        return false;
+                    });
+        }
+
+        std::vector<Value> next() {
+            if(error_status_ || finished_ || idx_ >= tuples_.size())  return {};
+            return tuples_[idx_++];
+        }
+    private:
+        Executor* child_executor_ = nullptr;
+        SortOperation* cur_ = nullptr; 
+        std::vector<std::vector<Value>> tuples_;
+        int idx_ = 0;
+};
 
 
 
@@ -360,6 +536,7 @@ class ExecutionEngine {
         }
 
 
+        /*
         bool select_handler(ASTNode* statement_root, QueryResult* result){
             if(!result) return false;
             SelectStatementNode* select = reinterpret_cast<SelectStatementNode*>(statement_root);
@@ -389,10 +566,9 @@ class ExecutionEngine {
                     return false;
                 }
                     
-                /*
                 for(int i = 0; i < tmp.size(); i++){
                     std::cout << tmp[i] << std::endl;
-                }*/
+                }
                 result->push_back(tmp);
             }
             if(valid_order_by && executor->errorStatus() == 0) {
@@ -407,7 +583,7 @@ class ExecutionEngine {
             }
 
             return (executor->errorStatus() == 0);
-        }
+        }*/
 
         bool delete_handler(ASTNode* statement_root){
             DeleteStatementNode* delete_statement = reinterpret_cast<DeleteStatementNode*>(statement_root);
@@ -474,7 +650,6 @@ class ExecutionEngine {
             // handle filters later.
         }
 
-
         bool execute(ASTNode* statement_root, QueryResult* result){
             if(!statement_root) return false;
 
@@ -483,8 +658,8 @@ class ExecutionEngine {
                     return create_table_handler(statement_root);
                 case INSERT_STATEMENT:
                     return insert_handler(statement_root);
-                case SELECT_STATEMENT:
-                    return select_handler(statement_root, result);
+                //case SELECT_STATEMENT:
+                 //   return select_handler(statement_root, result);
                 case DELETE_STATEMENT:
                     return delete_handler(statement_root);
                 case UPDATE_STATEMENT:

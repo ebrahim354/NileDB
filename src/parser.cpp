@@ -15,6 +15,9 @@
 // keyword without deleting nodes after we are done or in cases of an error, That is bad but we will replace heap
 // allocations with some sort of an arena allocator or just handle the leaks later.
 
+enum QueryType {
+    SELECT_DATA
+};
 
 enum CategoryType {
     FIELD,       
@@ -57,6 +60,7 @@ enum CategoryType {
     CREATE_TABLE_STATEMENT,
     // add views and indexes later.
 };
+
 
 
 
@@ -251,26 +255,46 @@ struct PredicateNode : ASTNode {
 };
 
 
-// SQL statements.
-struct SelectStatementNode : ASTNode {
-
-    SelectStatementNode(): ASTNode(SELECT_STATEMENT)
+struct QueryData {
+    QueryData(QueryType type = SELECT_DATA): type_(type)
     {}
+    QueryType type_;
+    // implement later.
+};
 
-    void clean (){
-        if(fields_) fields_->clean();
-        if(tables_) tables_->clean();
-        if(where_) where_->clean();
-        if(order_by_list_) order_by_list_->clean();
-        delete fields_;
-        delete tables_;
-        delete where_;
-        delete order_by_list_;
+// SQL statement data wrapper.
+struct SelectStatementData : QueryData {
+    SelectStatementData(TableListNode* tables, SelectListNode* fields, ExpressionNode* where, ConstListNode* order_by_list):
+        QueryData(SELECT_DATA), where_(where) {
+
+        TableListNode* table_ptr = tables; 
+        while(table_ptr != nullptr){
+            std::string table_name = table_ptr->token_.val_;
+            tables_.push_back(table_name);
+            table_ptr = table_ptr->next_;
+        }
+        SelectListNode* field_ptr = fields;
+        while(field_ptr != nullptr){
+            if(field_ptr->star_){
+                // spread to all the available fields.
+            } else fields_.push_back(field_ptr->field_);
+            field_ptr = field_ptr->next_;
+        }
+        ConstListNode* order_by_ptr = order_by_list;
+        while(order_by_ptr != nullptr){
+            std::string val = order_by_ptr->token_.val_;
+            int cur = str_to_int(val);
+            order_by_list_.push_back(cur-1); 
+            order_by_ptr = order_by_ptr->next_;
+        }
     }
-    SelectListNode* fields_ = nullptr;
-    TableListNode* tables_ = nullptr;
+
+    ~SelectStatementData() {}
+
+    std::vector<std::string> tables_;
+    std::vector<ExpressionNode*> fields_;
     ExpressionNode* where_ = nullptr;
-    ConstListNode* order_by_list_ = nullptr;
+    std::vector<int> order_by_list_;
 };
 
 struct CreateTableStatementNode : ASTNode {
@@ -662,34 +686,34 @@ class Parser {
 
 
         
-        SelectStatementNode* selectStatement(){
-            // if there is no filter predicate it is just going to be null.
-            SelectStatementNode* statement = new SelectStatementNode();
+        SelectStatementData* selectStatement(){
 
-            statement->fields_ = selectList();
-            if(!statement->fields_){
-                statement->clean();
+            SelectListNode* fields = selectList();
+            TableListNode* tables = nullptr;
+            ExpressionNode*  where = nullptr;
+            ConstListNode* order_by = nullptr;
+            if(!fields){
                 return nullptr;
             }
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "FROM"){
                 cur_pos_++;
-                statement->tables_ = tableList();
-                if(!statement->tables_){
-                    statement->clean();
+                tables = tableList();
+                if(!tables){
                     return nullptr;
                 }
             }
 
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
                 cur_pos_++;
-                statement->where_ = expression();
+                where = expression();
             }
 
             if(cur_pos_+1 < cur_size_ && tokens_[cur_pos_].val_ == "ORDER" && tokens_[cur_pos_+1].val_ == "BY"){
                 cur_pos_+=2;
-                statement->order_by_list_ = constList();
+                order_by = constList();
             }
 
+            SelectStatementData* statement = new SelectStatementData(tables, fields, where, order_by);
             return statement; 
         }
 
@@ -817,7 +841,23 @@ class Parser {
             return statement; 
         }
 
+        QueryData* new_parse(std::string& query){
+            tokens_ = tokenizer_.tokenize(query);
+            cur_size_ = tokens_.size();
+            if(cur_size_ == 0 || tokens_[0].type_ != KEYWORD) return nullptr;
+            std::string v = tokens_[0].val_;
+            cur_pos_ = 1;
+            QueryData* ret = nullptr;
+            if(v == "SELECT")
+                ret = selectStatement();
 
+            // invalid query even if it produces a valid AST.
+            if(cur_pos_ != cur_size_) return nullptr;
+
+            return ret;
+        }
+
+        // legacy parse command will be replaced in the future.
         ASTNode* parse(std::string& query){
             tokens_ = tokenizer_.tokenize(query);
             cur_size_ = tokens_.size();
@@ -825,9 +865,8 @@ class Parser {
             std::string v = tokens_[0].val_;
             cur_pos_ = 1;
             ASTNode* ret = nullptr;
-            if(v == "SELECT")
-                ret = selectStatement();
-            else if(v == "INSERT")
+
+            if(v == "INSERT")
                 ret = insertStatement();
             else if(v == "DELETE")
                 ret =  deleteStatement();
