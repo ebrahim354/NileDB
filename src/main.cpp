@@ -20,9 +20,10 @@ int main() {
                 std::cout << "FAIL" << std::endl;
                 continue;
             }
+            std::cout << "rows: " << result.size() << std::endl;
             for(int i = 0; i < result.size(); i++){
                 for(int j = 0; j < result[i].size(); j++){
-                    std::cout << result[i][j];
+                    std::cout << result[i][j].toString();
                     if(j+1 != result[i].size()) std::cout << "|";
                 }
                 std::cout << std::endl;

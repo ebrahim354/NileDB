@@ -5,10 +5,10 @@ Value evaluate_item(ASTNode* item, TableSchema* schema, std::vector<Value>& valu
     if(item->category_ == FIELD) {
         std::string field = item->token_.val_;
         int idx = schema->colExist(field);
-        if(idx < 0 || values.size() <= idx) {
+        if(idx < 0 || idx >= values.size()) {
             // TODO: check that in the Algebra Engine not here.
             std::cout << "[ERROR] Invalid field name " << field << std::endl;
-            return "";
+            return Value("");
         }
        return values[idx];
     }

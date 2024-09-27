@@ -3,6 +3,7 @@
 #include <string>
 #include <memory.h>
 #include "column.cpp"
+#include "utils.cpp"
 
 class Value {
     public:
@@ -49,6 +50,24 @@ class Value {
             content_ = new char[size_];
             memcpy(content_, &val, size_);
             type_ = DOUBLE;
+        }
+
+        std::string toString() const {
+            switch (type_) {
+                case VARCHAR: 
+                    return getStringVal(); 
+                case BOOLEAN:
+                    return getBoolVal() ? "true" : "false";
+                case INT:
+                    return intToStr(getIntVal());
+                case BIGINT:
+                    return intToStr(getBigIntVal());
+                case FLOAT:
+                case DOUBLE:
+                default :
+                    return "NOT SUPPORTED YET";
+            }
+
         }
 
         std::string getStringVal() const {

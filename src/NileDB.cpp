@@ -15,6 +15,7 @@ class NileDB {
         Parser* parser_ = nullptr;
         ExecutionEngine* engine_ = nullptr;
         QueryProcessor* query_processor_ = nullptr;
+        AlgebraEngine* algebra_engine_ = nullptr;
     public:
         NileDB(size_t pool_size = 1024, size_t k=512)
         {
@@ -22,7 +23,8 @@ class NileDB {
             catalog_ = new Catalog(cache_manager_);
             parser_ = new Parser(catalog_);
             engine_ = new ExecutionEngine(catalog_);
-            query_processor_ = new QueryProcessor(parser_, engine_);
+            algebra_engine_ = new AlgebraEngine(catalog_);
+            query_processor_ = new QueryProcessor(parser_, engine_, algebra_engine_);
         }
         ~NileDB(){
             delete query_processor_;

@@ -1,13 +1,12 @@
 #pragma once
 #include "parser.cpp"
-//#include "execution_engine.cpp"
-class Executor;
+
 
 enum AlgebraOperationType {
     // single table operations.
     SCAN,
-    PROJECTION,
     FILTER, 
+    PROJECTION,
     SORT,
     LIMIT,
     RENAME,
@@ -24,7 +23,6 @@ struct AlgebraOperation {
         AlgebraOperation (AlgebraOperationType type) : type_(type)
         {}
         AlgebraOperationType type_;
-         Executor* executor_ = nullptr;
 };
 
 struct ScanOperation: AlgebraOperation {
@@ -35,12 +33,7 @@ struct ScanOperation: AlgebraOperation {
         {}
         ~ScanOperation()
         {}
-    private:
         std::string table_name_;
-        // the optimizer will pick the right algorithm based on the cost model 
-        // and attach an executor to the physical plan.
-        // for example : use the btree index for range filters and the hash index for equality filters etc..
-        // and all of them implement the ScanExecutor 
 };
 
 struct FilterOperation: AlgebraOperation {
@@ -89,6 +82,15 @@ class AlgebraEngine {
         {}
         ~AlgebraEngine(){}
 
+        AlgebraOperation* createAlgebraExpression(QueryData* data){
+            switch(data->type_){
+                case SELECT_DATA:
+                    return createSelectStatementExpression(reinterpret_cast<SelectStatementData*>(data));
+            }
+            return nullptr;
+        }
+    private:
+
         bool isValidSelectStatementData (SelectStatementData* data){
             for(std::string& table_name : data->tables_){
                 TableSchema* schema = catalog_->getTableSchema(table_name);
@@ -110,30 +112,18 @@ class AlgebraEngine {
         AlgebraOperation* createSelectStatementExpression(SelectStatementData* data){
             if(!isValidSelectStatementData(data))
                 return nullptr;
-            ScanOperation* scan = nullptr;
-            FilterOperation* filter = nullptr;
-            ProjectionOperation* projection = nullptr;
-            SortOperation* sort = nullptr;
+            AlgebraOperation* result = nullptr;
             // only use the first table until we add support for the product operation.
             if(data->tables_.size())
-                scan = new ScanOperation(data->tables_[0]);
-            filter = new FilterOperation(scan, data->where_);
-            projection = new ProjectionOperation(scan, data->fields_);
-            sort = new SortOperation(projection, data->order_by_list_);
-            return sort;
+                result = new ScanOperation(data->tables_[0]);
+            if(data->where_)
+                result = new FilterOperation(result, data->where_);
+            if(data->fields_.size())
+                result = new ProjectionOperation(result, data->fields_);
+            if(data->order_by_list_.size())
+                result = new SortOperation(result, data->order_by_list_);
+            return result;
         }
 
-        AlgebraOperation* createAlgebraExpression(QueryData* data){
-            switch(data->type_){
-                case SELECT_DATA:
-                    return createSelectStatementExpression(reinterpret_cast<SelectStatementData*>(data));
-            }
-            return nullptr;
-        }
-
-        void bindExecutors(AlgebraOperation* operation){
-            
-        }
-    private:
         Catalog* catalog_ = nullptr;
 };

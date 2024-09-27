@@ -6,7 +6,7 @@
 #include <deque>
 
 
-typedef std::vector<std::vector<std::string>> QueryResult;
+typedef std::vector<std::vector<Value>> QueryResult;
 
 
 /* The execution engine that holds all execution operators that could be 
@@ -279,23 +279,23 @@ enum ExecutorType {
 
 struct Executor {
     public:
-        Executor(AlgebraOperation* op, ExecutorType type, TableSchema* output_schema): 
-            op_(op), type_(type), output_schema_(output_schema)
+        Executor(ExecutorType type, TableSchema* output_schema): 
+            type_(type), output_schema_(output_schema)
         {}
         ~Executor() {}
         virtual void init() = 0;
         virtual std::vector<Value> next() = 0;
 
         ExecutorType type_;
-        AlgebraOperation* op_ = nullptr;
         TableSchema* output_schema_ = nullptr;
         bool error_status_ = 0;
         bool finished_ = 0;
 };
 
-class SeqScanExecutor : Executor {
+class SeqScanExecutor : public Executor {
     public:
-        SeqScanExecutor(AlgebraOperation* op, TableSchema* table): Executor(op, SEQUENTIAL_SCAN_EXECUTOR, table), table_(table)
+        SeqScanExecutor(TableSchema* table)
+            : Executor(SEQUENTIAL_SCAN_EXECUTOR, table), table_(table)
         {}
         ~SeqScanExecutor()
         {}
@@ -325,14 +325,11 @@ class SeqScanExecutor : Executor {
 };
 
 
-class FilterExecutor : Executor {
+class FilterExecutor : public Executor {
     public:
-        FilterExecutor(AlgebraOperation* op, TableSchema* output_schema): Executor(op, FILTER_EXECUTOR, output_schema)
-        {
-            auto cur_ = reinterpret_cast<FilterOperation*>(op_);
-            Executor* child_executor_ = cur_->child_->executor_;
-            filter_ = cur_->filter_;
-        }
+        FilterExecutor(Executor* child, TableSchema* output_schema, ExpressionNode* filter)
+            : Executor(FILTER_EXECUTOR, output_schema), child_executor_(child), filter_(filter)
+        {}
         ~FilterExecutor()
         {}
 
@@ -349,8 +346,10 @@ class FilterExecutor : Executor {
                 finished_ = child_executor_->finished_;
 
                 if(error_status_ || finished_)  return {};
-                if(evaluate_expression(filter_, output_schema_, output).getBoolVal() != false)
+                Value exp = evaluate_expression(filter_, output_schema_, output).getBoolVal();
+                if(exp != false){
                     return output;
+                }
             }
         }
     private:
@@ -358,46 +357,50 @@ class FilterExecutor : Executor {
         ExpressionNode* filter_ = nullptr;
 };
 
-class ProjectionExecutor : Executor {
+class ProjectionExecutor : public Executor {
     public:
-        ProjectionExecutor(AlgebraOperation* op, TableSchema* output_schema): Executor(op, PROJECTION_EXECUTOR, output_schema)
-        {
-            cur_ = reinterpret_cast<ProjectionOperation*>(op_);
-            Executor* child_executor_ = cur_->child_->executor_;
-        }
+        ProjectionExecutor(Executor* child_executor, TableSchema* output_schema, std::vector<ExpressionNode*> fields): 
+            Executor(PROJECTION_EXECUTOR, output_schema), child_executor_(child_executor), fields_(fields)
+        {}
         ~ProjectionExecutor()
         {}
 
         void init() {
-            child_executor_->init();
+            if(child_executor_) {
+                child_executor_->init();
+            }
         }
 
         std::vector<Value> next() {
             if(error_status_ || finished_)  return {};
 
             std::vector<Value> child_output; 
-            child_output = child_executor_->next();
-            error_status_ = child_executor_->error_status_;
-            finished_ = child_executor_->finished_;
+            if(child_executor_){
+                child_output = child_executor_->next();
+                error_status_ = child_executor_->error_status_;
+                finished_ = child_executor_->finished_;
+            } else {
+                finished_ = true;
+            }
 
             std::vector<Value> output;
-            for(int i = 0; i < cur_->fields_.size(); i++){
-                output.push_back(evaluate_expression(cur_->fields_[i], output_schema_, child_output));
+            if(child_executor_ && (finished_ || error_status_ || child_output.size() == 0)) return {};
+            for(int i = 0; i < fields_.size(); i++){
+                output.push_back(evaluate_expression(fields_[i], output_schema_, child_output));
             }
             return output;
         }
     private:
+        // child_executor_ is optional in case of projection for example : select 1 + 1 should work without a from clause.
         Executor* child_executor_ = nullptr;
-        ProjectionOperation* cur_ = nullptr; 
+        std::vector<ExpressionNode*> fields_;
 };
 
-class SortExecutor : Executor {
+class SortExecutor : public Executor {
     public:
-        SortExecutor(AlgebraOperation* op, TableSchema* output_schema): Executor(op, SORT_EXECUTOR, output_schema)
-        {
-            cur_ = reinterpret_cast<SortOperation*>(op_);
-            Executor* child_executor_ = cur_->child_->executor_;
-        }
+        SortExecutor(Executor* child_executor , TableSchema* output_schema, std::vector<int> order_by_list): 
+            Executor(SORT_EXECUTOR, output_schema), child_executor_(child_executor), order_by_list_(order_by_list)
+        {}
         ~SortExecutor()
         {}
 
@@ -412,13 +415,13 @@ class SortExecutor : Executor {
                 std::vector<Value> tuple; 
                 tuple = child_executor_->next();
                 error_status_ = child_executor_->error_status_;
-                finished_ = child_executor_->finished_;
                 if(error_status_)  return;
-                tuples_.push_back(tuple);
-                if(finished_) break;
+                if(tuple.size())
+                    tuples_.push_back(tuple);
+                if(child_executor_->finished_) break;
             }
 
-            std::vector<int> order_by = cur_->order_by_list_;
+            std::vector<int> order_by = order_by_list_;
 
             std::sort(tuples_.begin(), tuples_.end(), 
                     [&order_by](std::vector<Value>& lhs, std::vector<Value>& rhs){
@@ -431,12 +434,13 @@ class SortExecutor : Executor {
         }
 
         std::vector<Value> next() {
-            if(error_status_ || finished_ || idx_ >= tuples_.size())  return {};
+            finished_ = (idx_ >= tuples_.size());
+            if(error_status_ || finished_)  return {};
             return tuples_[idx_++];
         }
     private:
         Executor* child_executor_ = nullptr;
-        SortOperation* cur_ = nullptr; 
+        std::vector<int> order_by_list_;
         std::vector<std::vector<Value>> tuples_;
         int idx_ = 0;
 };
@@ -667,6 +671,62 @@ class ExecutionEngine {
                 default:
                     return false;
             }
+        }
+        Executor* buildExecutionPlan(AlgebraOperation* logical_plan) {
+            if(!logical_plan) return nullptr;
+            switch(logical_plan->type_) {
+                case SORT: {
+                               SortOperation* op = reinterpret_cast<SortOperation*>(logical_plan);
+                               Executor* child = buildExecutionPlan(op->child_);
+                               SortExecutor* sort = new SortExecutor(child, child->output_schema_, op->order_by_list_);
+                               return sort;
+                           }
+                case PROJECTION: {
+                                     ProjectionOperation* op = reinterpret_cast<ProjectionOperation*>(logical_plan);
+                                     Executor* child = buildExecutionPlan(op->child_);
+                            
+                                ProjectionExecutor* project = nullptr; 
+                                if(!child)
+                                     project = new ProjectionExecutor(child, nullptr, op->fields_);
+                                else
+                                     project = new ProjectionExecutor(child, child->output_schema_, op->fields_);
+                                 return project;
+                                 }
+                case FILTER: {
+                                 FilterOperation* op = reinterpret_cast<FilterOperation*>(logical_plan);
+                                 Executor* child = buildExecutionPlan(op->child_);
+                                 FilterExecutor* filter = new FilterExecutor(child, child->output_schema_, op->filter_);
+                                 return filter;
+                             }
+
+                case SCAN: {
+                               ScanOperation* op = reinterpret_cast<ScanOperation*>(logical_plan);
+                               TableSchema* schema = catalog_->getTableSchema(op->table_name_);
+                               SeqScanExecutor* scan = new SeqScanExecutor(schema);
+                               return scan;
+                           }
+                default: 
+                           std::cout << "[ERROR] unsupported Algebra Operaion\n";
+                           return nullptr;
+            }
+        }
+
+        bool executePlan(AlgebraOperation* logical_plan, QueryResult* result){
+            if(!logical_plan) return false;
+            if(!result) return false;
+            Executor* physical_plan = buildExecutionPlan(logical_plan);
+            if(!physical_plan){
+                std::cout << "[ERROR] Could not build physical operation\n";
+            }
+            physical_plan->init();
+
+            while(!physical_plan->error_status_ && !physical_plan->finished_){
+                std::vector<Value> tmp = physical_plan->next();
+                if(tmp.size() == 0 || physical_plan->error_status_) break;
+                    
+                result->push_back(tmp);
+            }
+            return (physical_plan->error_status_ == 0);
         }
     private:
         Catalog* catalog_;
