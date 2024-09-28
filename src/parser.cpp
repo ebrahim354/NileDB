@@ -267,19 +267,21 @@ struct SelectStatementData : QueryData {
     SelectStatementData(TableListNode* tables, SelectListNode* fields, ExpressionNode* where, ConstListNode* order_by_list):
         QueryData(SELECT_DATA), where_(where) {
 
+        SelectListNode* field_ptr = fields;
+        while(field_ptr != nullptr){
+            has_star_ = (has_star_ || field_ptr->star_);
+            // if field_ptr->field_ == nullptr, that means it's a select * statement.
+            fields_.push_back(field_ptr->field_);
+            field_ptr = field_ptr->next_;
+        }
+
         TableListNode* table_ptr = tables; 
         while(table_ptr != nullptr){
             std::string table_name = table_ptr->token_.val_;
             tables_.push_back(table_name);
             table_ptr = table_ptr->next_;
         }
-        SelectListNode* field_ptr = fields;
-        while(field_ptr != nullptr){
-            if(field_ptr->star_){
-                // spread to all the available fields.
-            } else fields_.push_back(field_ptr->field_);
-            field_ptr = field_ptr->next_;
-        }
+
         ConstListNode* order_by_ptr = order_by_list;
         while(order_by_ptr != nullptr){
             std::string val = order_by_ptr->token_.val_;
@@ -291,10 +293,11 @@ struct SelectStatementData : QueryData {
 
     ~SelectStatementData() {}
 
-    std::vector<std::string> tables_;
-    std::vector<ExpressionNode*> fields_;
+    std::vector<ExpressionNode*> fields_ = {};
+    bool has_star_ = false;
+    std::vector<std::string> tables_ = {};
     ExpressionNode* where_ = nullptr;
-    std::vector<int> order_by_list_;
+    std::vector<int> order_by_list_ = {};
 };
 
 struct CreateTableStatementNode : ASTNode {

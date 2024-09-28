@@ -99,6 +99,10 @@ class AlgebraEngine {
                     return false;
                 }
             }
+            if(data->has_star_ &&  data->tables_.size() == 0) {
+                std::cout << "[ERROR] no table spicified for SELECT *";
+                return false;
+            }
             for(int order_by : data->order_by_list_){
                 if(order_by >= data->fields_.size()) {
                         std::cout << "[ERROR] order by list should be between 1 and " <<  data->fields_.size() << std::endl;

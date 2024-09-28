@@ -386,7 +386,13 @@ class ProjectionExecutor : public Executor {
             std::vector<Value> output;
             if(child_executor_ && (finished_ || error_status_ || child_output.size() == 0)) return {};
             for(int i = 0; i < fields_.size(); i++){
-                output.push_back(evaluate_expression(fields_[i], output_schema_, child_output));
+                if(fields_[i] == nullptr){
+                    for(auto& val : child_output){
+                        output.push_back(val);
+                    }
+                } else {
+                    output.push_back(evaluate_expression(fields_[i], output_schema_, child_output));
+                }
             }
             return output;
         }
