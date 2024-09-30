@@ -1,6 +1,7 @@
 #pragma once
 #include "tokenizer.cpp"
 #include "catalog.cpp"
+#include <cmath>
 #include <cstdint>
 
 // The grammer rules are defined as structures, each struct is following the name convention: CategoryNameNode,
@@ -15,6 +16,27 @@
 // keyword without deleting nodes after we are done or in cases of an error, That is bad but we will replace heap
 // allocations with some sort of an arena allocator or just handle the leaks later.
 
+#define AGG_FUNC_IDENTIFIER_PREFIX "AGG_FUNC_NUM_";
+enum AggregateFuncType {
+    NOT_DEFINED,
+    COUNT,
+    SUM,
+    MIN,
+    MAX,
+    AVG,
+};
+
+AggregateFuncType getAggFuncType(std::string& func){
+    if(func == "COUNT") return COUNT;
+    if(func == "SUM")   return SUM;
+    if(func == "MIN")   return MIN;
+    if(func == "MAX")   return MAX;
+    if(func == "AVG")   return AVG;
+    return NOT_DEFINED;
+}
+
+
+
 enum QueryType {
     SELECT_DATA
 };
@@ -25,11 +47,14 @@ enum CategoryType {
     INTEGER_CONSTANT,
                 // grammer of expressions is copied with some modifications from the following link :
                 // https://craftinginterpreters.com/appendix-i.html
-                //
-                //
-                //
                 // item will be extendted later to have booleans and null
-    ITEM,       // item         := field  | STRING_CONSTANT | INTEGER_CONSTANT  | "(" expression ")"
+                //
+                //
+                //
+                // func_name    := "COUNT" | "MIN" | "MAX" | "SUM" | "AVG" | ...
+                // Nested aggregations are not allowed: count(count(*)).
+    AGG_FUNC,   // agg_func     := func_name "(" expression ")", and expression can not contain another aggregation.
+    ITEM,       // item         := field  | STRING_CONSTANT | INTEGER_CONSTANT  | "(" expression ")" | AGG_FUNC
     UNARY,      // unary        := item   | ("-") uneray
     FACTOR,     // factor       := unary  ( ( "/" | "*" ) unary  )*
     TERM,       // term         := factor ( ( "+" | "-" ) factor )*
@@ -69,6 +94,16 @@ struct ASTNode {
     {}
     CategoryType category_;
     Token token_; 
+};
+
+struct ExpressionNode;
+
+struct AggregateFuncNode : ASTNode {
+    AggregateFuncNode(ExpressionNode* exp, AggregateFuncType type): 
+        ASTNode(AGG_FUNC), exp_(exp), type_(type)
+    {}
+    ExpressionNode* exp_ = nullptr;
+    AggregateFuncType type_;
 };
 
 struct UnaryNode : ASTNode {
@@ -144,15 +179,20 @@ struct OrNode : ASTNode {
     ASTNode* next_ = nullptr;
 };
 
+
+
 struct ExpressionNode : ASTNode {
-    ExpressionNode(ASTNode* val, ExpressionNode* rhs=nullptr): ASTNode(EXPRESSION), cur_(val)
+    ExpressionNode(ASTNode* val = nullptr): ASTNode(EXPRESSION), cur_(val)
     {}
     void clean(){
         delete cur_;
         delete as_;
     }
+    int id_ = 0; // 0 means it's a single expression => usually used in a where clause and can't have aggregations.
     ASTNode* cur_ = nullptr;
     ASTNode* as_ = nullptr;
+    AggregateFuncNode* aggregate_func_ = nullptr; // each expression can hold at most 1 aggregate function inside of it.
+                                               // meaning that expressions with aggregate functions can't be nested.
 };
 
 
@@ -374,6 +414,30 @@ class Parser {
             return nullptr;
         }
 
+        ASTNode* agg_func(ExpressionNode* expression_ctx){
+            if(!expression_ctx) {
+                std::cout << "[ERROR] Cannot have aggregate functions in this context" << std::endl;
+                return nullptr;
+            }
+            if(cur_pos_ + 1 >= cur_size_ || tokens_[cur_pos_].type_ != IDENTIFIER || tokens_[cur_pos_+1].val_ != "(") 
+                return nullptr;
+            AggregateFuncType type = getAggFuncType(tokens_[cur_pos_].val_);
+            if(type == NOT_DEFINED) return nullptr;
+            cur_pos_+= 2;
+            ExpressionNode* exp = expression();
+            if(!exp) return nullptr;
+            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")") return nullptr;
+            cur_pos_++; // ")"
+            if(exp->aggregate_func_) {
+                std::cout << "[ERROR] Cannot nest aggregate functions" << std::endl;
+                return nullptr;
+            }
+            expression_ctx->aggregate_func_ =  new AggregateFuncNode(exp, type);
+            std::string tmp = AGG_FUNC_IDENTIFIER_PREFIX;
+            tmp += expression_ctx->id_;
+            return new ASTNode(FIELD, Token {.val_ = tmp, .type_ = IDENTIFIER });
+        }
+
         ASTNode* type(){
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].type_ == KEYWORD 
                     && tokenizer_.isDataType(tokens_[cur_pos_].val_)) {
@@ -419,12 +483,14 @@ class Parser {
             return nullptr;
         }
 
-        ASTNode* item(){
+        ASTNode* item(ExpressionNode* expression_ctx){
             ASTNode* i = nullptr;
             if(cur_pos_ >= cur_size_) return nullptr;
             if(tokens_[cur_pos_].val_ == "("){
                 cur_pos_++;
-                auto ex = expression();
+                int id = 0;
+                if(expression_ctx) id = expression_ctx->id_;
+                auto ex = expression(id);
                 if(!ex) return nullptr;
                 if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")") {
                     return nullptr;
@@ -432,36 +498,40 @@ class Parser {
                 cur_pos_++;
                 return ex;
             }
-            i = field();
+            if(expression_ctx && expression_ctx->id_ != 0)
+                i = agg_func(expression_ctx);
+
+            if(!i)
+                i = field();
             if(!i)
                 i = constant();
             return i;
         }
 
-        ASTNode* unary(){
+        ASTNode* unary(ExpressionNode* expression_ctx){
             if(cur_pos_ >= cur_size_) return nullptr;
             if(tokens_[cur_pos_].val_ == "-"){
                 UnaryNode* u = nullptr;
                 u = new UnaryNode(nullptr, tokens_[cur_pos_]);
                 cur_pos_++;
-                ASTNode* val = item();
+                ASTNode* val = item(expression_ctx);
                 if(!val) return nullptr;
                 u->cur_ = val;
                 
                 return u;
             }
             // no need to wrap it in a unary if we don't find any unary operators.
-            return item();
+            return item(expression_ctx);
         }
 
-        ASTNode* factor(){
-            ASTNode* cur = unary();
+        ASTNode* factor(ExpressionNode* expression_ctx){
+            ASTNode* cur = unary(expression_ctx);
             if(!cur) return nullptr;
             if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "*" || tokens_[cur_pos_].val_ == "/")) {
                 FactorNode* f = new FactorNode(reinterpret_cast<UnaryNode*>(cur));
                 ASTNode* next = nullptr;
                 f->token_ = tokens_[cur_pos_++];
-                next = factor();
+                next = factor(expression_ctx);
                 if(!next) {
                     f->clean();
                     delete cur;
@@ -473,13 +543,13 @@ class Parser {
             return cur;
         }
 
-        ASTNode* term(){
-            ASTNode* cur = factor();
+        ASTNode* term(ExpressionNode* expression_ctx = nullptr){
+            ASTNode* cur = factor(expression_ctx);
             if(!cur) return nullptr;
             if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "+" || tokens_[cur_pos_].val_ == "-")) { 
                 TermNode* t = new TermNode(reinterpret_cast<FactorNode*>(cur));
                 t->token_ = tokens_[cur_pos_++];
-                ASTNode* next = term();
+                ASTNode* next = term(expression_ctx);
                 if(!next) {
                     t->clean();
                     delete cur;
@@ -491,13 +561,13 @@ class Parser {
             return cur;
         }
 
-        ASTNode* comparison(){
-            ASTNode* cur = term();
+        ASTNode* comparison(ExpressionNode* expression_ctx){
+            ASTNode* cur = term(expression_ctx);
             if(!cur) return nullptr;
             if(cur_pos_ < cur_size_ && tokenizer_.isCompareOP(tokens_[cur_pos_].val_)) { 
                 ComparisonNode* c = new ComparisonNode(reinterpret_cast<TermNode*>(cur));
                 c->token_ = tokens_[cur_pos_++];
-                ASTNode* next = comparison();
+                ASTNode* next = comparison(expression_ctx);
                 if(!next) {
                     c->clean();
                     delete cur;
@@ -509,13 +579,13 @@ class Parser {
             return cur;
         }
 
-        ASTNode* equality(){
-            ASTNode* cur = comparison();
+        ASTNode* equality(ExpressionNode* expression_ctx){
+            ASTNode* cur = comparison(expression_ctx);
             if(!cur) return nullptr;
             if(cur_pos_ < cur_size_ && tokenizer_.isEqOP(tokens_[cur_pos_].val_)) { 
                 EqualityNode* eq = new EqualityNode(reinterpret_cast<ComparisonNode*>(cur));
                 eq->token_ = tokens_[cur_pos_++];
-                ASTNode* next = equality();
+                ASTNode* next = equality(expression_ctx);
                 if(!next) {
                     eq->clean();
                     delete cur;
@@ -527,13 +597,13 @@ class Parser {
             return cur;
         }
 
-        ASTNode* logic_and(){
-            ASTNode* cur = equality();
+        ASTNode* logic_and(ExpressionNode* expression_ctx){
+            ASTNode* cur = equality(expression_ctx);
             if(!cur) return nullptr;
             if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "AND")) { 
                 AndNode* land = new AndNode(reinterpret_cast<EqualityNode*>(cur));
                 land->token_ = tokens_[cur_pos_++];
-                ASTNode* next = logic_and();
+                ASTNode* next = logic_and(expression_ctx);
                 if(!next) {
                     land->clean();
                     delete cur;
@@ -545,13 +615,13 @@ class Parser {
             return cur;
         }
 
-        ASTNode* logic_or(){
-            ASTNode* cur = logic_and();
+        ASTNode* logic_or(ExpressionNode* expression_ctx){
+            ASTNode* cur = logic_and(expression_ctx);
             if(!cur) return nullptr;
             if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "OR")) { 
                 OrNode* lor = new OrNode(reinterpret_cast<AndNode*>(cur));
                 lor->token_ = tokens_[cur_pos_++];
-                ASTNode* next = logic_or();
+                ASTNode* next = logic_or(expression_ctx);
                 if(!next) {
                     lor->clean();
                     delete cur;
@@ -563,10 +633,12 @@ class Parser {
             return cur;
         }
 
-        ExpressionNode* expression(){
-            ASTNode* cur = logic_or();
+        ExpressionNode* expression(int id = 0){
+            ExpressionNode* ex = new ExpressionNode();
+            ex->id_ = id;
+            ASTNode* cur = logic_or(ex);
             if(!cur) return nullptr;
-            ExpressionNode* ex = new ExpressionNode(cur);
+            ex->cur_ = cur;
             // optional AS keyword
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "AS"){
                 cur_pos_++;
@@ -609,11 +681,12 @@ class Parser {
 
         SelectListNode* selectList(){
             bool star = false;
+            int cnt = 1;
             ExpressionNode* f = nullptr;
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "*"){
                 cur_pos_++;
                 star = true;
-            } else f = expression();
+            } else f = expression(cnt++);
 
             if(!star && !f) return nullptr;
             

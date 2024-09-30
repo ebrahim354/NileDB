@@ -40,6 +40,11 @@ class Tokenizer {
             keywords_.insert("SET");
             keywords_.insert("CREATE");
             keywords_.insert("TABLE");
+
+            keywords_.insert("SUM");
+            keywords_.insert("COUNT");
+            keywords_.insert("MIN");
+            keywords_.insert("MAX");
             // datatypes
             data_types_.insert("VARCHAR");
             data_types_.insert("INTEGER");
@@ -74,6 +79,12 @@ class Tokenizer {
         }
         bool isDataType(std::string& t){
             return data_types_.count(t);
+        }
+
+        bool isAggFunc(std::string& func){
+            if(!isKeyword(func)) return false;
+            if(func == "SUM" || func == "COUNT" || func == "MIN" || func == "MAX") return true;
+            return false;
         }
 
         bool isMathOp(std::string& op){
