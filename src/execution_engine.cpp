@@ -3,6 +3,7 @@
 #include "parser.cpp"
 #include "expression.cpp"
 #include "algebra_engine.cpp"
+#include "utils.cpp"
 #include <deque>
 
 
@@ -360,14 +361,15 @@ class FilterExecutor : public Executor {
 
 class AggregationExecutor : public Executor {
     public:
-        AggregationExecutor(Executor* child_executor, TableSchema* output_schema, std::vector<ExpressionNode*> fields): 
-            Executor(AGGREGATION_EXECUTOR, output_schema), child_executor_(child_executor), fields_(fields)
+        AggregationExecutor(Executor* child_executor, TableSchema* output_schema, std::vector<AggregateFuncNode*> aggregates): 
+            Executor(AGGREGATION_EXECUTOR, output_schema), child_executor_(child_executor), aggregates_(aggregates)
         {}
         ~AggregationExecutor()
         {}
 
         void init() {
             child_executor_->init();
+            std::vector<int> aggregate_vals_(aggregates_.size(), 0);
 
             while(true){
                 std::vector<Value> child_output; 
@@ -376,27 +378,27 @@ class AggregationExecutor : public Executor {
                 if(error_status_)  return;
                 if(child_executor_->finished_) break;
 
-                for(auto& val : child_output){
-                    output_.push_back(val);
+                if(output_.size() == 0){
+                    for(auto& val : child_output){
+                        output_.push_back(val);
+                    }
                 }
 
-                for(int i = 0; i < fields_.size(); i++){
-                    if(fields_[i] == nullptr || fields_[i]->aggregate_func_ == nullptr)
-                        continue;
-
-                    // at this point the field must exist and must have an aggregation function.
-                    ExpressionNode* exp = fields_[i]->aggregate_func_->exp_;
-                    switch(fields_[i]->aggregate_func_->type_){
-                        case COUNT:
-                            Value val = evaluate_expression(exp, output_schema_, child_output);
-                            if(!val.isNull()) count_++;
+                for(int i = 0; i < aggregates_.size(); i++){
+                    ExpressionNode* exp = aggregates_[i]->exp_;
+                    switch(aggregates_[i]->type_){
+                        case COUNT:{
+                                       Value val = evaluate_expression(exp, output_schema_, child_output);
+                                       if(!val.isNull()) aggregate_vals_[i]++;
+                                   }
+                        default :
+                            continue;
                     }
                 }
             }
 
-            for(int i = 0; i < fields_.size(); i++)
-                if(fields_[i] != nullptr && fields_[i]->aggregate_func_->type_ == COUNT)
-                    output_.push_back(Value(count_));
+            for(int i = 0; i < aggregates_.size(); i++)
+                    output_.push_back(Value(aggregate_vals_[i]));
         }
 
         std::vector<Value> next() {
@@ -406,7 +408,8 @@ class AggregationExecutor : public Executor {
         }
     private:
         Executor* child_executor_ = nullptr;
-        std::vector<ExpressionNode*> fields_;
+        std::vector<AggregateFuncNode*> aggregates_;
+        std::vector<int> aggregate_vals_;
         std::vector<Value> output_;
         long long   count_ = 0;
         long long   sum_ = 0;
@@ -431,6 +434,7 @@ class ProjectionExecutor : public Executor {
 
         std::vector<Value> next() {
             if(error_status_ || finished_)  return {};
+
 
             std::vector<Value> child_output; 
             if(child_executor_){
@@ -763,18 +767,18 @@ class ExecutionEngine {
                                     Executor* child = buildExecutionPlan(op->child_);
                             
                                     std::vector<Column> child_cols = child->output_schema_->getColumns();
+
                                     int offset_ptr = Column::getSizeFromType(child_cols[child_cols.size() - 1].getType());
-                                    for(int i = 0; i < op->fields_.size(); i++){
-                                        if(op->fields_[i] != nullptr && op->fields_[i]->aggregate_func_->type_ == COUNT){
-                                            std::string col_name = AGG_FUNC_IDENTIFIER_PREFIX;
-                                            col_name += op->fields_[i]->id_;
-                                            child_cols.push_back(Column(col_name, INT, offset_ptr));
-                                            offset_ptr += Column::getSizeFromType(INT);
-                                        }
+                                    for(int i = 0; i < op->aggregates_.size(); i++){
+                                        std::string col_name = AGG_FUNC_IDENTIFIER_PREFIX;
+                                        col_name += intToStr(op->aggregates_[i]->parent_id_);
+                                        child_cols.push_back(Column(col_name, INT, offset_ptr));
+                                        offset_ptr += Column::getSizeFromType(INT);
                                     }
 
                                     TableSchema* new_output_schema = new TableSchema("agg_tmp_schema", nullptr, child_cols);
-                                    return new AggregationExecutor(child, new_output_schema, op->fields_);
+                                    //new_output_schema->printTableHeader();
+                                    return new AggregationExecutor(child, new_output_schema, op->aggregates_);
                                  }
                 case FILTER: {
                                  FilterOperation* op = reinterpret_cast<FilterOperation*>(logical_plan);
@@ -798,10 +802,13 @@ class ExecutionEngine {
         bool executePlan(AlgebraOperation* logical_plan, QueryResult* result){
             if(!logical_plan) return false;
             if(!result) return false;
+            std::cout << "[INFO] Creating physical plan" << std::endl;
             Executor* physical_plan = buildExecutionPlan(logical_plan);
             if(!physical_plan){
                 std::cout << "[ERROR] Could not build physical operation\n";
             }
+
+            std::cout << "[INFO] executing physical plan" << std::endl;
             physical_plan->init();
 
             while(!physical_plan->error_status_ && !physical_plan->finished_){

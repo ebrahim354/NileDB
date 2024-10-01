@@ -51,15 +51,15 @@ struct FilterOperation: AlgebraOperation {
 
 struct AggregationOperation: AlgebraOperation {
     public:
-        AggregationOperation(AlgebraOperation* child, std::vector<ExpressionNode*> fields): 
+        AggregationOperation(AlgebraOperation* child, std::vector<AggregateFuncNode*> aggregates): 
             AlgebraOperation(AGGREGATION),
             child_(child), 
-            fields_(fields)
+            aggregates_(aggregates)
         {}
         ~AggregationOperation()
         {}
         AlgebraOperation* child_ = nullptr;
-        std::vector<ExpressionNode*> fields_;
+        std::vector<AggregateFuncNode*> aggregates_;
 };
 
 
@@ -136,14 +136,8 @@ class AlgebraEngine {
                 result = new ScanOperation(data->tables_[0]);
             if(data->where_)
                 result = new FilterOperation(result, data->where_);
-            bool has_agg = false;
-            for(ExpressionNode* field : data->fields_){
-                if(field->aggregate_func_){
-                    has_agg = true;
-                    break;
-                }
-            }
-            result = new AggregationOperation(result, data->fields_);
+            if(data->aggregates_.size())
+                result = new AggregationOperation(result, data->aggregates_);
             if(data->fields_.size())
                 result = new ProjectionOperation(result, data->fields_);
             if(data->order_by_list_.size())

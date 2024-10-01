@@ -1,6 +1,7 @@
 #pragma once
 #include "tokenizer.cpp"
 #include "catalog.cpp"
+#include "utils.cpp"
 #include <cmath>
 #include <cstdint>
 
@@ -99,9 +100,10 @@ struct ASTNode {
 struct ExpressionNode;
 
 struct AggregateFuncNode : ASTNode {
-    AggregateFuncNode(ExpressionNode* exp, AggregateFuncType type): 
-        ASTNode(AGG_FUNC), exp_(exp), type_(type)
+    AggregateFuncNode(ExpressionNode* exp, AggregateFuncType type, int parent_id = 0): 
+        ASTNode(AGG_FUNC), exp_(exp), type_(type), parent_id_(parent_id)
     {}
+    int parent_id_ = 0;
     ExpressionNode* exp_ = nullptr;
     AggregateFuncType type_;
 };
@@ -312,6 +314,9 @@ struct SelectStatementData : QueryData {
             has_star_ = (has_star_ || field_ptr->star_);
             // if field_ptr->field_ == nullptr, that means it's a select * statement.
             fields_.push_back(field_ptr->field_);
+            if(field_ptr->field_ != nullptr && field_ptr->field_->aggregate_func_ != nullptr){
+                aggregates_.push_back(field_ptr->field_->aggregate_func_);
+            }
             field_ptr = field_ptr->next_;
         }
 
@@ -334,6 +339,7 @@ struct SelectStatementData : QueryData {
     ~SelectStatementData() {}
 
     std::vector<ExpressionNode*> fields_ = {};
+    std::vector<AggregateFuncNode*> aggregates_;  
     bool has_star_ = false;
     std::vector<std::string> tables_ = {};
     ExpressionNode* where_ = nullptr;
@@ -432,9 +438,9 @@ class Parser {
                 std::cout << "[ERROR] Cannot nest aggregate functions" << std::endl;
                 return nullptr;
             }
-            expression_ctx->aggregate_func_ =  new AggregateFuncNode(exp, type);
+            expression_ctx->aggregate_func_ =  new AggregateFuncNode(exp, type, expression_ctx->id_);
             std::string tmp = AGG_FUNC_IDENTIFIER_PREFIX;
-            tmp += expression_ctx->id_;
+            tmp += intToStr(expression_ctx->id_);
             return new ASTNode(FIELD, Token {.val_ = tmp, .type_ = IDENTIFIER });
         }
 

@@ -9,7 +9,7 @@ Value evaluate_item(ASTNode* item, TableSchema* schema, std::vector<Value>& valu
         if(idx < 0 || idx >= values.size()) {
             // TODO: check that in the Algebra Engine not here.
             std::cout << "[ERROR] Invalid field name " << field << std::endl;
-            return Value("");
+            return Value();
         }
        return values[idx];
     }
@@ -24,7 +24,7 @@ Value evaluate_item(ASTNode* item, TableSchema* schema, std::vector<Value>& valu
     if(item->category_ == INTEGER_CONSTANT)
         return Value(str_to_int(item->token_.val_));
     std::cout << "[ERROR] Item type is not supported!" << std::endl;
-    return Value("");
+    return Value();
 } 
 
 Value evaluate_expression(ASTNode* expression, TableSchema* schema, std::vector<Value>& values, bool only_one = true) {

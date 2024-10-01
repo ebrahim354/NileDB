@@ -19,6 +19,7 @@ class QueryProcessor{
                     std::cout << "[ERROR] Invalid query data" << std::endl;
                     return false;
                 }
+                std::cout << "[INFO] Creating logical plan" << std::endl;
                 AlgebraOperation* logical_plan = algebra_->createAlgebraExpression(data);
                 if(!logical_plan){
                     std::cout << "[ERROR] Invalid logical algebra plan" << std::endl;
