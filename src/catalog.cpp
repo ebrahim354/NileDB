@@ -152,6 +152,10 @@ class TableSchema {
             return cols;
         }
 
+        std::vector<Column> getColumns(){
+            return columns_;
+        }
+
         void printTableHeader(){
             for(size_t i = 0; i < columns_.size(); ++i){
                 std::cout << columns_[i].getName();

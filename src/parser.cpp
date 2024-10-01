@@ -419,7 +419,7 @@ class Parser {
                 std::cout << "[ERROR] Cannot have aggregate functions in this context" << std::endl;
                 return nullptr;
             }
-            if(cur_pos_ + 1 >= cur_size_ || tokens_[cur_pos_].type_ != IDENTIFIER || tokens_[cur_pos_+1].val_ != "(") 
+            if(cur_pos_ + 1 >= cur_size_ || tokens_[cur_pos_].type_ != KEYWORD || tokens_[cur_pos_+1].val_ != "(") 
                 return nullptr;
             AggregateFuncType type = getAggFuncType(tokens_[cur_pos_].val_);
             if(type == NOT_DEFINED) return nullptr;

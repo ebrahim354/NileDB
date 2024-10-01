@@ -273,6 +273,7 @@ class SelectExecutor {
 enum ExecutorType {
     SEQUENTIAL_SCAN_EXECUTOR,
     FILTER_EXECUTOR,
+    AGGREGATION_EXECUTOR,
     PROJECTION_EXECUTOR,
     SORT_EXECUTOR,
 };
@@ -357,6 +358,63 @@ class FilterExecutor : public Executor {
         ExpressionNode* filter_ = nullptr;
 };
 
+class AggregationExecutor : public Executor {
+    public:
+        AggregationExecutor(Executor* child_executor, TableSchema* output_schema, std::vector<ExpressionNode*> fields): 
+            Executor(AGGREGATION_EXECUTOR, output_schema), child_executor_(child_executor), fields_(fields)
+        {}
+        ~AggregationExecutor()
+        {}
+
+        void init() {
+            child_executor_->init();
+
+            while(true){
+                std::vector<Value> child_output; 
+                child_output = child_executor_->next();
+                error_status_ = child_executor_->error_status_;
+                if(error_status_)  return;
+                if(child_executor_->finished_) break;
+
+                for(auto& val : child_output){
+                    output_.push_back(val);
+                }
+
+                for(int i = 0; i < fields_.size(); i++){
+                    if(fields_[i] == nullptr || fields_[i]->aggregate_func_ == nullptr)
+                        continue;
+
+                    // at this point the field must exist and must have an aggregation function.
+                    ExpressionNode* exp = fields_[i]->aggregate_func_->exp_;
+                    switch(fields_[i]->aggregate_func_->type_){
+                        case COUNT:
+                            Value val = evaluate_expression(exp, output_schema_, child_output);
+                            if(!val.isNull()) count_++;
+                    }
+                }
+            }
+
+            for(int i = 0; i < fields_.size(); i++)
+                if(fields_[i] != nullptr && fields_[i]->aggregate_func_->type_ == COUNT)
+                    output_.push_back(Value(count_));
+        }
+
+        std::vector<Value> next() {
+            if(error_status_ || finished_)  return {};
+            finished_ = true;
+            return output_;
+        }
+    private:
+        Executor* child_executor_ = nullptr;
+        std::vector<ExpressionNode*> fields_;
+        std::vector<Value> output_;
+        long long   count_ = 0;
+        long long   sum_ = 0;
+        long double avg_ = 0;
+        long long   min_ = 0;
+        long long   max_ = 0;
+};
+
 class ProjectionExecutor : public Executor {
     public:
         ProjectionExecutor(Executor* child_executor, TableSchema* output_schema, std::vector<ExpressionNode*> fields): 
@@ -383,8 +441,10 @@ class ProjectionExecutor : public Executor {
                 finished_ = true;
             }
 
+
             std::vector<Value> output;
-            if(child_executor_ && (finished_ || error_status_ || child_output.size() == 0)) return {};
+            if(child_executor_ && ((finished_ || error_status_) && child_output.size() == 0)) return {};
+
             for(int i = 0; i < fields_.size(); i++){
                 if(fields_[i] == nullptr){
                     for(auto& val : child_output){
@@ -688,15 +748,33 @@ class ExecutionEngine {
                                return sort;
                            }
                 case PROJECTION: {
-                                     ProjectionOperation* op = reinterpret_cast<ProjectionOperation*>(logical_plan);
-                                     Executor* child = buildExecutionPlan(op->child_);
+                                    ProjectionOperation* op = reinterpret_cast<ProjectionOperation*>(logical_plan);
+                                    Executor* child = buildExecutionPlan(op->child_);
                             
-                                ProjectionExecutor* project = nullptr; 
-                                if(!child)
-                                     project = new ProjectionExecutor(child, nullptr, op->fields_);
-                                else
-                                     project = new ProjectionExecutor(child, child->output_schema_, op->fields_);
-                                 return project;
+                                    ProjectionExecutor* project = nullptr; 
+                                    if(!child)
+                                        project = new ProjectionExecutor(child, nullptr, op->fields_);
+                                    else
+                                        project = new ProjectionExecutor(child, child->output_schema_, op->fields_);
+                                    return project;
+                                 }
+                case AGGREGATION: {
+                                    AggregationOperation* op = reinterpret_cast<AggregationOperation*>(logical_plan);
+                                    Executor* child = buildExecutionPlan(op->child_);
+                            
+                                    std::vector<Column> child_cols = child->output_schema_->getColumns();
+                                    int offset_ptr = Column::getSizeFromType(child_cols[child_cols.size() - 1].getType());
+                                    for(int i = 0; i < op->fields_.size(); i++){
+                                        if(op->fields_[i] != nullptr && op->fields_[i]->aggregate_func_->type_ == COUNT){
+                                            std::string col_name = AGG_FUNC_IDENTIFIER_PREFIX;
+                                            col_name += op->fields_[i]->id_;
+                                            child_cols.push_back(Column(col_name, INT, offset_ptr));
+                                            offset_ptr += Column::getSizeFromType(INT);
+                                        }
+                                    }
+
+                                    TableSchema* new_output_schema = new TableSchema("agg_tmp_schema", nullptr, child_cols);
+                                    return new AggregationExecutor(child, new_output_schema, op->fields_);
                                  }
                 case FILTER: {
                                  FilterOperation* op = reinterpret_cast<FilterOperation*>(logical_plan);

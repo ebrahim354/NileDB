@@ -9,7 +9,7 @@ class Value {
     public:
         char* content_; 
         uint16_t size_;
-        Type type_;
+        Type type_ = INVALID;
         Value(){} 
         ~Value(){}
         // handle memory leaks later.
@@ -52,6 +52,7 @@ class Value {
             type_ = DOUBLE;
         }
 
+
         std::string toString() const {
             switch (type_) {
                 case VARCHAR: 
@@ -62,6 +63,8 @@ class Value {
                     return intToStr(getIntVal());
                 case BIGINT:
                     return intToStr(getBigIntVal());
+                case INVALID:
+                    return "NULL";
                 case FLOAT:
                 case DOUBLE:
                 default :
@@ -70,6 +73,9 @@ class Value {
 
         }
 
+        bool isNull() const {
+            return (type_ == INVALID);
+        }
         std::string getStringVal() const {
             return std::string(content_, size_);  
         }
