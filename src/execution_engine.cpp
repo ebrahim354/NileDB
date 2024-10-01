@@ -369,7 +369,9 @@ class AggregationExecutor : public Executor {
 
         void init() {
             child_executor_->init();
-            std::vector<int> aggregate_vals_(aggregates_.size(), 0);
+            std::vector<int> aggregate_vals(aggregates_.size(), 0);
+            bool first_iteration = true;
+            int num_of_rows = 0;
 
             while(true){
                 std::vector<Value> child_output; 
@@ -378,27 +380,60 @@ class AggregationExecutor : public Executor {
                 if(error_status_)  return;
                 if(child_executor_->finished_) break;
 
-                if(output_.size() == 0){
+                num_of_rows++;
+                if(first_iteration){
                     for(auto& val : child_output){
                         output_.push_back(val);
                     }
                 }
+                /*
+                for(int i = 0; i < aggregates_.size(); i++){
+                    std::cout << aggregate_vals[i] << std::endl;
+                }*/
 
                 for(int i = 0; i < aggregates_.size(); i++){
                     ExpressionNode* exp = aggregates_[i]->exp_;
                     switch(aggregates_[i]->type_){
-                        case COUNT:{
+                        case COUNT:
+                                    {
+                                        Value val = evaluate_expression(exp, output_schema_, child_output);
+                                        if(!val.isNull()) aggregate_vals[i]++;
+                                    }
+                                    break;
+                        case AVG:
+                        case SUM:
+                                   {
                                        Value val = evaluate_expression(exp, output_schema_, child_output);
-                                       if(!val.isNull()) aggregate_vals_[i]++;
+                                       if(val.type_ == INT) aggregate_vals[i] += val.getIntVal();
                                    }
+                                   break;
+                        case MIN:
+                                   {
+                                       if(first_iteration) aggregate_vals[i] = std::numeric_limits<int>::max();
+                                       Value val = evaluate_expression(exp, output_schema_, child_output);
+                                       if(val.type_ == INT) aggregate_vals[i] = 
+                                           std::min<int>(aggregate_vals[i], val.getIntVal());
+                                   }
+                                   break;
+                        case MAX:
+                                   {
+                                       if(first_iteration) aggregate_vals[i] = std::numeric_limits<int>::min();
+                                       Value val = evaluate_expression(exp, output_schema_, child_output);
+                                       if(val.type_ == INT) aggregate_vals[i] = 
+                                           std::max<int>(aggregate_vals[i], val.getIntVal());
+                                   }
+                                   break;
                         default :
-                            continue;
+                            break;
                     }
                 }
+                first_iteration = false;
+
             }
 
-            for(int i = 0; i < aggregates_.size(); i++)
-                    output_.push_back(Value(aggregate_vals_[i]));
+            for(int i = 0; i < aggregates_.size(); i++){
+                output_.push_back(Value((aggregates_[i]->type_ == AVG  && num_of_rows != 0 ? (aggregate_vals[i] / num_of_rows) : aggregate_vals[i])));
+            }
         }
 
         std::vector<Value> next() {
@@ -409,13 +444,7 @@ class AggregationExecutor : public Executor {
     private:
         Executor* child_executor_ = nullptr;
         std::vector<AggregateFuncNode*> aggregates_;
-        std::vector<int> aggregate_vals_;
         std::vector<Value> output_;
-        long long   count_ = 0;
-        long long   sum_ = 0;
-        long double avg_ = 0;
-        long long   min_ = 0;
-        long long   max_ = 0;
 };
 
 class ProjectionExecutor : public Executor {
@@ -444,7 +473,6 @@ class ProjectionExecutor : public Executor {
             } else {
                 finished_ = true;
             }
-
 
             std::vector<Value> output;
             if(child_executor_ && ((finished_ || error_status_) && child_output.size() == 0)) return {};

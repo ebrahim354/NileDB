@@ -43,6 +43,7 @@ class Tokenizer {
 
             keywords_.insert("SUM");
             keywords_.insert("COUNT");
+            keywords_.insert("AVG");
             keywords_.insert("MIN");
             keywords_.insert("MAX");
             // datatypes
