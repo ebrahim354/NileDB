@@ -430,15 +430,22 @@ class Parser {
             AggregateFuncType type = getAggFuncType(tokens_[cur_pos_].val_);
             if(type == NOT_DEFINED) return nullptr;
             cur_pos_+= 2;
-            ExpressionNode* exp = expression();
-            if(!exp) return nullptr;
-            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")") return nullptr;
-            cur_pos_++; // ")"
-            if(exp->aggregate_func_) {
-                std::cout << "[ERROR] Cannot nest aggregate functions" << std::endl;
-                return nullptr;
+            ExpressionNode* exp = nullptr;
+            // only count can have a star parameter.
+            if(type == COUNT && cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "*"){
+                cur_pos_++;
+            } else {
+                exp = expression();
+                if(!exp) return nullptr;
+                if(exp->aggregate_func_) {
+                    std::cout << "[ERROR] Cannot nest aggregate functions" << std::endl;
+                    return nullptr;
+                }
             }
             expression_ctx->aggregate_func_ =  new AggregateFuncNode(exp, type, expression_ctx->id_);
+
+            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")") return nullptr;
+            cur_pos_++; // ")"
             std::string tmp = AGG_FUNC_IDENTIFIER_PREFIX;
             tmp += intToStr(expression_ctx->id_);
             return new ASTNode(FIELD, Token {.val_ = tmp, .type_ = IDENTIFIER });
