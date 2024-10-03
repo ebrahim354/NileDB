@@ -89,28 +89,50 @@ class FilterExecutor : public Executor {
         ~FilterExecutor()
         {}
 
+        Value evaluate(ASTNode* item){
+            if(item->category_ == FIELD) {
+                std::string field = item->token_.val_;
+                if(!output_schema_) {
+                    std::cout << "[ERROR] Invalid field name " << field << std::endl;
+                    return Value();
+                }
+                int idx = output_schema_->colExist(field);
+                if(idx < 0 || idx >= output_.size()) {
+                    // TODO: check that in the Algebra Engine not here.
+                    std::cout << "[ERROR] Invalid field name " << field << std::endl;
+                    return Value();
+                }
+                return output_[idx];
+            }
+            std::cout << "[ERROR] Item type is not supported!" << std::endl;
+            return Value();
+        } 
+
         void init() {
             child_executor_->init();
-            
         }
+
 
         std::vector<Value> next() {
             while(true){
-                std::vector<Value> output; 
-                output = child_executor_->next();
+                output_ = child_executor_->next();
                 error_status_ = child_executor_->error_status_;
                 finished_ = child_executor_->finished_;
 
                 if(error_status_ || finished_)  return {};
-                Value exp = evaluate_expression(filter_, output_schema_, output).getBoolVal();
+
+                Value exp = evaluate_expression(filter_, eval).getBoolVal();
                 if(exp != false){
-                    return output;
+                    return output_;
                 }
             }
         }
     private:
         Executor* child_executor_ = nullptr;
         ExpressionNode* filter_ = nullptr;
+        std::vector<Value> output_; 
+        std::function<Value(ASTNode*)>
+            eval = std::bind(&FilterExecutor::evaluate, this, std::placeholders::_1);
 };
 
 class AggregationExecutor : public Executor {
@@ -120,6 +142,25 @@ class AggregationExecutor : public Executor {
         {}
         ~AggregationExecutor()
         {}
+
+        Value evaluate(ASTNode* item){
+            if(item->category_ == FIELD) {
+                std::string field = item->token_.val_;
+                if(!output_schema_) {
+                    std::cout << "[ERROR] Invalid field name " << field << std::endl;
+                    return Value();
+                }
+                int idx = output_schema_->colExist(field);
+                if(idx < 0 || idx >= output_.size()) {
+                    // TODO: check that in the Algebra Engine not here.
+                    std::cout << "[ERROR] Invalid field name " << field << std::endl;
+                    return Value();
+                }
+                return output_[idx];
+            }
+            std::cout << "[ERROR] Item type is not supported!" << std::endl;
+            return Value();
+        } 
 
         void init() {
             child_executor_->init();
@@ -150,21 +191,21 @@ class AggregationExecutor : public Executor {
                                             aggregate_vals[i]++;
                                             break;
                                         }
-                                        Value val = evaluate_expression(exp, output_schema_, child_output);
+                                        Value val = evaluate_expression(exp, eval);
                                         if(!val.isNull()) aggregate_vals[i]++;
                                     }
                                     break;
                         case AVG:
                         case SUM:
                                    {
-                                       Value val = evaluate_expression(exp, output_schema_, child_output);
+                                       Value val = evaluate_expression(exp, eval);
                                        if(val.type_ == INT) aggregate_vals[i] += val.getIntVal();
                                    }
                                    break;
                         case MIN:
                                    {
                                        if(first_iteration) aggregate_vals[i] = std::numeric_limits<int>::max();
-                                       Value val = evaluate_expression(exp, output_schema_, child_output);
+                                       Value val = evaluate_expression(exp, eval);
                                        if(val.type_ == INT) aggregate_vals[i] = 
                                            std::min<int>(aggregate_vals[i], val.getIntVal());
                                    }
@@ -172,7 +213,7 @@ class AggregationExecutor : public Executor {
                         case MAX:
                                    {
                                        if(first_iteration) aggregate_vals[i] = std::numeric_limits<int>::min();
-                                       Value val = evaluate_expression(exp, output_schema_, child_output);
+                                       Value val = evaluate_expression(exp, eval);
                                        if(val.type_ == INT) aggregate_vals[i] = 
                                            std::max<int>(aggregate_vals[i], val.getIntVal());
                                    }
@@ -199,6 +240,8 @@ class AggregationExecutor : public Executor {
         Executor* child_executor_ = nullptr;
         std::vector<AggregateFuncNode*> aggregates_;
         std::vector<Value> output_;
+        std::function<Value(ASTNode*)>
+            eval = std::bind(&AggregationExecutor::evaluate, this, std::placeholders::_1);
 };
 
 class ProjectionExecutor : public Executor {
@@ -208,6 +251,25 @@ class ProjectionExecutor : public Executor {
         {}
         ~ProjectionExecutor()
         {}
+
+        Value evaluate(ASTNode* item){
+            if(item->category_ == FIELD) {
+                std::string field = item->token_.val_;
+                if(!output_schema_) {
+                    std::cout << "[ERROR] Invalid field name " << field << std::endl;
+                    return Value();
+                }
+                int idx = output_schema_->colExist(field);
+                if(idx < 0 || idx >= output_.size()) {
+                    // TODO: check that in the Algebra Engine not here.
+                    std::cout << "[ERROR] Invalid field name " << field << std::endl;
+                    return Value();
+                }
+                return output_[idx];
+            }
+            std::cout << "[ERROR] Item type is not supported!" << std::endl;
+            return Value();
+        } 
 
         void init() {
             if(child_executor_) {
@@ -219,9 +281,8 @@ class ProjectionExecutor : public Executor {
             if(error_status_ || finished_)  return {};
 
 
-            std::vector<Value> child_output; 
             if(child_executor_){
-                child_output = child_executor_->next();
+                output_ = child_executor_->next();
                 error_status_ = child_executor_->error_status_;
                 finished_ = child_executor_->finished_;
             } else {
@@ -229,15 +290,15 @@ class ProjectionExecutor : public Executor {
             }
 
             std::vector<Value> output;
-            if(child_executor_ && ((finished_ || error_status_) && child_output.size() == 0)) return {};
+            if(child_executor_ && ((finished_ || error_status_) && output_.size() == 0)) return {};
 
             for(int i = 0; i < fields_.size(); i++){
                 if(fields_[i] == nullptr){
-                    for(auto& val : child_output){
+                    for(auto& val : output_){
                         output.push_back(val);
                     }
                 } else {
-                    output.push_back(evaluate_expression(fields_[i], output_schema_, child_output));
+                    output.push_back(evaluate_expression(fields_[i], eval));
                 }
             }
             return output;
@@ -246,6 +307,9 @@ class ProjectionExecutor : public Executor {
         // child_executor_ is optional in case of projection for example : select 1 + 1 should work without a from clause.
         Executor* child_executor_ = nullptr;
         std::vector<ExpressionNode*> fields_;
+        std::vector<Value> output_;
+        std::function<Value(ASTNode*)>
+            eval = std::bind(&ProjectionExecutor::evaluate, this, std::placeholders::_1);
 };
 
 class SortExecutor : public Executor {
