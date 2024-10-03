@@ -188,11 +188,9 @@ struct ExpressionNode : ASTNode {
     {}
     void clean(){
         delete cur_;
-        delete as_;
     }
     int id_ = 0; // 0 means it's a single expression => usually used in a where clause and can't have aggregations.
     ASTNode* cur_ = nullptr;
-    ASTNode* as_ = nullptr;
     AggregateFuncNode* aggregate_func_ = nullptr; // each expression can hold at most 1 aggregate function inside of it.
                                                // meaning that expressions with aggregate functions can't be nested.
 };
@@ -266,6 +264,7 @@ struct SelectListNode : ASTNode {
         delete next_;
     }
     bool star_ = false;
+    ASTNode* as_ = nullptr;
     ExpressionNode* field_ = nullptr;
     SelectListNode* next_ = nullptr;
 };
@@ -314,6 +313,8 @@ struct SelectStatementData : QueryData {
             has_star_ = (has_star_ || field_ptr->star_);
             // if field_ptr->field_ == nullptr, that means it's a select * statement.
             fields_.push_back(field_ptr->field_);
+            if(field_ptr->as_ != nullptr)
+                field_names_.push_back(field_ptr->as_->token_.val_);
             if(field_ptr->field_ != nullptr && field_ptr->field_->aggregate_func_ != nullptr){
                 aggregates_.push_back(field_ptr->field_->aggregate_func_);
             }
@@ -339,6 +340,7 @@ struct SelectStatementData : QueryData {
     ~SelectStatementData() {}
 
     std::vector<ExpressionNode*> fields_ = {};
+    std::vector<std::string> field_names_ = {};
     std::vector<AggregateFuncNode*> aggregates_;  
     bool has_star_ = false;
     std::vector<std::string> tables_ = {};
@@ -652,17 +654,6 @@ class Parser {
             ASTNode* cur = logic_or(ex);
             if(!cur) return nullptr;
             ex->cur_ = cur;
-            // optional AS keyword
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "AS"){
-                cur_pos_++;
-                auto f = field();
-                if(!f){
-                    ex->clean();
-                    delete ex;
-                    return nullptr;
-                }
-                ex->as_ = f;
-            }
             return ex;
         }
 
@@ -702,11 +693,28 @@ class Parser {
             } else f = expression(cnt++);
 
             if(!star && !f) return nullptr;
-            
+            ASTNode* name = nullptr;
+
+            // optional AS keyword.
+            if(!star && cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "AS"){
+                cur_pos_++;
+                name = field();
+                if(!name){
+                    return nullptr;
+                }
+            }
+            // optional renaming of a field.
+            if(!star && !name && cur_pos_ < cur_size_ && tokens_[cur_pos_].type_ == IDENTIFIER){
+                name = field();
+                if(!name){
+                    return nullptr;
+                }
+            }
 
             SelectListNode* nw_fl = new SelectListNode();
             nw_fl->field_ = f;
             nw_fl->star_ = star;
+            nw_fl->as_ = name;
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
                 cur_pos_++;
                 nw_fl->next_ = selectList();
