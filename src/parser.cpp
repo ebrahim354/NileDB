@@ -315,6 +315,8 @@ struct SelectStatementData : QueryData {
             fields_.push_back(field_ptr->field_);
             if(field_ptr->as_ != nullptr)
                 field_names_.push_back(field_ptr->as_->token_.val_);
+            else 
+                field_names_.push_back("");
             if(field_ptr->field_ != nullptr && field_ptr->field_->aggregate_func_ != nullptr){
                 aggregates_.push_back(field_ptr->field_->aggregate_func_);
             }

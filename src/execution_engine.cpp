@@ -83,8 +83,11 @@ class SeqScanExecutor : public Executor {
 
 class FilterExecutor : public Executor {
     public:
-        FilterExecutor(Executor* child, TableSchema* output_schema, ExpressionNode* filter)
-            : Executor(FILTER_EXECUTOR, output_schema), child_executor_(child), filter_(filter)
+        FilterExecutor(Executor* child, TableSchema* output_schema, ExpressionNode* filter, 
+                std::vector<ExpressionNode*>& fields, 
+                std::vector<std::string>& field_names)
+            : Executor(FILTER_EXECUTOR, output_schema), child_executor_(child), filter_(filter), 
+              fields_(fields), field_names_(field_names)
         {}
         ~FilterExecutor()
         {}
@@ -92,44 +95,60 @@ class FilterExecutor : public Executor {
         Value evaluate(ASTNode* item){
             if(item->category_ == FIELD) {
                 std::string field = item->token_.val_;
-                if(!output_schema_) {
-                    std::cout << "[ERROR] Invalid field name " << field << std::endl;
-                    return Value();
+                int idx = -1; 
+                if(output_schema_) {
+                    idx = output_schema_->colExist(field);
                 }
-                int idx = output_schema_->colExist(field);
+                if(idx < 0){
+                    for(int i = 0; i < field_names_.size(); i++)
+                        if(field == field_names_[i]) 
+                            return evaluate_expression(fields_[i], eval);
+                    
+                }
                 if(idx < 0 || idx >= output_.size()) {
                     // TODO: check that in the Algebra Engine not here.
                     std::cout << "[ERROR] Invalid field name " << field << std::endl;
+                    error_status_ = 1;
                     return Value();
                 }
                 return output_[idx];
             }
             std::cout << "[ERROR] Item type is not supported!" << std::endl;
+            error_status_ = 1;
             return Value();
         } 
 
         void init() {
-            child_executor_->init();
+            if(child_executor_) {
+                child_executor_->init();
+            }
         }
 
 
         std::vector<Value> next() {
             while(true){
-                output_ = child_executor_->next();
-                error_status_ = child_executor_->error_status_;
-                finished_ = child_executor_->finished_;
-
                 if(error_status_ || finished_)  return {};
+                if(child_executor_) {
+                    output_ = child_executor_->next();
+                    error_status_ = child_executor_->error_status_;
+                    finished_ = child_executor_->finished_;
+                } else {
+                    finished_ = true;
+                }
 
                 Value exp = evaluate_expression(filter_, eval).getBoolVal();
-                if(exp != false){
-                    return output_;
+                if(exp != false && !exp.isNull()){
+                    if(child_executor_)
+                        return output_;
+                    return {exp};
                 }
             }
         }
     private:
         Executor* child_executor_ = nullptr;
         ExpressionNode* filter_ = nullptr;
+        std::vector<ExpressionNode*> fields_ = {};
+        std::vector<std::string> field_names_ = {};
         std::vector<Value> output_; 
         std::function<Value(ASTNode*)>
             eval = std::bind(&FilterExecutor::evaluate, this, std::placeholders::_1);
@@ -285,23 +304,25 @@ class ProjectionExecutor : public Executor {
                 output_ = child_executor_->next();
                 error_status_ = child_executor_->error_status_;
                 finished_ = child_executor_->finished_;
+                std::cout << "has a child ";
             } else {
+                std::cout << "has no child ";
                 finished_ = true;
             }
 
-            std::vector<Value> output;
+            std::vector<Value> tmp_output;
             if(child_executor_ && ((finished_ || error_status_) && output_.size() == 0)) return {};
 
             for(int i = 0; i < fields_.size(); i++){
                 if(fields_[i] == nullptr){
                     for(auto& val : output_){
-                        output.push_back(val);
+                        tmp_output.push_back(val);
                     }
                 } else {
-                    output.push_back(evaluate_expression(fields_[i], eval));
+                    tmp_output.push_back(evaluate_expression(fields_[i], eval));
                 }
             }
-            return output;
+            return tmp_output;
         }
     private:
         // child_executor_ is optional in case of projection for example : select 1 + 1 should work without a from clause.
@@ -629,7 +650,11 @@ class ExecutionEngine {
                 case FILTER: {
                                  FilterOperation* op = reinterpret_cast<FilterOperation*>(logical_plan);
                                  Executor* child = buildExecutionPlan(op->child_);
-                                 FilterExecutor* filter = new FilterExecutor(child, child->output_schema_, op->filter_);
+                                 TableSchema* schema = nullptr;
+                                 if(child == nullptr) schema = nullptr;
+                                 else                 schema = child->output_schema_;
+                                 
+                                 FilterExecutor* filter = new FilterExecutor(child, schema, op->filter_, op->fields_, op->field_names_);
                                  return filter;
                              }
 

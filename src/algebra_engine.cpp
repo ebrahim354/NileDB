@@ -38,14 +38,20 @@ struct ScanOperation: AlgebraOperation {
 
 struct FilterOperation: AlgebraOperation {
     public:
-        FilterOperation(AlgebraOperation* child, ExpressionNode* filter): 
+        FilterOperation(AlgebraOperation* child, ExpressionNode* filter, 
+                std::vector<ExpressionNode*>& fields, 
+                std::vector<std::string>& field_names): 
             AlgebraOperation(FILTER),
             child_(child), 
-            filter_(filter)
+            filter_(filter),
+            fields_(fields),
+            field_names_(field_names)
         {}
         ~FilterOperation()
         {}
         ExpressionNode* filter_;
+        std::vector<ExpressionNode*> fields_;
+        std::vector<std::string> field_names_;
         AlgebraOperation* child_;
 };
 
@@ -135,7 +141,7 @@ class AlgebraEngine {
             if(data->tables_.size())
                 result = new ScanOperation(data->tables_[0]);
             if(data->where_)
-                result = new FilterOperation(result, data->where_);
+                result = new FilterOperation(result, data->where_, data->fields_, data->field_names_);
             if(data->aggregates_.size())
                 result = new AggregationOperation(result, data->aggregates_);
             if(data->fields_.size())
