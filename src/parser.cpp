@@ -44,6 +44,8 @@ enum QueryType {
 
 enum CategoryType {
     FIELD,       
+                // scoped field is a field of the format: tableName + "." + fieldName
+    SCOPED_FIELD,
     STRING_CONSTANT,
     INTEGER_CONSTANT,
                 // grammer of expressions is copied with some modifications from the following link :
@@ -98,6 +100,13 @@ struct ASTNode {
 };
 
 struct ExpressionNode;
+
+// scoped field is a field of the format: tableName + "." + fieldName
+struct ScopedFieldNode : ASTNode {
+    ScopedFieldNode(Token f, ASTNode* table): ASTNode(SCOPED_FIELD, f), table_(table)
+    {}
+    ASTNode* table_ = nullptr;
+};
 
 struct AggregateFuncNode : ASTNode {
     AggregateFuncNode(ExpressionNode* exp, AggregateFuncType type, int parent_id = 0): 
@@ -326,6 +335,12 @@ struct SelectStatementData : QueryData {
         TableListNode* table_ptr = tables; 
         while(table_ptr != nullptr){
             std::string table_name = table_ptr->token_.val_;
+
+            if(table_ptr->as_ != nullptr)
+                table_names_.push_back(table_ptr->as_->token_.val_);
+            else 
+                table_names_.push_back("");
+
             tables_.push_back(table_name);
             table_ptr = table_ptr->next_;
         }
@@ -343,6 +358,7 @@ struct SelectStatementData : QueryData {
 
     std::vector<ExpressionNode*> fields_ = {};
     std::vector<std::string> field_names_ = {};
+    std::vector<std::string> table_names_ = {};
     std::vector<AggregateFuncNode*> aggregates_;  
     bool has_star_ = false;
     std::vector<std::string> tables_ = {};
@@ -420,6 +436,20 @@ class Parser {
         ASTNode* field(){
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].type_ == IDENTIFIER) {
                 return new ASTNode(FIELD, tokens_[cur_pos_++]);
+            }
+            return nullptr;
+        }
+
+        // scoped field is a field of the format: tableName + "." + fieldName
+        ASTNode* scoped_field(){
+            if(cur_pos_+2 < cur_size_ 
+                    && tokens_[cur_pos_].type_ == IDENTIFIER 
+                    && tokens_[cur_pos_+1].val_ == "."
+                    && tokens_[cur_pos_+2].type_ == IDENTIFIER) {
+                ASTNode* t = table();
+                if(!t) return nullptr;
+                cur_pos_++;
+                return new ScopedFieldNode(tokens_[cur_pos_++], t);
             }
             return nullptr;
         }
@@ -518,6 +548,8 @@ class Parser {
             if(expression_ctx && expression_ctx->id_ != 0)
                 i = agg_func(expression_ctx);
 
+            if(!i)
+                i = scoped_field();
             if(!i)
                 i = field();
             if(!i)
@@ -747,16 +779,25 @@ class Parser {
             TableListNode* nw_tl = new TableListNode();
             nw_tl->token_ = table->token_;
             delete table;
-            // optional as
+
+            // optional AS keyword.
+            ASTNode* name = nullptr;
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "AS"){
                 cur_pos_++;
-                ASTNode* as = this->table();
-                if(!as){
-                    nw_tl->clean();
+                name = field();
+                if(!name){
                     return nullptr;
                 }
-                nw_tl->as_ = as;
             }
+            // optional renaming of a field.
+            if(!name && cur_pos_ < cur_size_ && tokens_[cur_pos_].type_ == IDENTIFIER){
+                name = field();
+                if(!name){
+                    return nullptr;
+                }
+            }
+            nw_tl->as_ = name;
+
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
                 nw_tl->token_ = tokens_[++cur_pos_];
                 nw_tl->next_ = tableList();

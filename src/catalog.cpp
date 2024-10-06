@@ -49,6 +49,10 @@ class TableSchema {
             delete table_; 
         }
 
+        std::string getTableName(){
+            return table_name_;
+        }
+
         int numOfCols() {
             return columns_.size();
         }

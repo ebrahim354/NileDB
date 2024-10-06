@@ -27,6 +27,7 @@ class Column {
         // the reson for this is that we don't want anyone to change the column meta data after initializing it.
         // if you want to modify the column you have to delete it and start a new one, this is better to avoid errors
         // in the future, for example: when we start adding ALTER TABLE command.
+        void                           setName(std::string& name) { name_ = name  ; }
         std::string                    getName()        { return name_            ; }
         Type                           getType()        { return type_            ; }
         uint8_t                        getSize()        { return size_            ; }

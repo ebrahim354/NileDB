@@ -27,13 +27,15 @@ struct AlgebraOperation {
 
 struct ScanOperation: AlgebraOperation {
     public:
-        ScanOperation(std::string table_name): 
+        ScanOperation(std::string table_name, std::string table_rename): 
             AlgebraOperation(SCAN),
-            table_name_(table_name)
+            table_name_(table_name),
+            table_rename_(table_rename)
         {}
         ~ScanOperation()
         {}
-        std::string table_name_;
+        std::string table_name_{};
+        std::string table_rename_{};
 };
 
 struct FilterOperation: AlgebraOperation {
@@ -139,7 +141,7 @@ class AlgebraEngine {
             AlgebraOperation* result = nullptr;
             // only use the first table until we add support for the product operation.
             if(data->tables_.size())
-                result = new ScanOperation(data->tables_[0]);
+                result = new ScanOperation(data->tables_[0], data->table_names_[0]);
             if(data->where_)
                 result = new FilterOperation(result, data->where_, data->fields_, data->field_names_);
             if(data->aggregates_.size())
