@@ -110,10 +110,11 @@ struct ScopedFieldNode : ASTNode {
 };
 
 struct SubQueryNode : ASTNode {
-    SubQueryNode(CategoryType query_type ,QueryData* data): 
-        ASTNode(query_type), data_(data)
+    SubQueryNode(CategoryType query_type , int idx, int parent_idx): 
+        ASTNode(query_type), idx_(idx), parent_idx_(parent_idx)
     {}
-    QueryData* data_ = nullptr;
+    int idx_ = -1;
+    int parent_idx_ = -1;
 };
 
 struct AggregateFuncNode : ASTNode {
@@ -201,16 +202,18 @@ struct OrNode : ASTNode {
 
 
 struct ExpressionNode : ASTNode {
-    ExpressionNode(QueryData* parent, ASTNode* val = nullptr): ASTNode(EXPRESSION), cur_(val), parent_query_(parent)
+    ExpressionNode(QueryData* top_level_statement, int query_idx, ASTNode* val = nullptr): 
+        ASTNode(EXPRESSION), cur_(val), query_idx_(query_idx), top_level_statement_(top_level_statement)
     {}
     void clean(){
         delete cur_;
     }
     int id_ = 0; // 0 means it's a single expression => usually used in a where clause and can't have aggregations.
+    int query_idx_ = -1; // the index of the query that this expression belongs to, -1 means top level query
+    QueryData* top_level_statement_ = nullptr;
     ASTNode* cur_ = nullptr;
-    QueryData* parent_query_ = nullptr;
     AggregateFuncNode* aggregate_func_ = nullptr; // each expression can hold at most 1 aggregate function inside of it.
-                                               // meaning that expressions with aggregate functions can't be nested.
+                                                  // meaning that expressions with aggregate functions can't be nested.
 };
 
 
@@ -324,14 +327,13 @@ struct QueryData {
 // SQL statement data wrapper.
 struct SelectStatementData : QueryData {
 
-    SelectStatementData(): QueryData(SELECT_DATA){}
+    SelectStatementData(int parent_idx): QueryData(SELECT_DATA), parent_idx_(parent_idx) 
+    {}
     ~SelectStatementData() {}
 
     void init(TableListNode* tables, SelectListNode* fields,
-                        ExpressionNode* where, ConstListNode* order_by_list, 
-                        QueryData* parent = nullptr) {
+                        ExpressionNode* where, ConstListNode* order_by_list) {
         where_ = where;
-        parent_ = parent;
         SelectListNode* field_ptr = fields;
         while(field_ptr != nullptr){
             has_star_ = (has_star_ || field_ptr->star_);
@@ -378,7 +380,9 @@ struct SelectStatementData : QueryData {
     std::vector<std::string> tables_ = {};
     ExpressionNode* where_ = nullptr;
     std::vector<int> order_by_list_ = {};
-    QueryData* parent_ = nullptr;
+    int idx_ = -1;          // every query must have an id starting from 0 even the top level query.
+    int parent_idx_ = -1;   // -1 means this query is the top level query.
+    std::vector<QueryData*> queries_call_stack_ = {}; // only used when this query is the top level. 
 };
 
 struct CreateTableStatementNode : ASTNode {
@@ -484,7 +488,7 @@ class Parser {
             if(type == COUNT && cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "*"){
                 cur_pos_++;
             } else {
-                exp = expression(expression_ctx->parent_query_);
+                exp = expression(expression_ctx->top_level_statement_, expression_ctx->query_idx_, 0);
                 if(!exp) return nullptr;
                 if(exp->aggregate_func_) {
                     std::cout << "[ERROR] Cannot nest aggregate functions" << std::endl;
@@ -546,19 +550,23 @@ class Parser {
         }
 
         ASTNode* item(ExpressionNode* expression_ctx){
+            if(!expression_ctx) {
+                std::cout << "[ERROR] No expression context provided" << std::endl;
+                return nullptr;
+            }
+
             ASTNode* i = nullptr;
             if(cur_pos_ >= cur_size_) return nullptr;
             // check for sub-queries.
             // TODO: extend to no only support select sub-queries.
             if(cur_pos_ + 1 < cur_size_ && tokens_[cur_pos_].val_ == "(" && tokens_[cur_pos_+1].val_ == "SELECT"){
                 cur_pos_+=2;
-                QueryData* parent = nullptr;
-                if(expression_ctx) parent = expression_ctx->parent_query_;
-                SelectStatementData* sub_query = selectStatement(parent);
+                SelectStatementData* sub_query = 
+                    selectStatement(expression_ctx->query_idx_, expression_ctx->top_level_statement_);
                 if(!sub_query) {
                     return nullptr;
                 }
-                SubQueryNode* sub_query_node = new SubQueryNode(SELECT_STATEMENT, sub_query);
+                SubQueryNode* sub_query_node = new SubQueryNode(SELECT_STATEMENT, sub_query->idx_, sub_query->parent_idx_);
                 if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")") {
                     return nullptr;
                 }
@@ -568,13 +576,8 @@ class Parser {
             // nested expressions.
             if(tokens_[cur_pos_].val_ == "("){
                 cur_pos_++;
-                int id = 0;
-                QueryData* parent = nullptr;
-                if(expression_ctx) {
-                    id = expression_ctx->id_;
-                    parent = expression_ctx->parent_query_;
-                }
-                auto ex = expression(parent, id);
+                int id = expression_ctx->id_;
+                auto ex = expression(expression_ctx->top_level_statement_, expression_ctx->query_idx_ ,id);
                 if(!ex) return nullptr;
                 if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")") {
                     return nullptr;
@@ -584,8 +587,6 @@ class Parser {
             }
             if(expression_ctx && expression_ctx->id_ != 0)
                 i = agg_func(expression_ctx);
-
-
             if(!i)
                 i = scoped_field();
             if(!i)
@@ -720,8 +721,8 @@ class Parser {
             return cur;
         }
 
-        ExpressionNode* expression(QueryData* parent = nullptr, int id = 0){
-            ExpressionNode* ex = new ExpressionNode(parent);
+        ExpressionNode* expression(QueryData* top_level_statement, int query_idx, int id){
+            ExpressionNode* ex = new ExpressionNode(top_level_statement, query_idx);
             ex->id_ = id;
             ASTNode* cur = logic_or(ex);
             if(!cur) return nullptr;
@@ -755,14 +756,14 @@ class Parser {
             return nw_fdl;
         }
 
-        SelectListNode* selectList(QueryData* parent){
+        SelectListNode* selectList(QueryData* top_level_statement, int query_idx, int expression_id = 1){
             bool star = false;
-            int cnt = 1;
+            int cnt = expression_id;
             ExpressionNode* f = nullptr;
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "*"){
                 cur_pos_++;
                 star = true;
-            } else f = expression(parent,cnt++);
+            } else f = expression(top_level_statement,query_idx,cnt);
 
             if(!star && !f) {
                 return nullptr;
@@ -791,7 +792,7 @@ class Parser {
             nw_fl->as_ = name;
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
                 cur_pos_++;
-                nw_fl->next_ = selectList(parent);
+                nw_fl->next_ = selectList(top_level_statement, query_idx, cnt+1);
             }
             return nw_fl;
         }
@@ -866,10 +867,20 @@ class Parser {
 
 
         
-        SelectStatementData* selectStatement(QueryData* parent = nullptr){
+        // top level statement is called with the following args (-1, nullptr).
+        SelectStatementData* selectStatement(int parent_idx, QueryData* top_level_statement){
 
-            SelectStatementData* statement = new SelectStatementData();
-            SelectListNode* fields = selectList(statement);
+            SelectStatementData* statement = new SelectStatementData(parent_idx);
+            QueryData* top_level = nullptr;
+
+            // if current query is the top level we need to pass it if it's not pass the top level one instead.
+            if(top_level_statement == nullptr) top_level = statement;
+            else top_level = top_level_statement;
+            // push current query to the call stack.
+            statement->idx_ = reinterpret_cast<SelectStatementData*>(top_level)->queries_call_stack_.size();
+            reinterpret_cast<SelectStatementData*>(top_level)->queries_call_stack_.push_back(statement);
+
+            SelectListNode* fields = selectList(top_level, statement->idx_);
             TableListNode* tables = nullptr;
             ExpressionNode*  where = nullptr;
             ConstListNode* order_by = nullptr;
@@ -886,7 +897,7 @@ class Parser {
 
             if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
                 cur_pos_++;
-                where = expression(parent);
+                where = expression(top_level, statement->idx_, 0);
             }
 
             if(cur_pos_+1 < cur_size_ && tokens_[cur_pos_].val_ == "ORDER" && tokens_[cur_pos_+1].val_ == "BY"){
@@ -894,7 +905,7 @@ class Parser {
                 order_by = constList();
             }
 
-            statement->init(tables, fields, where, order_by, parent);
+            statement->init(tables, fields, where, order_by);
             return statement; 
         }
 
@@ -1008,7 +1019,7 @@ class Parser {
             }
             cur_pos_++;
 
-            statement->expression_ = expression();
+            statement->expression_ = expression(nullptr, -1, 0);
             if(!statement->expression_) {
                 statement->clean();
                 return nullptr;
@@ -1030,7 +1041,7 @@ class Parser {
             cur_pos_ = 1;
             QueryData* ret = nullptr;
             if(v == "SELECT")
-                ret = selectStatement();
+                ret = selectStatement(-1, nullptr);
 
             // invalid query even if it produces a valid AST.
             if(cur_pos_ != cur_size_) return nullptr;
