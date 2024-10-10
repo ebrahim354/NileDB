@@ -1,5 +1,6 @@
 #pragma once
 #include "parser.cpp"
+#include <vector>
 
 
 enum AlgebraOperationType {
@@ -20,15 +21,17 @@ enum AlgebraOperationType {
 
 struct AlgebraOperation {
     public:
-        AlgebraOperation (AlgebraOperationType type) : type_(type)
+        AlgebraOperation (AlgebraOperationType type, std::vector<AlgebraOperation*>* call_stack) : 
+            type_(type), call_stack_(call_stack)
         {}
         AlgebraOperationType type_;
+        std::vector<AlgebraOperation*>* call_stack_{};
 };
 
 struct ScanOperation: AlgebraOperation {
     public:
-        ScanOperation(std::string table_name, std::string table_rename): 
-            AlgebraOperation(SCAN),
+        ScanOperation(std::vector<AlgebraOperation*>* call_stack,std::string table_name, std::string table_rename): 
+            AlgebraOperation(SCAN, call_stack),
             table_name_(table_name),
             table_rename_(table_rename)
         {}
@@ -40,10 +43,10 @@ struct ScanOperation: AlgebraOperation {
 
 struct FilterOperation: AlgebraOperation {
     public:
-        FilterOperation(AlgebraOperation* child, ExpressionNode* filter, 
+        FilterOperation(std::vector<AlgebraOperation*>* call_stack,AlgebraOperation* child, ExpressionNode* filter, 
                 std::vector<ExpressionNode*>& fields, 
                 std::vector<std::string>& field_names): 
-            AlgebraOperation(FILTER),
+            AlgebraOperation(FILTER, call_stack),
             child_(child), 
             filter_(filter),
             fields_(fields),
@@ -59,8 +62,8 @@ struct FilterOperation: AlgebraOperation {
 
 struct AggregationOperation: AlgebraOperation {
     public:
-        AggregationOperation(AlgebraOperation* child, std::vector<AggregateFuncNode*> aggregates): 
-            AlgebraOperation(AGGREGATION),
+        AggregationOperation(std::vector<AlgebraOperation*>* call_stack, AlgebraOperation* child, std::vector<AggregateFuncNode*> aggregates): 
+            AlgebraOperation(AGGREGATION, call_stack),
             child_(child), 
             aggregates_(aggregates)
         {}
@@ -73,8 +76,8 @@ struct AggregationOperation: AlgebraOperation {
 
 struct ProjectionOperation: AlgebraOperation {
     public:
-        ProjectionOperation(AlgebraOperation* child, std::vector<ExpressionNode*> fields): 
-            AlgebraOperation(PROJECTION),
+        ProjectionOperation(std::vector<AlgebraOperation*>* call_stack, AlgebraOperation* child, std::vector<ExpressionNode*> fields): 
+            AlgebraOperation(PROJECTION, call_stack),
             child_(child), 
             fields_(fields)
         {}
@@ -86,8 +89,8 @@ struct ProjectionOperation: AlgebraOperation {
 
 struct SortOperation: AlgebraOperation {
     public:
-        SortOperation(AlgebraOperation* child, std::vector<int> order_by_list): 
-            AlgebraOperation(SORT),
+        SortOperation(std::vector<AlgebraOperation*>* call_stack, AlgebraOperation* child, std::vector<int> order_by_list): 
+            AlgebraOperation(SORT, call_stack),
             child_(child), 
             order_by_list_(order_by_list)
         {}
@@ -104,10 +107,24 @@ class AlgebraEngine {
         {}
         ~AlgebraEngine(){}
 
+        
         AlgebraOperation* createAlgebraExpression(QueryData* data){
+
             switch(data->type_){
+
                 case SELECT_DATA:
-                    return createSelectStatementExpression(reinterpret_cast<SelectStatementData*>(data));
+                    {
+                        std::vector<AlgebraOperation*>* call_stack = new std::vector<AlgebraOperation*>();
+                        auto select_data = reinterpret_cast<SelectStatementData*>(data);
+                        for(size_t i = 0; i < select_data->queries_call_stack_.size(); i++){
+                            auto current_data = reinterpret_cast<SelectStatementData*>(select_data->queries_call_stack_[i]);
+                            AlgebraOperation* op = createSelectStatementExpression(current_data, call_stack);
+                            call_stack->push_back(op);
+                        }
+
+                        if(call_stack->size() < 1) return nullptr;
+                        return (*call_stack)[0]; 
+                    }
             }
             return nullptr;
         }
@@ -135,21 +152,22 @@ class AlgebraEngine {
             return  true;
         }
 
-        AlgebraOperation* createSelectStatementExpression(SelectStatementData* data){
+        AlgebraOperation* createSelectStatementExpression(SelectStatementData* data, std::vector<AlgebraOperation*>* call_stack){
             if(!isValidSelectStatementData(data))
                 return nullptr;
+
             AlgebraOperation* result = nullptr;
             // only use the first table until we add support for the product operation.
             if(data->tables_.size())
-                result = new ScanOperation(data->tables_[0], data->table_names_[0]);
+                result = new ScanOperation(call_stack, data->tables_[0], data->table_names_[0]);
             if(data->where_)
-                result = new FilterOperation(result, data->where_, data->fields_, data->field_names_);
+                result = new FilterOperation(call_stack, result, data->where_, data->fields_, data->field_names_);
             if(data->aggregates_.size())
-                result = new AggregationOperation(result, data->aggregates_);
+                result = new AggregationOperation(call_stack, result, data->aggregates_);
             if(data->fields_.size())
-                result = new ProjectionOperation(result, data->fields_);
+                result = new ProjectionOperation(call_stack, result, data->fields_);
             if(data->order_by_list_.size())
-                result = new SortOperation(result, data->order_by_list_);
+                result = new SortOperation(call_stack, result, data->order_by_list_);
             return result;
         }
 

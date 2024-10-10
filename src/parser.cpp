@@ -67,6 +67,7 @@ enum CategoryType {
     OR,         // or           := and     ( ( "OR" ) and )*
     EXPRESSION, // expression   := or
     PREDICATE,  // sub_query    := select_statment,  only select sub-queries are allowed (for now)
+    SUB_QUERY,
 
     TABLE,
     SELECT_STATEMENT,
@@ -110,8 +111,8 @@ struct ScopedFieldNode : ASTNode {
 };
 
 struct SubQueryNode : ASTNode {
-    SubQueryNode(CategoryType query_type , int idx, int parent_idx): 
-        ASTNode(query_type), idx_(idx), parent_idx_(parent_idx)
+    SubQueryNode(int idx, int parent_idx): 
+        ASTNode(SUB_QUERY), idx_(idx), parent_idx_(parent_idx)
     {}
     int idx_ = -1;
     int parent_idx_ = -1;
@@ -566,7 +567,7 @@ class Parser {
                 if(!sub_query) {
                     return nullptr;
                 }
-                SubQueryNode* sub_query_node = new SubQueryNode(SELECT_STATEMENT, sub_query->idx_, sub_query->parent_idx_);
+                SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
                 if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")") {
                     return nullptr;
                 }
