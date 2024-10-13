@@ -106,10 +106,10 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
         case COMPARISON : {
                               ComparisonNode* comp = reinterpret_cast<ComparisonNode*>(expression);
                               std::string op = comp->token_.val_;
-                              Value lhs = evaluate_expression(comp->cur_, evaluator);
+                              Value lhs = evaluate_expression(comp->cur_, evaluator, comp->cur_->category_ == COMPARISON);
                               ASTNode* ptr = comp->next_;
                               while(ptr){
-                                  Value rhs = evaluate_expression(ptr, evaluator);
+                                  Value rhs = evaluate_expression(ptr, evaluator, comp->cur_->category_ == COMPARISON);
 
                                   if(op == ">" && lhs > rhs ) lhs = Value(true);
                                   else if(op == ">") lhs = Value(false);
@@ -196,3 +196,5 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                 }
     }
 }
+
+

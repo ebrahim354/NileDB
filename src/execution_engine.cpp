@@ -35,24 +35,29 @@ enum ExecutorType {
 
 struct Executor {
     public:
-        Executor(ExecutorType type, TableSchema* output_schema, std::vector<Executor*>* call_stack): 
-            type_(type), output_schema_(output_schema), call_stack_(call_stack)
+        Executor(ExecutorType type, TableSchema* output_schema, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx, Executor* child): 
+            type_(type), output_schema_(output_schema), call_stack_(call_stack), 
+            query_idx_(query_idx), parent_query_idx_(parent_query_idx), child_executor_(child)
         {}
         ~Executor() {}
         virtual void init() = 0;
         virtual std::vector<Value> next() = 0;
 
         ExecutorType type_;
+        Executor* child_executor_ = nullptr;
         TableSchema* output_schema_ = nullptr;
+        std::vector<Value> output_ = {};
         bool error_status_ = 0;
         bool finished_ = 0;
+        int query_idx_ = -1;
+        int parent_query_idx_ = -1;
         std::vector<Executor*>* call_stack_ = {};
 };
 
 class SeqScanExecutor : public Executor {
     public:
-        SeqScanExecutor(TableSchema* table, std::vector<Executor*>* call_stack)
-            : Executor(SEQUENTIAL_SCAN_EXECUTOR, table, call_stack), table_(table)
+        SeqScanExecutor(TableSchema* table, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx)
+            : Executor(SEQUENTIAL_SCAN_EXECUTOR, table, call_stack, query_idx, parent_query_idx, nullptr), table_(table)
         {}
         ~SeqScanExecutor()
         {}
@@ -69,14 +74,14 @@ class SeqScanExecutor : public Executor {
                 finished_ = 1;
                 return {};
             };
+            output_.clear();
             Record r = it_->getCurRecordCpy();
-            std::vector<Value> output;
-            int err = table_->translateToValues(r, output);
+            int err = table_->translateToValues(r, output_);
             if(err) {
                 error_status_ = 1;
                 return {};
             }
-            return output;
+            return output_;
         }
     private:
         TableSchema* table_ = nullptr;
@@ -89,9 +94,11 @@ class FilterExecutor : public Executor {
         FilterExecutor(Executor* child, TableSchema* output_schema, ExpressionNode* filter, 
                 std::vector<ExpressionNode*>& fields, 
                 std::vector<std::string>& field_names,
-                std::vector<Executor*>* call_stack
+                std::vector<Executor*>* call_stack,
+                int query_idx,
+                int parent_query_idx
                 )
-            : Executor(FILTER_EXECUTOR, output_schema, call_stack), child_executor_(child), filter_(filter), 
+            : Executor(FILTER_EXECUTOR, output_schema, call_stack, query_idx, parent_query_idx, child), filter_(filter), 
               fields_(fields), field_names_(field_names)
         {}
         ~FilterExecutor()
@@ -105,65 +112,137 @@ class FilterExecutor : public Executor {
             }
 
             std::string field = item->token_.val_;
-            if(!output_schema_) {
-                std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
-                error_status_ = 1;
-                return Value();
-            }
             int idx = -1;
             if(item->category_ == SCOPED_FIELD){
-                std::string table = output_schema_->getTableName();
-                table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
-                std::string col = table;col += "."; col+= field;
-                idx = output_schema_->colExist(col);
-                if(idx < 0 || idx >= output_.size()) {
-                    std::cout << "[ERROR] Invalid field name " << col << std::endl;
-                    error_status_ = 1;
-                    return Value();
-                }
-            } else {
-                int num_of_matches = 0;
-                auto columns = output_schema_->getColumns();
-                for(size_t i = 0; i < columns.size(); ++i){
-                    std::vector<std::string> splittedStr = strSplit(columns[i].getName(), '.');
-                    if(splittedStr.size() != 2) {
-                        std::cout << "[ERROR] Invalid schema " << std::endl;
+                TableSchema* schema_ptr = output_schema_;
+                int cur_query_idx = query_idx_;
+                int cur_query_parent = parent_query_idx_;
+                int idx = -1;
+                 while(true){
+                    if(!schema_ptr && cur_query_parent != -1){
+                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        schema_ptr = parent_query->output_schema_;
+                        cur_query_idx = parent_query->query_idx_;
+                        cur_query_parent = parent_query->parent_query_idx_;
+                        continue;
+                    } else if(!schema_ptr){
+                        std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
                         error_status_ = 1;
                         return Value();
                     }
-                    if(field == splittedStr[1]){
-                        num_of_matches++;
-                        idx = i;
-                    }
-                }
-                if(num_of_matches > 1){
-                    std::cout << "[ERROR] Ambiguous field name: " << field << std::endl;
-                    error_status_ = 1;
-                    return Value();
-                }
+                    std::string table = schema_ptr->getTableName();
+                    table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
+                    std::string col = table;col += "."; col+= field;
+                    idx = schema_ptr->colExist(col);
 
-                // if it doesn't match any fields check for renames.
-                if(idx < 0){
-                    for(int i = 0; i < field_names_.size(); i++){
-                        if(field == field_names_[i]) 
-                            return evaluate_expression(fields_[i], eval);
+                    if(idx < 0 && cur_query_parent != -1){
+                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        schema_ptr = parent_query->output_schema_;
+                        cur_query_idx = parent_query->query_idx_;
+                        cur_query_parent = (*call_stack_)[cur_query_idx]->parent_query_idx_;
+                        continue;
                     }
-                }
+                    Executor* cur_exec = (*call_stack_)[cur_query_idx];
 
-                if(idx < 0 || idx >= output_.size()) {
-                    std::string prefix = AGG_FUNC_IDENTIFIER_PREFIX;
-                    if(field.rfind(prefix, 0) == 0)
-                        std::cout << "[ERROR] aggregate functions should not be used in here"<< std::endl;
-                    else 
-                        std::cout << "[ERROR] Invalid field name " << field << std::endl;
-                    error_status_ = 1;
-                    return Value();
+                    while(cur_exec && cur_exec->type_ != SEQUENTIAL_SCAN_EXECUTOR){
+                        cur_exec = cur_exec->child_executor_;
+                    }
+                    if(!cur_exec){
+                        std::cout << "[ERROR] Invalid scoped filter operation"<< std::endl;
+                        error_status_ = 1;
+                        return Value();
+                    }
+                    std::vector<Value> cur_output  = cur_exec->output_;
+
+                    if(idx < 0 || idx >= cur_output.size()) {
+                        std::cout << "[ERROR] Invalid scoped field name for filtering " << col << std::endl;
+                        error_status_ = 1;
+                        return Value();
+                    }
+                    return cur_output[idx];
+                 }
+            } else {
+                TableSchema* schema_ptr = output_schema_;
+                int cur_query_idx = query_idx_;
+                int cur_query_parent = parent_query_idx_;
+                int idx = -1;
+                while(true){
+                    if(!schema_ptr && cur_query_parent != -1){
+                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        schema_ptr = parent_query->output_schema_;
+                        cur_query_idx = parent_query->query_idx_;
+                        cur_query_parent = parent_query->parent_query_idx_;
+                        continue;
+                    } else if(!schema_ptr){
+                        std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
+                        error_status_ = 1;
+                        return Value();
+                    }
+                    int num_of_matches = 0;
+                    auto columns = schema_ptr->getColumns();
+                    for(size_t i = 0; i < columns.size(); ++i){
+                        std::vector<std::string> splittedStr = strSplit(columns[i].getName(), '.');
+                        if(splittedStr.size() != 2) {
+                            std::cout << "[ERROR] Invalid schema " << std::endl;
+                            error_status_ = 1;
+                            return Value();
+                        }
+                        if(field == splittedStr[1]){
+                            num_of_matches++;
+                            idx = i;
+                        }
+                    }
+                    if(num_of_matches > 1){
+                        std::cout << "[ERROR] Ambiguous field name: " << field << std::endl;
+                        error_status_ = 1;
+                        return Value();
+                    }
+                    // if it doesn't match any fields check for renames.
+                    if(idx < 0){
+                        for(int i = 0; i < field_names_.size(); i++){
+                            if(field == field_names_[i]) 
+                                return evaluate_expression(fields_[i], eval);
+                        }
+                    }
+                    // can't find the field in current context,
+                    // search for it in context of the parent till the top level query.
+                    if(num_of_matches == 0 && cur_query_parent != -1){
+                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        schema_ptr = parent_query->output_schema_;
+                        cur_query_idx = parent_query->query_idx_;
+                        cur_query_parent = (*call_stack_)[cur_query_idx]->parent_query_idx_;
+                        continue;
+                    }
+                    Executor* cur_exec = (*call_stack_)[cur_query_idx];
+
+                    while(cur_exec && cur_exec->type_ != FILTER_EXECUTOR){
+                        cur_exec = cur_exec->child_executor_;
+                    }
+                    if(!cur_exec){
+                        std::cout << "[ERROR] Invalid filter operation"<< std::endl;
+                        error_status_ = 1;
+                        return Value();
+                    }
+
+                    std::vector<Value> cur_output  = cur_exec->output_;
+
+                    if(idx < 0 || idx >= cur_output.size()) {
+                        std::string prefix = AGG_FUNC_IDENTIFIER_PREFIX;
+                        if(field.rfind(prefix, 0) == 0)
+                            std::cout << "[ERROR] aggregate functions should not be used in here"<< std::endl;
+                        else 
+                            std::cout << "[ERROR] Invalid field name for filter " << field << std::endl;
+                        error_status_ = 1;
+                        return Value();
+                    }
+                    return cur_output[idx];
                 }
             }
-            return output_[idx];
         } 
 
         void init() {
+            error_status_ = 0;
+            finished_ = 0;
             output_ = {};
             if(child_executor_) {
                 child_executor_->init();
@@ -193,11 +272,9 @@ class FilterExecutor : public Executor {
             }
         }
     private:
-        Executor* child_executor_ = nullptr;
         ExpressionNode* filter_ = nullptr;
         std::vector<ExpressionNode*> fields_ = {};
         std::vector<std::string> field_names_ = {};
-        std::vector<Value> output_ = {}; 
         std::function<Value(ASTNode*)>
             eval = std::bind(&FilterExecutor::evaluate, this, std::placeholders::_1);
 };
@@ -205,9 +282,9 @@ class FilterExecutor : public Executor {
 class AggregationExecutor : public Executor {
     public:
         AggregationExecutor(Executor* child_executor, TableSchema* output_schema, 
-                std::vector<AggregateFuncNode*> aggregates, std::vector<Executor*>* call_stack): 
+                std::vector<AggregateFuncNode*> aggregates, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx): 
                 
-            Executor(AGGREGATION_EXECUTOR, output_schema, call_stack), child_executor_(child_executor), aggregates_(aggregates)
+            Executor(AGGREGATION_EXECUTOR, output_schema, call_stack, query_idx, parent_query_idx, child_executor), aggregates_(aggregates)
         {}
         ~AggregationExecutor()
         {}
@@ -270,23 +347,29 @@ class AggregationExecutor : public Executor {
         void init() {
             finished_ = 0;
             error_status_ = 0;
-            output_ = {};
-            child_executor_->init();
+            output_ = std::vector<Value> (output_schema_->getCols().size(), Value());
+
+            if(child_executor_){
+                child_executor_->init();
+            }
+
             std::vector<int> aggregate_vals(aggregates_.size(), 0);
             bool first_iteration = true;
             int num_of_rows = 0;
 
             while(true){
                 std::vector<Value> child_output; 
-                child_output = child_executor_->next();
-                error_status_ = child_executor_->error_status_;
-                if(error_status_)  return;
-                if(child_executor_->finished_) break;
+                if(child_executor_){
+                    child_output = child_executor_->next();
+                    if(child_executor_->error_status_)  return;
+                    if(child_executor_->finished_) 
+                        break;
+                } 
 
                 num_of_rows++;
                 if(first_iteration){
-                    for(auto& val : child_output){
-                        output_.push_back(val);
+                    for(int i = 0; i < child_output.size(); i++){
+                        output_[i] = child_output[i];
                     }
                 }
 
@@ -332,11 +415,12 @@ class AggregationExecutor : public Executor {
                     if(error_status_)  return;
                 }
                 first_iteration = false;
-
+                if(!child_executor_) break;
             }
 
             for(int i = 0; i < aggregates_.size(); i++){
-                output_.push_back(Value((aggregates_[i]->type_ == AVG  && num_of_rows != 0 ? (aggregate_vals[i] / num_of_rows) : aggregate_vals[i])));
+                int idx = i + output_.size() - aggregates_.size();
+                output_[idx] = (Value((aggregates_[i]->type_ == AVG  && num_of_rows != 0 ? (aggregate_vals[i] / num_of_rows) : aggregate_vals[i])));
             }
         }
 
@@ -346,18 +430,15 @@ class AggregationExecutor : public Executor {
             return output_;
         }
     private:
-        Executor* child_executor_ = nullptr;
         std::vector<AggregateFuncNode*> aggregates_;
-        std::vector<Value> output_;
         std::function<Value(ASTNode*)>
             eval = std::bind(&AggregationExecutor::evaluate, this, std::placeholders::_1);
 };
 
 class ProjectionExecutor : public Executor {
     public:
-        ProjectionExecutor(Executor* child_executor, TableSchema* output_schema, std::vector<ExpressionNode*> fields, std::vector<Executor*>* call_stack): 
-            Executor(PROJECTION_EXECUTOR, output_schema, call_stack),
-            child_executor_(child_executor), fields_(fields)
+        ProjectionExecutor(Executor* child_executor, TableSchema* output_schema, std::vector<ExpressionNode*> fields, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx): 
+            Executor(PROJECTION_EXECUTOR, output_schema, call_stack, query_idx, parent_query_idx, child_executor), fields_(fields)
         {}
         ~ProjectionExecutor()
         {}
@@ -373,6 +454,9 @@ class ProjectionExecutor : public Executor {
                     return Value();
                 }
                 std::vector<Value> tmp = sub_query_executor->next();
+                if(tmp.size() == 0 && sub_query_executor->finished_) {
+                    return Value();
+                }
 
                 if(tmp.size() == 0 || sub_query_executor->error_status_) {
                     std::cout << "[ERROR] could not execute sub-query" << std::endl;
@@ -394,52 +478,111 @@ class ProjectionExecutor : public Executor {
             }
 
             std::string field = item->token_.val_;
-            if(!output_schema_) {
-                std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
-                error_status_ = 1;
-                return Value();
-            }
-            int idx = -1;
+
+
             if(item->category_ == SCOPED_FIELD){
-                std::string table = output_schema_->getTableName();
-                table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
-                std::string col = table;col += "."; col+= field;
-                idx = output_schema_->colExist(col);
-                //    output_schema_->printTableHeader();
-                if(idx < 0 || idx >= output_.size()) {
-                    std::cout << "[ERROR] Invalid field name " << col << std::endl;
-                    error_status_ = 1;
-                    return Value();
-                }
-            } else {
-                int num_of_matches = 0;
-                auto columns = output_schema_->getColumns();
-                for(size_t i = 0; i < columns.size(); ++i){
-                    std::vector<std::string> splittedStr = strSplit(columns[i].getName(), '.');
-                    if(splittedStr.size() != 2) {
-                        //output_schema_->printTableHeader();
-                        std::cout << "[ERROR] Invalid schema " << std::endl;
+                TableSchema* schema_ptr = output_schema_;
+                int cur_query_idx = query_idx_;
+                int cur_query_parent = parent_query_idx_;
+                int idx = -1;
+
+                while(true){
+                    if(!schema_ptr && cur_query_parent != -1){
+                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        schema_ptr = parent_query->output_schema_;
+                        cur_query_idx = parent_query->query_idx_;
+                        cur_query_parent = parent_query->parent_query_idx_;
+                        continue;
+                    } else if(!schema_ptr){
+                        std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
                         error_status_ = 1;
                         return Value();
                     }
-                    if(field == splittedStr[1]){
-                        num_of_matches++;
-                        idx = i;
+                    std::string table = schema_ptr->getTableName();
+                    table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
+                    std::string col = table;col += "."; col+= field;
+                    idx = schema_ptr->colExist(col);
+                    if(idx < 0 && cur_query_parent != -1){
+                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        schema_ptr = parent_query->output_schema_;
+                        cur_query_idx = parent_query->query_idx_;
+                        cur_query_parent = (*call_stack_)[cur_query_idx]->parent_query_idx_;
+                        continue;
                     }
+                    std::vector<Value> cur_output;
+                    if(query_idx_ == 0)
+                        cur_output = output_;
+                    else
+                        cur_output = (*call_stack_)[cur_query_idx]->output_; 
+                    if(idx < 0 || idx >= cur_output.size()) {
+                        std::cout << "[ERROR] Invalid field name " << col << std::endl;
+                        error_status_ = 1;
+                        return Value();
+                    }
+                    return cur_output[idx];
                 }
-                if(num_of_matches > 1){
-                    std::cout << "[ERROR] Ambiguous field name: " << field << std::endl;
-                    error_status_ = 1;
-                    return Value();
-                }
-                if(idx < 0 || idx >= output_.size()) {
-                    std::cout << "[ERROR] Invalid field name " << field << std::endl;
-                    //output_schema_->printTableHeader();
-                    error_status_ = 1;
-                    return Value();
+
+            } else {
+                TableSchema* schema_ptr = output_schema_;
+                int cur_query_idx = query_idx_;
+                int cur_query_parent = parent_query_idx_;
+                int idx = -1;
+                while(true){
+                    if(!schema_ptr && cur_query_parent != -1){
+                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        schema_ptr = parent_query->output_schema_;
+                        cur_query_idx = parent_query->query_idx_;
+                        cur_query_parent = parent_query->parent_query_idx_;
+                        continue;
+                    } else if(!schema_ptr){
+                        std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
+                        error_status_ = 1;
+                        return Value();
+                    }
+                    int num_of_matches = 0;
+                    auto columns = schema_ptr->getColumns();
+                    for(size_t i = 0; i < columns.size(); ++i){
+                        std::vector<std::string> splittedStr = strSplit(columns[i].getName(), '.');
+                        if(splittedStr.size() != 2) {
+                            //output_schema_->printTableHeader();
+                            std::cout << "[ERROR] Invalid schema " << std::endl;
+                            error_status_ = 1;
+                            return Value();
+                        }
+                        if(field == splittedStr[1]){
+                            num_of_matches++;
+                            idx = i;
+                        }
+                    }
+                    if(num_of_matches > 1){
+                        std::cout << "[ERROR] Ambiguous field name: " << field << std::endl;
+                        error_status_ = 1;
+                        return Value();
+                    }
+                    // can't find the field in current context,
+                    // search for it in context of the parent till the top level query.
+                    if(num_of_matches == 0 && cur_query_parent != -1){
+                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        schema_ptr = parent_query->output_schema_;
+                        cur_query_idx = parent_query->query_idx_;
+                        cur_query_parent = (*call_stack_)[cur_query_idx]->parent_query_idx_;
+                        continue;
+                    }
+                    std::vector<Value> cur_output;
+                    if(query_idx_ == 0)
+                        cur_output = output_;
+                    else
+                        cur_output = (*call_stack_)[cur_query_idx]->output_; 
+
+                    if(idx < 0 || idx >= cur_output.size()) {
+                        std::cout << "[ERROR] Invalid field name " << field << std::endl;
+                        error_status_ = 1;
+                        return Value();
+                    }
+
+                    return cur_output[idx];
                 }
             }
-            return output_[idx];
         } 
 
         void init() {
@@ -479,17 +622,15 @@ class ProjectionExecutor : public Executor {
         }
     private:
         // child_executor_ is optional in case of projection for example : select 1 + 1 should work without a from clause.
-        Executor* child_executor_ = nullptr;
         std::vector<ExpressionNode*> fields_ {};
-        std::vector<Value> output_ {};
         std::function<Value(ASTNode*)>
             eval = std::bind(&ProjectionExecutor::evaluate, this, std::placeholders::_1);
 };
 
 class SortExecutor : public Executor {
     public:
-        SortExecutor(Executor* child_executor , TableSchema* output_schema, std::vector<int> order_by_list, std::vector<Executor*>* call_stack): 
-            Executor(SORT_EXECUTOR, output_schema, call_stack), child_executor_(child_executor), order_by_list_(order_by_list)
+        SortExecutor(Executor* child_executor , TableSchema* output_schema, std::vector<int> order_by_list, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx): 
+            Executor(SORT_EXECUTOR, output_schema, call_stack, query_idx, parent_query_idx, child_executor), order_by_list_(order_by_list)
         {}
         ~SortExecutor()
         {}
@@ -514,12 +655,15 @@ class SortExecutor : public Executor {
             }
 
             std::vector<int> order_by = order_by_list_;
+            for(int i = 0; i< order_by.size(); i++)
+                std::cout << order_by[i] << std::endl;
 
             std::sort(tuples_.begin(), tuples_.end(), 
                     [&order_by](std::vector<Value>& lhs, std::vector<Value>& rhs){
                         for(int i = 0; i < order_by.size(); i++){
-                            if(lhs[order_by[i]] < rhs[order_by[i]]) return true;
-                            if(lhs[order_by[i]] == rhs[order_by[i]]) continue;
+                            if(lhs[order_by[i]] != rhs[order_by[i]]) {
+                                return lhs[order_by[i]] < rhs[order_by[i]];
+                            }
                         }
                         return false;
                     });
@@ -528,10 +672,10 @@ class SortExecutor : public Executor {
         std::vector<Value> next() {
             finished_ = (idx_ >= tuples_.size());
             if(error_status_ || finished_)  return {};
+            output_ = tuples_[idx_];
             return tuples_[idx_++];
         }
     private:
-        Executor* child_executor_ = nullptr;
         std::vector<int> order_by_list_;
         std::vector<std::vector<Value>> tuples_;
         int idx_ = 0;
@@ -764,53 +908,56 @@ class ExecutionEngine {
                     return false;
             }
         }
-        Executor* buildExecutionPlan(AlgebraOperation* logical_plan, std::vector<Executor*>* call_stack) {
+        Executor* buildExecutionPlan(AlgebraOperation* logical_plan, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx) {
             if(!logical_plan) return nullptr;
             switch(logical_plan->type_) {
                 case SORT: {
                                SortOperation* op = reinterpret_cast<SortOperation*>(logical_plan);
-                               Executor* child = buildExecutionPlan(op->child_, call_stack);
-                               SortExecutor* sort = new SortExecutor(child, child->output_schema_, op->order_by_list_, call_stack);
+                               Executor* child = buildExecutionPlan(op->child_, call_stack, query_idx, parent_query_idx);
+                               SortExecutor* sort = new SortExecutor(child, child->output_schema_, op->order_by_list_, call_stack, query_idx, parent_query_idx);
                                return sort;
                            }
                 case PROJECTION: {
                                     ProjectionOperation* op = reinterpret_cast<ProjectionOperation*>(logical_plan);
-                                    Executor* child = buildExecutionPlan(op->child_, call_stack);
+                                    Executor* child = buildExecutionPlan(op->child_, call_stack, query_idx, parent_query_idx);
                             
                                     ProjectionExecutor* project = nullptr; 
                                     if(!child)
-                                        project = new ProjectionExecutor(child, nullptr, op->fields_, call_stack);
+                                        project = new ProjectionExecutor(child, nullptr, op->fields_, call_stack, query_idx, parent_query_idx);
                                     else
-                                        project = new ProjectionExecutor(child, child->output_schema_, op->fields_, call_stack);
+                                        project = new ProjectionExecutor(child, child->output_schema_, op->fields_, call_stack, query_idx, parent_query_idx);
                                     return project;
                                  }
                 case AGGREGATION: {
                                     AggregationOperation* op = reinterpret_cast<AggregationOperation*>(logical_plan);
-                                    Executor* child = buildExecutionPlan(op->child_, call_stack);
+                                    Executor* child = buildExecutionPlan(op->child_, call_stack, query_idx, parent_query_idx);
                             
-                                    std::vector<Column> child_cols = child->output_schema_->getColumns();
-
-                                    int offset_ptr = Column::getSizeFromType(child_cols[child_cols.size() - 1].getType());
+                                    std::vector<Column> new_cols;
+                                    int offset_ptr = 0; 
+                                    if(child && child->output_schema_){
+                                        new_cols = child->output_schema_->getColumns();
+                                        offset_ptr = Column::getSizeFromType(new_cols[new_cols.size() - 1].getType());
+                                    } 
                                     for(int i = 0; i < op->aggregates_.size(); i++){
                                         std::string col_name = "agg_tmp_schema.";
                                         col_name += AGG_FUNC_IDENTIFIER_PREFIX;
                                         col_name += intToStr(op->aggregates_[i]->parent_id_);
-                                        child_cols.push_back(Column(col_name, INT, offset_ptr));
+                                        new_cols.push_back(Column(col_name, INT, offset_ptr));
                                         offset_ptr += Column::getSizeFromType(INT);
                                     }
+                                    TableSchema* new_output_schema = new TableSchema("agg_tmp_schema", nullptr, new_cols);
 
-                                    TableSchema* new_output_schema = new TableSchema("agg_tmp_schema", nullptr, child_cols);
                                     //new_output_schema->printTableHeader();
-                                    return new AggregationExecutor(child, new_output_schema, op->aggregates_, call_stack);
+                                    return new AggregationExecutor(child, new_output_schema, op->aggregates_, call_stack, query_idx, parent_query_idx);
                                  }
                 case FILTER: {
                                  FilterOperation* op = reinterpret_cast<FilterOperation*>(logical_plan);
-                                 Executor* child = buildExecutionPlan(op->child_, call_stack);
+                                 Executor* child = buildExecutionPlan(op->child_, call_stack, query_idx, parent_query_idx);
                                  TableSchema* schema = nullptr;
                                  if(child == nullptr) schema = nullptr;
                                  else                 schema = child->output_schema_;
                                  
-                                 FilterExecutor* filter = new FilterExecutor(child, schema, op->filter_, op->fields_, op->field_names_, call_stack);
+                                 FilterExecutor* filter = new FilterExecutor(child, schema, op->filter_, op->fields_, op->field_names_, call_stack, query_idx, parent_query_idx);
                                  return filter;
                              }
 
@@ -829,7 +976,7 @@ class ExecutionEngine {
                                }
 
                                TableSchema* new_output_schema = new TableSchema(tname, schema->getTable(), columns);
-                               SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, call_stack);
+                               SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, call_stack, query_idx, parent_query_idx);
                                return scan;
                            }
                 default: 
@@ -856,7 +1003,8 @@ class ExecutionEngine {
 
             std::vector<Executor*>* call_stack = new std::vector<Executor*>();
             for(size_t i = 0; i < logical_plan->call_stack_->size(); i++){
-                Executor* created_physical_plan = buildExecutionPlan((*logical_plan->call_stack_)[i], call_stack);
+                AlgebraOperation* cur_plan = (*logical_plan->call_stack_)[i];
+                Executor* created_physical_plan = buildExecutionPlan(cur_plan, call_stack, cur_plan->query_idx_, cur_plan->query_parent_idx_);
                 if(!created_physical_plan){
                     std::cout << "[ERROR] Could not build physical operation\n";
                     return false;

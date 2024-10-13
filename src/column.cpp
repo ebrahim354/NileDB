@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <vector>
 #include <string>
+#include <iostream>
 // char_n  => fixed length string (less than page size).
 // varchar => variable length string (less than page size).
 

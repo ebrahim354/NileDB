@@ -26,6 +26,8 @@ struct AlgebraOperation {
         {}
         AlgebraOperationType type_;
         std::vector<AlgebraOperation*>* call_stack_{};
+        int query_idx_ = -1;
+        int query_parent_idx_ = -1;
 };
 
 struct ScanOperation: AlgebraOperation {
@@ -168,6 +170,10 @@ class AlgebraEngine {
                 result = new ProjectionOperation(call_stack, result, data->fields_);
             if(data->order_by_list_.size())
                 result = new SortOperation(call_stack, result, data->order_by_list_);
+            if(result) {
+                result->query_idx_ = data->idx_;
+                result->query_parent_idx_ = data->parent_idx_;
+            }
             return result;
         }
 
