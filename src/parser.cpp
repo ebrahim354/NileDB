@@ -333,7 +333,9 @@ struct SelectStatementData : QueryData {
     ~SelectStatementData() {}
 
     void init(TableListNode* tables, SelectListNode* fields,
-                        ExpressionNode* where, ConstListNode* order_by_list) {
+                        ExpressionNode* where, ConstListNode* order_by_list, std::vector<ASTNode*> group_by, bool distinct) {
+        distinct_ = distinct;
+        group_by_ = group_by;
         where_ = where;
         SelectListNode* field_ptr = fields;
         while(field_ptr != nullptr){
@@ -384,6 +386,8 @@ struct SelectStatementData : QueryData {
     int idx_ = -1;          // every query must have an id starting from 0 even the top level query.
     int parent_idx_ = -1;   // -1 means this query is the top level query.
     std::vector<QueryData*> queries_call_stack_ = {}; // only used when this query is the top level. 
+    std::vector<ASTNode*> group_by_ = {}; 
+    bool distinct_ = false;
 };
 
 struct CreateTableStatementNode : ASTNode {
@@ -865,6 +869,22 @@ class Parser {
         }
         // predicate, selectlist, tablelist, constlist and fieldlist 
         // can be improved by using just one list node struct for example. (later)
+        //
+        std::vector<ASTNode*> groupByList(){
+            std::vector<ASTNode*> group_by = {};
+            while(true){
+                ASTNode* f = scoped_field();
+                if(!f) f = field();
+                if(!f) return {};
+                group_by.push_back(f);
+                
+                if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
+                    cur_pos_++;
+                    continue;
+                }
+            }
+            return group_by;
+        }
 
 
         
@@ -881,10 +901,17 @@ class Parser {
             statement->idx_ = reinterpret_cast<SelectStatementData*>(top_level)->queries_call_stack_.size();
             reinterpret_cast<SelectStatementData*>(top_level)->queries_call_stack_.push_back(statement);
 
+            bool distinct = false;
+            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "DISTINCT"){
+                cur_pos_++;
+                distinct = true;
+            }
+            
             SelectListNode* fields = selectList(top_level, statement->idx_);
             TableListNode* tables = nullptr;
             ExpressionNode*  where = nullptr;
             ConstListNode* order_by = nullptr;
+            std::vector<ASTNode*> group_by = {};
             if(!fields){
                 return nullptr;
             }
@@ -906,7 +933,12 @@ class Parser {
                 order_by = constList();
             }
 
-            statement->init(tables, fields, where, order_by);
+            if(cur_pos_+1 < cur_size_ && tokens_[cur_pos_].val_ == "GROUP" && tokens_[cur_pos_+1].val_ == "BY"){
+                cur_pos_+=2;
+                group_by = groupByList();
+            }
+
+            statement->init(tables, fields, where, order_by, group_by, distinct);
             return statement; 
         }
 

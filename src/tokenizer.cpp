@@ -27,6 +27,8 @@ class Tokenizer {
             // reserved keywords
             keywords_.insert("SELECT");
             keywords_.insert("ORDER");
+            keywords_.insert("GROUP");
+            keywords_.insert("DISTINCT");
             keywords_.insert("BY");
             keywords_.insert("INSERT");
             keywords_.insert("FROM");

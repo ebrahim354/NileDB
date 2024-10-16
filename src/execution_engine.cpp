@@ -4,6 +4,7 @@
 #include "expression.cpp"
 #include "algebra_engine.cpp"
 #include "utils.cpp"
+#include "hash_table.cpp"
 #include <deque>
 
 
@@ -31,6 +32,7 @@ enum ExecutorType {
     AGGREGATION_EXECUTOR,
     PROJECTION_EXECUTOR,
     SORT_EXECUTOR,
+    DISTINCT_EXECUTOR,
 };
 
 struct Executor {
@@ -681,6 +683,42 @@ class SortExecutor : public Executor {
         int idx_ = 0;
 };
 
+class DistinctExecutor : public Executor {
+    public:
+        DistinctExecutor(Executor* child_executor , TableSchema* output_schema, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx): 
+            Executor(DISTINCT_EXECUTOR, output_schema, call_stack, query_idx, parent_query_idx, child_executor)
+        {}
+        ~DistinctExecutor()
+        {}
+
+        void init() {
+            finished_ = 0;
+            error_status_ = 0;
+            child_executor_->init();
+            hashed_tuples_ = new HashTable<std::string, int>(100); // bucket_size should not be const literal.
+        }
+
+        std::vector<Value> next() {
+            if(error_status_ || finished_)  return {};
+            while(true){
+                std::vector<Value> tuple = child_executor_->next();
+                finished_ = child_executor_->finished_;
+                error_status_ = child_executor_->error_status_;
+                if(finished_ || error_status_ || tuple.size() == 0) return {};
+                int tuple_cnt = -1;
+                std::string stringified_tuple = "";
+                for(size_t i = 0; i < tuple.size(); i++) stringified_tuple += tuple[i].toString();
+                if(hashed_tuples_->Find(stringified_tuple, tuple_cnt)) continue; // duplicated tuple => skip it.
+                hashed_tuples_->Insert(stringified_tuple, 1);
+                output_ = tuple;
+                return output_;
+            }
+        }
+
+    private:
+        HashTable<std::string, int> *hashed_tuples_;
+};
+
 
 
 class ExecutionEngine {
@@ -1009,7 +1047,11 @@ class ExecutionEngine {
                     std::cout << "[ERROR] Could not build physical operation\n";
                     return false;
                 }
-                call_stack->push_back(created_physical_plan);
+                if(cur_plan->distinct_){
+                    DistinctExecutor* distinct = new DistinctExecutor(created_physical_plan, created_physical_plan->output_schema_, call_stack, cur_plan->query_idx_, cur_plan->query_parent_idx_);
+                    call_stack->push_back(distinct);
+                } else 
+                    call_stack->push_back(created_physical_plan);
             }
 
             Executor* physical_plan = (*call_stack)[0]; 

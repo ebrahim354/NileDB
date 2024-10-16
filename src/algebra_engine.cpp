@@ -28,6 +28,7 @@ struct AlgebraOperation {
         std::vector<AlgebraOperation*>* call_stack_{};
         int query_idx_ = -1;
         int query_parent_idx_ = -1;
+        bool distinct_ = false;
 };
 
 struct ScanOperation: AlgebraOperation {
@@ -121,6 +122,7 @@ class AlgebraEngine {
                         for(size_t i = 0; i < select_data->queries_call_stack_.size(); i++){
                             auto current_data = reinterpret_cast<SelectStatementData*>(select_data->queries_call_stack_[i]);
                             AlgebraOperation* op = createSelectStatementExpression(current_data, call_stack);
+                            op->distinct_ = current_data->distinct_;
                             call_stack->push_back(op);
                         }
 
