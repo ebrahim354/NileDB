@@ -65,15 +65,17 @@ struct FilterOperation: AlgebraOperation {
 
 struct AggregationOperation: AlgebraOperation {
     public:
-        AggregationOperation(std::vector<AlgebraOperation*>* call_stack, AlgebraOperation* child, std::vector<AggregateFuncNode*> aggregates): 
+        AggregationOperation(std::vector<AlgebraOperation*>* call_stack, AlgebraOperation* child, std::vector<AggregateFuncNode*> aggregates, std::vector<ASTNode*> group_by): 
             AlgebraOperation(AGGREGATION, call_stack),
             child_(child), 
-            aggregates_(aggregates)
+            aggregates_(aggregates),
+            group_by_(group_by)
         {}
         ~AggregationOperation()
         {}
         AlgebraOperation* child_ = nullptr;
         std::vector<AggregateFuncNode*> aggregates_;
+        std::vector<ASTNode*> group_by_;
 };
 
 
@@ -167,7 +169,7 @@ class AlgebraEngine {
             if(data->where_)
                 result = new FilterOperation(call_stack, result, data->where_, data->fields_, data->field_names_);
             if(data->aggregates_.size())
-                result = new AggregationOperation(call_stack, result, data->aggregates_);
+                result = new AggregationOperation(call_stack, result, data->aggregates_, data->group_by_);
             if(data->fields_.size())
                 result = new ProjectionOperation(call_stack, result, data->fields_);
             if(data->order_by_list_.size())

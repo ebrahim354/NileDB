@@ -10,7 +10,15 @@
 #include <vector>
 
 template <typename K, typename V>
+class HashTableIterator;
+template <typename K, typename V>
+class Bucket;
+template <typename K, typename V>
+class HashTable;
+
+template <typename K, typename V>
 class Bucket {
+    friend HashTableIterator<K, V>;
     public:
         Bucket(size_t size, int id, int depth = 0) : size_(size), depth_(depth), id_(id) {}
 
@@ -20,7 +28,7 @@ class Bucket {
 
         inline void IncrementDepth() { depth_++; }
 
-        inline auto GetItems() -> std::list<std::pair<K, V>> & { return list_; }
+        inline auto GetItems() -> std::vector<std::pair<K, V>> & { return list_; }
 
         inline auto GetBucketId() const -> int { return id_; }
 
@@ -64,11 +72,70 @@ class Bucket {
         size_t size_;
         int depth_;
         int id_;
-        std::list<std::pair<K, V>> list_;
+        std::vector<std::pair<K, V>> list_;
+};
+
+template <typename K, typename V>
+class HashTableIterator {
+    public:
+        // you may define your own constructor based on your member variables
+        HashTableIterator(HashTable<K, V>* table = nullptr): table_(table)
+        {
+            if(!table) return;
+            for(int i = 0; i < table_->dir_.size(); i++){
+                if(table_->dir_[i]->list_.size() != 0) {
+                    dir_idx_ = i;
+                    bucket_idx_ = 0;
+                }
+            }
+        }
+
+        ~HashTableIterator();
+
+        /*
+        bool operator==(const HashTableIterator &itr) const {
+        }
+
+        bool operator!=(const HashTableIterator &itr) const  {
+
+        }
+        */
+
+        HashTableIterator& operator++() {
+            if(!hasNext() || !table_) return *this;
+            if(bucket_idx_ < table_->dir_[dir_idx_]->list_.size()) {
+                bucket_idx_++;
+            } else {
+                dir_idx_++;
+                while(dir_idx_ < table_->dir_.size() && table_->dir_[dir_idx_]->list_.size() == 0){
+                    dir_idx_++; 
+                }
+                bucket_idx_ = 0;
+            }
+            cnt_++;
+            return *this;
+        }
+
+        V& operator*() {
+            return table_->dir_[dir_idx_]->list_[bucket_idx_].second;
+        }
+
+        bool hasNext(){
+            if(!table_) return false;
+            if(cnt_ + 1 < table_->num_of_entries_) return true;
+            return false;
+        }
+
+    private:
+        HashTable<K, V>* table_ = nullptr;
+        int dir_idx_ = -1;
+        int bucket_idx_ = -1;
+        int cnt_ = 0;
 };
 
 template <typename K, typename V>
 class  HashTable {
+    friend HashTableIterator<K, V>;
     public:
         explicit HashTable(size_t bucket_size) {
             next_bucket_id_ = 0;
@@ -122,7 +189,10 @@ class  HashTable {
                 //         << "key: " << key << std::endl;
                 // showStruct();
                 std::shared_ptr<Bucket<K,V>> ptr = dir_[idx];
+                int size_before = ptr->GetItems().size();
                 if (ptr->Insert(key, value)) {
+                    int size_after = ptr->GetItems().size();
+                    num_of_entries_+= (size_after - size_before);
                     break;
                 }
                 int local_depth = ptr->GetDepth();
@@ -160,7 +230,7 @@ class  HashTable {
                     old = !old;
                 }
 
-                std::list<std::pair<K, V>> *lst = &ptr->GetItems();
+                std::vector<std::pair<K, V>> *lst = &ptr->GetItems();
                 for (auto it = lst->begin(); it != lst->end();) {
                     size_t cur_idx = IndexOf(it->first);
                     if (mp.count(cur_idx) != 0U) {
@@ -175,11 +245,11 @@ class  HashTable {
 
         auto Remove(const K &key) -> bool {
             std::lock_guard<std::mutex> lock(latch_);
+            num_of_entries_--;
             size_t idx = IndexOf(key);
             std::shared_ptr<Bucket<K,V>> ptr = dir_[idx];
             return static_cast<bool>(ptr->Remove(key));
         }
-
 
     private:
 
@@ -187,6 +257,7 @@ class  HashTable {
         int next_bucket_id_;
         size_t bucket_size_;  // The size of a bucket
         int num_buckets_;     // The number of buckets in the hash table
+        size_t num_of_entries_ = 0;
         mutable std::mutex latch_;
         std::vector<std::shared_ptr<Bucket<K,V>>> dir_;  // The directory of the hash table
                                                     //
@@ -208,6 +279,8 @@ class  HashTable {
             return hashed_key % dir_.size();
         };
 
-
 };
+
+
+
 

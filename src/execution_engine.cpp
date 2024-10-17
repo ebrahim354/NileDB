@@ -284,9 +284,9 @@ class FilterExecutor : public Executor {
 class AggregationExecutor : public Executor {
     public:
         AggregationExecutor(Executor* child_executor, TableSchema* output_schema, 
-                std::vector<AggregateFuncNode*> aggregates, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx): 
+                std::vector<AggregateFuncNode*> aggregates, std::vector<ASTNode*> group_by, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx): 
                 
-            Executor(AGGREGATION_EXECUTOR, output_schema, call_stack, query_idx, parent_query_idx, child_executor), aggregates_(aggregates)
+            Executor(AGGREGATION_EXECUTOR, output_schema, call_stack, query_idx, parent_query_idx, child_executor), aggregates_(aggregates), group_by_(group_by)
         {}
         ~AggregationExecutor()
         {}
@@ -349,15 +349,12 @@ class AggregationExecutor : public Executor {
         void init() {
             finished_ = 0;
             error_status_ = 0;
-            output_ = std::vector<Value> (output_schema_->getCols().size(), Value());
+            aggregated_values_ = new HashTable<std::string, std::vector<Value>>(100); // bucket_size should not be const literal.
+
 
             if(child_executor_){
                 child_executor_->init();
             }
-
-            std::vector<int> aggregate_vals(aggregates_.size(), 0);
-            bool first_iteration = true;
-            int num_of_rows = 0;
 
             while(true){
                 std::vector<Value> child_output; 
@@ -368,47 +365,65 @@ class AggregationExecutor : public Executor {
                         break;
                 } 
 
-                num_of_rows++;
-                if(first_iteration){
-                    for(int i = 0; i < child_output.size(); i++){
-                        output_[i] = child_output[i];
-                    }
+                // we always maintain rows count even if the user did not ask for it, that's why the size is | colmuns | + 1
+                output_ = std::vector<Value> (output_schema_->getCols().size() + 1, Value(0));
+
+                for(int i = 0; i < child_output.size(); i++){
+                    output_[i] = child_output[i];
                 }
 
+                // build the search key for the hash table.
+                std::string hash_key = "PREFIX_"; // this prefix to ensure we have at least one entry in the hash table.
+                for(int i = 0; i < group_by_.size(); i++){
+                    Value cur = evaluate(group_by_[i]);
+                    hash_key += cur.toString();
+                }
+
+                // weather the key exists or not we'll just insert the new output vector or an updated one.
+                aggregated_values_->Find(hash_key, output_);
+                // update the extra counter.
+                output_[output_.size() - 1] += 1; 
+                Value* counter = &output_[output_.size() - 1];
+
+                int base_size = child_output.size();
                 for(int i = 0; i < aggregates_.size(); i++){
                     ExpressionNode* exp = aggregates_[i]->exp_;
+                    int idx = base_size+i;
                     switch(aggregates_[i]->type_){
                         case COUNT:
                                     {
                                         if(exp == nullptr){
-                                            aggregate_vals[i]++;
+                                            ++output_[idx];
                                             break;
                                         }
                                         Value val = evaluate_expression(exp, eval);
-                                        if(!val.isNull()) aggregate_vals[i]++;
+                                        if(!val.isNull()) 
+                                            ++output_[idx];
                                     }
                                     break;
                         case AVG:
                         case SUM:
                                    {
                                        Value val = evaluate_expression(exp, eval);
-                                       if(val.type_ == INT) aggregate_vals[i] += val.getIntVal();
+                                       if(val.type_ == INT) output_[idx] += val; 
                                    }
                                    break;
                         case MIN:
                                    {
-                                       if(first_iteration) aggregate_vals[i] = std::numeric_limits<int>::max();
                                        Value val = evaluate_expression(exp, eval);
-                                       if(val.type_ == INT) aggregate_vals[i] = 
-                                           std::min<int>(aggregate_vals[i], val.getIntVal());
+                                       if(val.type_ == INT) {
+                                           if(counter->getIntVal() == 1) output_[idx] = val;
+                                           output_[idx] = std::min<Value>(output_[idx], val);
+                                       }
                                    }
                                    break;
                         case MAX:
                                    {
-                                       if(first_iteration) aggregate_vals[i] = std::numeric_limits<int>::min();
                                        Value val = evaluate_expression(exp, eval);
-                                       if(val.type_ == INT) aggregate_vals[i] = 
-                                           std::max<int>(aggregate_vals[i], val.getIntVal());
+                                       if(val.type_ == INT) {
+                                           if(counter->getIntVal() == 1) output_[idx] = val;
+                                           output_[idx] = std::max<Value>(output_[i], val);
+                                       }
                                    }
                                    break;
                         default :
@@ -416,23 +431,33 @@ class AggregationExecutor : public Executor {
                     }
                     if(error_status_)  return;
                 }
-                first_iteration = false;
+                aggregated_values_->Insert(hash_key, output_);
                 if(!child_executor_) break;
             }
-
-            for(int i = 0; i < aggregates_.size(); i++){
-                int idx = i + output_.size() - aggregates_.size();
-                output_[idx] = (Value((aggregates_[i]->type_ == AVG  && num_of_rows != 0 ? (aggregate_vals[i] / num_of_rows) : aggregate_vals[i])));
-            }
+            it_ = new HashTableIterator<std::string, std::vector<Value>>(aggregated_values_);
         }
 
         std::vector<Value> next() {
             if(error_status_ || finished_)  return {};
-            finished_ = true;
+            output_ = **it_;
+            for(int i = 0; i < aggregates_.size(); i++){
+                int idx = (i + output_.size() - aggregates_.size())- 1;
+                if(aggregates_[i]->type_ == AVG && output_[output_.size()-1] != 0){
+                    output_[idx] = Value( (float)output_[idx].getIntVal()/(float) output_[output_.size()-1].getIntVal());
+                }
+            }
+            if(it_->hasNext())
+                ++(*it_);
+            else
+                finished_ = true;
+            output_.pop_back();
             return output_;
         }
     private:
         std::vector<AggregateFuncNode*> aggregates_;
+        std::vector<ASTNode*> group_by_;
+        HashTable<std::string, std::vector<Value>>* aggregated_values_ = nullptr;
+        HashTableIterator<std::string, std::vector<Value>>* it_ = nullptr;
         std::function<Value(ASTNode*)>
             eval = std::bind(&AggregationExecutor::evaluate, this, std::placeholders::_1);
 };
@@ -769,15 +794,27 @@ class ExecutionEngine {
             TableSchema* schema = catalog_->getTableSchema(table_name);
             auto field_ptr = insert->fields_;
             auto value_ptr = insert->values_;
-            std::vector<std::string> fields(schema->numOfCols());
+            std::vector<std::string> fields;
             std::vector<Value> vals(schema->numOfCols());
-            while(field_ptr != nullptr && value_ptr != nullptr){
+            // loop through fields first
+            // if there are no fields use the default schema.
+            if(!field_ptr){
+                fields = schema->getCols();
+            }
+            while(field_ptr != nullptr){
                 std::string field_name = field_ptr->field_->token_.val_;
                 // check valid column.
                 if(!schema->isValidCol(field_name)) 
                     return false;
                 int idx = schema->colExist(field_name);
+                if(idx  < 0) return false;
+                fields.push_back(field_name);
+                field_ptr = field_ptr->next_;
+            }
 
+            int fields_index = 0;
+            // loop through vals.
+            while(value_ptr != nullptr){
                 std::string val = value_ptr->token_.val_;
                 // we consider int and string types for now.
                 Type val_type = INVALID;
@@ -786,19 +823,21 @@ class ExecutionEngine {
                 // invalid or not supported type;
                 if( val_type == INVALID ) return false;
 
-                if(idx > fields.size() || idx  < 0) return false;
-                fields[idx] = field_name;
+                if(fields_index > fields.size()){
+                    std::cout << "[ERROR] Size of values does not match size of fields" << std::endl;
+                    return false;
+                }
+                int idx = schema->colExist(fields[fields_index++]);
+                if(idx  < 0) {
+                    std::cout << "[ERROR] field does not exist: " << fields[fields_index] << std::endl;
+                    return false;
+                }
                 if(val_type == INT) vals[idx] = (Value(stoi(val)));
                 else if(val_type == VARCHAR) vals[idx] = (Value(val));
 
-                field_ptr = field_ptr->next_;
                 value_ptr = value_ptr->next_;
             }
-            // size of values do not match the size of the fields.
-            if(value_ptr || field_ptr) {
-                std::cout << "[ERROR] Size of values does not match size of fields" << std::endl;
-                return false;
-            }
+
             // invalid field list or val list.
             if(!schema->checkValidValues(fields, vals)) {
                 std::cout << "[ERROR] Invalid field list or val list" << std::endl;
@@ -985,8 +1024,7 @@ class ExecutionEngine {
                                     }
                                     TableSchema* new_output_schema = new TableSchema("agg_tmp_schema", nullptr, new_cols);
 
-                                    //new_output_schema->printTableHeader();
-                                    return new AggregationExecutor(child, new_output_schema, op->aggregates_, call_stack, query_idx, parent_query_idx);
+                                    return new AggregationExecutor(child, new_output_schema, op->aggregates_, op->group_by_,call_stack, query_idx, parent_query_idx);
                                  }
                 case FILTER: {
                                  FilterOperation* op = reinterpret_cast<FilterOperation*>(logical_plan);

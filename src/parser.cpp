@@ -603,14 +603,13 @@ class Parser {
 
         ASTNode* unary(ExpressionNode* expression_ctx){
             if(cur_pos_ >= cur_size_) return nullptr;
-            if(tokens_[cur_pos_].val_ == "-"){
+            if(tokens_[cur_pos_].val_ == "-" || tokens_[cur_pos_].val_ == "+"){
                 UnaryNode* u = nullptr;
                 u = new UnaryNode(nullptr, tokens_[cur_pos_]);
                 cur_pos_++;
                 ASTNode* val = item(expression_ctx);
                 if(!val) return nullptr;
                 u->cur_ = val;
-                
                 return u;
             }
             // no need to wrap it in a unary if we don't find any unary operators.
@@ -875,7 +874,7 @@ class Parser {
             while(true){
                 ASTNode* f = scoped_field();
                 if(!f) f = field();
-                if(!f) return {};
+                if(!f) break;
                 group_by.push_back(f);
                 
                 if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
@@ -936,6 +935,7 @@ class Parser {
             if(cur_pos_+1 < cur_size_ && tokens_[cur_pos_].val_ == "GROUP" && tokens_[cur_pos_+1].val_ == "BY"){
                 cur_pos_+=2;
                 group_by = groupByList();
+                std::cout << group_by.size() << std::endl;
             }
 
             statement->init(tables, fields, where, order_by, group_by, distinct);
@@ -979,20 +979,18 @@ class Parser {
 
             statement->table_ = table();
             if(!statement->table_ || cur_pos_ >= cur_size_ 
-                    || tokens_[cur_pos_++].val_ != "(" 
                     || !catalog_->isValidTable(statement->table_->token_.val_)){
                 statement->clean();
                 return nullptr;
             }
 
-            
-            statement->fields_ = fieldList();
-            if(!statement->fields_ || cur_pos_ >= cur_size_ 
-                       || tokens_[cur_pos_].val_ != ")"){
-                statement->clean();
-                return nullptr;
+            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "("){
+                cur_pos_++;
+                statement->fields_ = fieldList();
+                if(!statement->fields_ || cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")")
+                    return nullptr;
+                cur_pos_++;
             }
-            cur_pos_++;
 
             if(cur_pos_+1 < cur_size_ 
                     && tokens_[cur_pos_].val_ == "VALUES" 

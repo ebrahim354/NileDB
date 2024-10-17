@@ -177,7 +177,10 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
         case UNARY : {
                          UnaryNode* u = reinterpret_cast<UnaryNode*>(expression);
                          Value cur = evaluate_expression(u->cur_, evaluator);
-                         return Value(cur.getIntVal()*-1);
+                         if(u->token_.val_ == "-"){
+                            return Value(cur.getIntVal()*-1);
+                         }
+                         return cur;
                      } 
         case STRING_CONSTANT: 
                      {

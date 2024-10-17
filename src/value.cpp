@@ -7,13 +7,21 @@
 
 class Value {
     public:
-        char* content_; 
-        uint16_t size_;
+        char* content_ = nullptr;  
+        uint16_t size_ = 0;
         Type type_ = INVALID;
         Value(){} 
         ~Value(){}
         // handle memory leaks later.
         // constuctors for different value types.
+        Value(const Value& rhs){
+            this->size_ = rhs.size_;
+            if(!rhs.isNull()){
+                this->content_ = new char[size_];
+                memcpy(this->content_, rhs.content_, size_);
+            }
+            this->type_ = rhs.type_;
+        } 
         Value(std::string str){
             size_ = str.size(); 
             content_ = new char[size_];
@@ -227,5 +235,57 @@ class Value {
                 default :
                     return false;
             }
+        }
+
+        void setValue(int val){
+            if(type_ == INT)
+                memcpy(content_, &val, 4);
+        }
+
+        void setValue(long long val){
+            if(type_ == BIGINT)
+                memcpy(content_, &val, 8);
+        }
+
+        void setValue(float val){
+            if(type_ == FLOAT)
+                memcpy(content_, &val, 4);
+        }
+
+        void setValue(double val){
+            if(type_ == DOUBLE)
+                memcpy(content_, &val, 8);
+        }
+
+        Value& operator++() {
+            switch (type_) {
+                case INT:
+                    setValue(getIntVal()+1);
+                case BIGINT:
+                    setValue(getBigIntVal()+1);
+                case FLOAT:
+                    setValue(getFloatVal()+1);
+                case DOUBLE:
+                    setValue(getDoubleVal()+1);
+                default :
+                    ;
+            }
+            return *this;
+        }
+        Value& operator+=(const Value& rhs) {
+            if(!checkSameType(this->type_, rhs.type_)) return *this;
+            switch (type_) {
+                case INT:
+                    setValue(getIntVal()+rhs.getIntVal());
+                case BIGINT:
+                    setValue(getBigIntVal()+rhs.getBigIntVal());
+                case FLOAT:
+                    setValue(getFloatVal()+rhs.getFloatVal());
+                case DOUBLE:
+                    setValue(getDoubleVal()+rhs.getDoubleVal());
+                default :
+                    ;
+            }
+            return *this;
         }
 };
