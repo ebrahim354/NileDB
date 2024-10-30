@@ -12,6 +12,8 @@ class Value {
         Type type_ = INVALID;
         Value(){} 
         ~Value(){}
+
+        Value(Type type){type_ = type;} 
         // handle memory leaks later.
         // constuctors for different value types.
         Value(const Value& rhs){
@@ -81,8 +83,11 @@ class Value {
 
         }
 
-        bool isNull() const {
+        inline bool isInvalid() const {
             return (type_ == INVALID);
+        }
+        inline bool isNull() const {
+            return (type_ == NULL_TYPE);
         }
         std::string getStringVal() const {
             return std::string(content_, size_);  

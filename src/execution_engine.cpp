@@ -37,8 +37,8 @@ enum ExecutorType {
 
 struct Executor {
     public:
-        Executor(ExecutorType type, TableSchema* output_schema, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx, Executor* child): 
-            type_(type), output_schema_(output_schema), call_stack_(call_stack), 
+        Executor(ExecutorType type, TableSchema* output_schema, QueryCTX& ctx,int query_idx, int parent_query_idx, Executor* child): 
+            type_(type), output_schema_(output_schema), ctx_(ctx), 
             query_idx_(query_idx), parent_query_idx_(parent_query_idx), child_executor_(child)
         {}
         ~Executor() {}
@@ -53,13 +53,13 @@ struct Executor {
         bool finished_ = 0;
         int query_idx_ = -1;
         int parent_query_idx_ = -1;
-        std::vector<Executor*>* call_stack_ = {};
+        QueryCTX& ctx_;
 };
 
 class SeqScanExecutor : public Executor {
     public:
-        SeqScanExecutor(TableSchema* table, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx)
-            : Executor(SEQUENTIAL_SCAN_EXECUTOR, table, call_stack, query_idx, parent_query_idx, nullptr), table_(table)
+        SeqScanExecutor(TableSchema* table, QueryCTX& ctx, int query_idx, int parent_query_idx)
+            : Executor(SEQUENTIAL_SCAN_EXECUTOR, table, ctx, query_idx, parent_query_idx, nullptr), table_(table)
         {}
         ~SeqScanExecutor()
         {}
@@ -96,11 +96,11 @@ class FilterExecutor : public Executor {
         FilterExecutor(Executor* child, TableSchema* output_schema, ExpressionNode* filter, 
                 std::vector<ExpressionNode*>& fields, 
                 std::vector<std::string>& field_names,
-                std::vector<Executor*>* call_stack,
+                QueryCTX& ctx,
                 int query_idx,
                 int parent_query_idx
                 )
-            : Executor(FILTER_EXECUTOR, output_schema, call_stack, query_idx, parent_query_idx, child), filter_(filter), 
+            : Executor(FILTER_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child), filter_(filter), 
               fields_(fields), field_names_(field_names)
         {}
         ~FilterExecutor()
@@ -122,7 +122,7 @@ class FilterExecutor : public Executor {
                 int idx = -1;
                  while(true){
                     if(!schema_ptr && cur_query_parent != -1){
-                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
                         schema_ptr = parent_query->output_schema_;
                         cur_query_idx = parent_query->query_idx_;
                         cur_query_parent = parent_query->parent_query_idx_;
@@ -138,13 +138,13 @@ class FilterExecutor : public Executor {
                     idx = schema_ptr->colExist(col);
 
                     if(idx < 0 && cur_query_parent != -1){
-                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
                         schema_ptr = parent_query->output_schema_;
                         cur_query_idx = parent_query->query_idx_;
-                        cur_query_parent = (*call_stack_)[cur_query_idx]->parent_query_idx_;
+                        cur_query_parent = ctx_.executors_call_stack_[cur_query_idx]->parent_query_idx_;
                         continue;
                     }
-                    Executor* cur_exec = (*call_stack_)[cur_query_idx];
+                    Executor* cur_exec = ctx_.executors_call_stack_[cur_query_idx];
 
                     while(cur_exec && cur_exec->type_ != SEQUENTIAL_SCAN_EXECUTOR){
                         cur_exec = cur_exec->child_executor_;
@@ -170,7 +170,7 @@ class FilterExecutor : public Executor {
                 int idx = -1;
                 while(true){
                     if(!schema_ptr && cur_query_parent != -1){
-                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
                         schema_ptr = parent_query->output_schema_;
                         cur_query_idx = parent_query->query_idx_;
                         cur_query_parent = parent_query->parent_query_idx_;
@@ -209,13 +209,13 @@ class FilterExecutor : public Executor {
                     // can't find the field in current context,
                     // search for it in context of the parent till the top level query.
                     if(num_of_matches == 0 && cur_query_parent != -1){
-                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
                         schema_ptr = parent_query->output_schema_;
                         cur_query_idx = parent_query->query_idx_;
-                        cur_query_parent = (*call_stack_)[cur_query_idx]->parent_query_idx_;
+                        cur_query_parent = ctx_.executors_call_stack_[cur_query_idx]->parent_query_idx_;
                         continue;
                     }
-                    Executor* cur_exec = (*call_stack_)[cur_query_idx];
+                    Executor* cur_exec = ctx_.executors_call_stack_[cur_query_idx];
 
                     while(cur_exec && cur_exec->type_ != FILTER_EXECUTOR){
                         cur_exec = cur_exec->child_executor_;
@@ -284,9 +284,9 @@ class FilterExecutor : public Executor {
 class AggregationExecutor : public Executor {
     public:
         AggregationExecutor(Executor* child_executor, TableSchema* output_schema, 
-                std::vector<AggregateFuncNode*> aggregates, std::vector<ASTNode*> group_by, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx): 
+                std::vector<AggregateFuncNode*> aggregates, std::vector<ASTNode*> group_by, QueryCTX& ctx, int query_idx, int parent_query_idx): 
                 
-            Executor(AGGREGATION_EXECUTOR, output_schema, call_stack, query_idx, parent_query_idx, child_executor), aggregates_(aggregates), group_by_(group_by)
+            Executor(AGGREGATION_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child_executor), aggregates_(aggregates), group_by_(group_by)
         {}
         ~AggregationExecutor()
         {}
@@ -464,8 +464,8 @@ class AggregationExecutor : public Executor {
 
 class ProjectionExecutor : public Executor {
     public:
-        ProjectionExecutor(Executor* child_executor, TableSchema* output_schema, std::vector<ExpressionNode*> fields, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx): 
-            Executor(PROJECTION_EXECUTOR, output_schema, call_stack, query_idx, parent_query_idx, child_executor), fields_(fields)
+        ProjectionExecutor(Executor* child_executor, TableSchema* output_schema, std::vector<ExpressionNode*> fields, QueryCTX& ctx, int query_idx, int parent_query_idx): 
+            Executor(PROJECTION_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child_executor), fields_(fields)
         {}
         ~ProjectionExecutor()
         {}
@@ -473,7 +473,7 @@ class ProjectionExecutor : public Executor {
         Value evaluate(ASTNode* item){
             if(item->category_ == SUB_QUERY){
                 auto sub_query = reinterpret_cast<SubQueryNode*>(item);
-                Executor* sub_query_executor = (*call_stack_)[sub_query->idx_]; 
+                Executor* sub_query_executor = ctx_.executors_call_stack_[sub_query->idx_]; 
                 sub_query_executor->init();
                 if(sub_query_executor->error_status_){
                     std::cout << "[ERROR] could not initialize sub-query" << std::endl;
@@ -515,7 +515,7 @@ class ProjectionExecutor : public Executor {
 
                 while(true){
                     if(!schema_ptr && cur_query_parent != -1){
-                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
                         schema_ptr = parent_query->output_schema_;
                         cur_query_idx = parent_query->query_idx_;
                         cur_query_parent = parent_query->parent_query_idx_;
@@ -530,17 +530,17 @@ class ProjectionExecutor : public Executor {
                     std::string col = table;col += "."; col+= field;
                     idx = schema_ptr->colExist(col);
                     if(idx < 0 && cur_query_parent != -1){
-                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
                         schema_ptr = parent_query->output_schema_;
                         cur_query_idx = parent_query->query_idx_;
-                        cur_query_parent = (*call_stack_)[cur_query_idx]->parent_query_idx_;
+                        cur_query_parent = ctx_.executors_call_stack_[cur_query_idx]->parent_query_idx_;
                         continue;
                     }
                     std::vector<Value> cur_output;
                     if(query_idx_ == 0)
                         cur_output = output_;
                     else
-                        cur_output = (*call_stack_)[cur_query_idx]->output_; 
+                        cur_output = ctx_.executors_call_stack_[cur_query_idx]->output_; 
                     if(idx < 0 || idx >= cur_output.size()) {
                         std::cout << "[ERROR] Invalid field name " << col << std::endl;
                         error_status_ = 1;
@@ -556,7 +556,7 @@ class ProjectionExecutor : public Executor {
                 int idx = -1;
                 while(true){
                     if(!schema_ptr && cur_query_parent != -1){
-                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
                         schema_ptr = parent_query->output_schema_;
                         cur_query_idx = parent_query->query_idx_;
                         cur_query_parent = parent_query->parent_query_idx_;
@@ -589,17 +589,17 @@ class ProjectionExecutor : public Executor {
                     // can't find the field in current context,
                     // search for it in context of the parent till the top level query.
                     if(num_of_matches == 0 && cur_query_parent != -1){
-                        Executor* parent_query = (*call_stack_)[cur_query_parent]; 
+                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
                         schema_ptr = parent_query->output_schema_;
                         cur_query_idx = parent_query->query_idx_;
-                        cur_query_parent = (*call_stack_)[cur_query_idx]->parent_query_idx_;
+                        cur_query_parent = ctx_.executors_call_stack_[cur_query_idx]->parent_query_idx_;
                         continue;
                     }
                     std::vector<Value> cur_output;
                     if(query_idx_ == 0)
                         cur_output = output_;
                     else
-                        cur_output = (*call_stack_)[cur_query_idx]->output_; 
+                        cur_output = ctx_.executors_call_stack_[cur_query_idx]->output_; 
 
                     if(idx < 0 || idx >= cur_output.size()) {
                         std::cout << "[ERROR] Invalid field name " << field << std::endl;
@@ -656,8 +656,8 @@ class ProjectionExecutor : public Executor {
 
 class SortExecutor : public Executor {
     public:
-        SortExecutor(Executor* child_executor , TableSchema* output_schema, std::vector<int> order_by_list, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx): 
-            Executor(SORT_EXECUTOR, output_schema, call_stack, query_idx, parent_query_idx, child_executor), order_by_list_(order_by_list)
+        SortExecutor(Executor* child_executor , TableSchema* output_schema, std::vector<int> order_by_list, QueryCTX& ctx, int query_idx, int parent_query_idx): 
+            Executor(SORT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child_executor), order_by_list_(order_by_list)
         {}
         ~SortExecutor()
         {}
@@ -682,8 +682,6 @@ class SortExecutor : public Executor {
             }
 
             std::vector<int> order_by = order_by_list_;
-            for(int i = 0; i< order_by.size(); i++)
-                std::cout << order_by[i] << std::endl;
 
             std::sort(tuples_.begin(), tuples_.end(), 
                     [&order_by](std::vector<Value>& lhs, std::vector<Value>& rhs){
@@ -710,8 +708,8 @@ class SortExecutor : public Executor {
 
 class DistinctExecutor : public Executor {
     public:
-        DistinctExecutor(Executor* child_executor , TableSchema* output_schema, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx): 
-            Executor(DISTINCT_EXECUTOR, output_schema, call_stack, query_idx, parent_query_idx, child_executor)
+        DistinctExecutor(Executor* child_executor , TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx): 
+            Executor(DISTINCT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child_executor)
         {}
         ~DistinctExecutor()
         {}
@@ -985,83 +983,89 @@ class ExecutionEngine {
                     return false;
             }
         }
-        Executor* buildExecutionPlan(AlgebraOperation* logical_plan, std::vector<Executor*>* call_stack, int query_idx, int parent_query_idx) {
+        Executor* buildExecutionPlan(QueryCTX& ctx, AlgebraOperation* logical_plan, int query_idx, int parent_query_idx) {
             if(!logical_plan) return nullptr;
             switch(logical_plan->type_) {
-                case SORT: {
-                               SortOperation* op = reinterpret_cast<SortOperation*>(logical_plan);
-                               Executor* child = buildExecutionPlan(op->child_, call_stack, query_idx, parent_query_idx);
-                               SortExecutor* sort = new SortExecutor(child, child->output_schema_, op->order_by_list_, call_stack, query_idx, parent_query_idx);
-                               return sort;
-                           }
-                case PROJECTION: {
-                                    ProjectionOperation* op = reinterpret_cast<ProjectionOperation*>(logical_plan);
-                                    Executor* child = buildExecutionPlan(op->child_, call_stack, query_idx, parent_query_idx);
-                            
-                                    ProjectionExecutor* project = nullptr; 
-                                    if(!child)
-                                        project = new ProjectionExecutor(child, nullptr, op->fields_, call_stack, query_idx, parent_query_idx);
-                                    else
-                                        project = new ProjectionExecutor(child, child->output_schema_, op->fields_, call_stack, query_idx, parent_query_idx);
-                                    return project;
-                                 }
-                case AGGREGATION: {
-                                    AggregationOperation* op = reinterpret_cast<AggregationOperation*>(logical_plan);
-                                    Executor* child = buildExecutionPlan(op->child_, call_stack, query_idx, parent_query_idx);
-                            
-                                    std::vector<Column> new_cols;
-                                    int offset_ptr = 0; 
-                                    if(child && child->output_schema_){
-                                        new_cols = child->output_schema_->getColumns();
-                                        offset_ptr = Column::getSizeFromType(new_cols[new_cols.size() - 1].getType());
-                                    } 
-                                    for(int i = 0; i < op->aggregates_.size(); i++){
-                                        std::string col_name = "agg_tmp_schema.";
-                                        col_name += AGG_FUNC_IDENTIFIER_PREFIX;
-                                        col_name += intToStr(op->aggregates_[i]->parent_id_);
-                                        new_cols.push_back(Column(col_name, INT, offset_ptr));
-                                        offset_ptr += Column::getSizeFromType(INT);
-                                    }
-                                    TableSchema* new_output_schema = new TableSchema("agg_tmp_schema", nullptr, new_cols);
+                case SORT: 
+                    {
+                        SortOperation* op = reinterpret_cast<SortOperation*>(logical_plan);
+                        Executor* child = buildExecutionPlan(ctx, op->child_, query_idx, parent_query_idx);
+                        SortExecutor* sort = new SortExecutor(child, child->output_schema_, op->order_by_list_, ctx, query_idx, parent_query_idx);
+                        return sort;
+                    } break;
+                case PROJECTION: 
+                    {
+                        ProjectionOperation* op = reinterpret_cast<ProjectionOperation*>(logical_plan);
+                        Executor* child = buildExecutionPlan(ctx, op->child_, query_idx, parent_query_idx);
 
-                                    return new AggregationExecutor(child, new_output_schema, op->aggregates_, op->group_by_,call_stack, query_idx, parent_query_idx);
-                                 }
-                case FILTER: {
-                                 FilterOperation* op = reinterpret_cast<FilterOperation*>(logical_plan);
-                                 Executor* child = buildExecutionPlan(op->child_, call_stack, query_idx, parent_query_idx);
-                                 TableSchema* schema = nullptr;
-                                 if(child == nullptr) schema = nullptr;
-                                 else                 schema = child->output_schema_;
-                                 
-                                 FilterExecutor* filter = new FilterExecutor(child, schema, op->filter_, op->fields_, op->field_names_, call_stack, query_idx, parent_query_idx);
-                                 return filter;
-                             }
+                        ProjectionExecutor* project = nullptr; 
+                        if(!child)
+                            project = new ProjectionExecutor(child, nullptr, op->fields_, ctx, query_idx, parent_query_idx);
+                        else
+                            project = new ProjectionExecutor(child, child->output_schema_, op->fields_, ctx, query_idx, parent_query_idx);
+                        return project;
+                    } break;
+                case AGGREGATION: 
+                    {
+                        AggregationOperation* op = reinterpret_cast<AggregationOperation*>(logical_plan);
+                        Executor* child = buildExecutionPlan(ctx, op->child_, query_idx, parent_query_idx);
 
-                case SCAN: {
-                               ScanOperation* op = reinterpret_cast<ScanOperation*>(logical_plan);
-                               TableSchema* schema = catalog_->getTableSchema(op->table_name_);
-                               std::string tname =  op->table_name_;
-                               if(op->table_rename_.size() != 0) tname = op->table_rename_;
-                               std::vector<Column> columns = schema->getColumns();
-                               // create a new schema and rename columns to table.col_name
-                               for(int i = 0; i < columns.size(); i++){
-                                   std::string col_name = tname; 
-                                   col_name += ".";
-                                   col_name += columns[i].getName();
-                                   columns[i].setName(col_name);
-                               }
+                        std::vector<Column> new_cols;
+                        int offset_ptr = 0; 
+                        if(child && child->output_schema_){
+                            new_cols = child->output_schema_->getColumns();
+                            offset_ptr = Column::getSizeFromType(new_cols[new_cols.size() - 1].getType());
+                        } 
+                        for(int i = 0; i < op->aggregates_.size(); i++){
+                            std::string col_name = "agg_tmp_schema.";
+                            col_name += AGG_FUNC_IDENTIFIER_PREFIX;
+                            col_name += intToStr(op->aggregates_[i]->parent_id_);
+                            new_cols.push_back(Column(col_name, INT, offset_ptr));
+                            offset_ptr += Column::getSizeFromType(INT);
+                        }
+                        TableSchema* new_output_schema = new TableSchema("agg_tmp_schema", nullptr, new_cols);
 
-                               TableSchema* new_output_schema = new TableSchema(tname, schema->getTable(), columns);
-                               SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, call_stack, query_idx, parent_query_idx);
-                               return scan;
-                           }
+                        return new AggregationExecutor(child, new_output_schema, op->aggregates_, op->group_by_, ctx, query_idx, parent_query_idx);
+                    } break;
+                case FILTER: 
+                    {
+                        FilterOperation* op = reinterpret_cast<FilterOperation*>(logical_plan);
+                        Executor* child = buildExecutionPlan(ctx, op->child_, query_idx, parent_query_idx);
+                        TableSchema* schema = nullptr;
+                        if(child == nullptr) schema = nullptr;
+                        else                 schema = child->output_schema_;
+
+                        FilterExecutor* filter = new FilterExecutor(child, schema, op->filter_, op->fields_, op->field_names_, ctx, query_idx, parent_query_idx);
+                        return filter;
+                    } break;
+                case SCAN: 
+                    {
+                        ScanOperation* op = reinterpret_cast<ScanOperation*>(logical_plan);
+                        TableSchema* schema = catalog_->getTableSchema(op->table_name_);
+                        std::string tname =  op->table_name_;
+                        if(op->table_rename_.size() != 0) tname = op->table_rename_;
+                        std::vector<Column> columns = schema->getColumns();
+                        // create a new schema and rename columns to table.col_name
+                        for(int i = 0; i < columns.size(); i++){
+                            std::string col_name = tname; 
+                            col_name += ".";
+                            col_name += columns[i].getName();
+                            columns[i].setName(col_name);
+                        }
+
+                        TableSchema* new_output_schema = new TableSchema(tname, schema->getTable(), columns);
+                        SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
+                        return scan;
+                    } break;
                 default: 
-                           std::cout << "[ERROR] unsupported Algebra Operaion\n";
-                           return nullptr;
+                    std::cout << "[ERROR] unsupported Algebra Operaion\n";
+                    return nullptr;
             }
         }
 
-        bool runExecutor(Executor* physical_plan, QueryResult* result){
+        bool runExecutor(QueryCTX& ctx, QueryResult* result){
+            if(ctx.executors_call_stack_.size() < 1 || (bool) ctx.error_status_ ) return false;
+            auto physical_plan = ctx.executors_call_stack_[0];
             physical_plan->init();
             while(!physical_plan->error_status_ && !physical_plan->finished_){
                 std::vector<Value> tmp = physical_plan->next();
@@ -1072,30 +1076,25 @@ class ExecutionEngine {
             return (physical_plan->error_status_ == 0);
         }
 
-        bool executePlan(AlgebraOperation* logical_plan, QueryResult* result){
-            if(!logical_plan || logical_plan->call_stack_->size() < 1) return false;
-            if(!result) return false;
+        bool executePlan(QueryCTX& ctx, QueryResult* result){
+            if(ctx.queries_call_stack_.size() < 1 || !result) return false;
             std::cout << "[INFO] Creating physical plan" << std::endl;
 
-            std::vector<Executor*>* call_stack = new std::vector<Executor*>();
-            for(size_t i = 0; i < logical_plan->call_stack_->size(); i++){
-                AlgebraOperation* cur_plan = (*logical_plan->call_stack_)[i];
-                Executor* created_physical_plan = buildExecutionPlan(cur_plan, call_stack, cur_plan->query_idx_, cur_plan->query_parent_idx_);
+            for(auto cur_plan : ctx.operators_call_stack_){
+                Executor* created_physical_plan = buildExecutionPlan(ctx, cur_plan, cur_plan->query_idx_, cur_plan->query_parent_idx_);
                 if(!created_physical_plan){
                     std::cout << "[ERROR] Could not build physical operation\n";
                     return false;
                 }
                 if(cur_plan->distinct_){
-                    DistinctExecutor* distinct = new DistinctExecutor(created_physical_plan, created_physical_plan->output_schema_, call_stack, cur_plan->query_idx_, cur_plan->query_parent_idx_);
-                    call_stack->push_back(distinct);
+                    DistinctExecutor* distinct = new DistinctExecutor(created_physical_plan, created_physical_plan->output_schema_, ctx, cur_plan->query_idx_, cur_plan->query_parent_idx_);
+                    ctx.executors_call_stack_.push_back(distinct);
                 } else 
-                    call_stack->push_back(created_physical_plan);
+                    ctx.executors_call_stack_.push_back(created_physical_plan);
             }
 
-            Executor* physical_plan = (*call_stack)[0]; 
             std::cout << "[INFO] executing physical plan" << std::endl;
-
-            return runExecutor(physical_plan, result);
+            return runExecutor(ctx, result);
         }
     private:
         Catalog* catalog_;

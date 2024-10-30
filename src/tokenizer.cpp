@@ -2,12 +2,11 @@
 #include "utils.cpp"
 #include <map>
 
-#define AVG_TOKENS_COUNT 20
-
-enum TokenType {
+enum class TokenType {
     // only these require the val_  property.
 	NUMBER_CONSTANT=0,
 	STR_CONSTANT,
+	FLOATING_CONSTANT,
 	IDENTIFIER,
     TOKENS_WITH_VAL,
     // symbols
@@ -42,7 +41,11 @@ enum TokenType {
     GROUP,
     JOIN,
     INDEX,
+    NULL_CONST,
+    TRUE,
+    FALSE,
     BY,
+    AS,
     ON,
     HAVING,
     DISTINCT,
@@ -68,9 +71,9 @@ enum TokenType {
 };
 
 struct Token {
-    TokenType type_ = INVALID_TOKEN;
+    TokenType type_ = TokenType::INVALID_TOKEN;
     std::string val_ = "";
-    Token(TokenType type = INVALID_TOKEN, std::string val = ""): type_(type), val_(val)
+    Token(TokenType type = TokenType::INVALID_TOKEN, std::string val = ""): type_(type), val_(val)
     {}
 };
 
@@ -78,7 +81,7 @@ struct Token {
 class Tokenizer {
     public:
         Tokenizer();
-        ~Tokenizer();
+        ~Tokenizer(){}
 
         bool isKeyword(std::string& t);
         bool isDataType(std::string& t);
@@ -89,8 +92,13 @@ class Tokenizer {
         bool isEqOP(std::string& op);
         bool isStrConst(std::string& t);
         bool isNumberConst (std::string& t);
-        TokenType getTokenType(std::string& t);
         bool isWhitespace(char ch);
+
+        bool isDataType(TokenType type);
+        bool isAggFunc(TokenType func);
+
+        TokenType getTokenType(std::string& t);
+
         void tokenize(std::string& input, std::vector<Token>& output);
 
     private:
@@ -101,59 +109,63 @@ class Tokenizer {
 
 Tokenizer::Tokenizer(){
     // reserved keywords
-    keywords_.insert({"SELECT"  , SELECT  });
-    keywords_.insert({"ORDER"   , ORDER   });
-    keywords_.insert({"GROUP"   , GROUP   });
-    keywords_.insert({"JOIN"    , JOIN    });
-    keywords_.insert({"DISTINCT", DISTINCT});
-    keywords_.insert({"BY"      , BY      });
-    keywords_.insert({"ON"      , ON      });
-    keywords_.insert({"HAVING"  , HAVING  });
-    keywords_.insert({"INSERT"  , INSERT  });
-    keywords_.insert({"FROM"    , FROM    });
-    keywords_.insert({"WHERE"   , WHERE   });
-    keywords_.insert({"AND"     , AND     });
-    keywords_.insert({"OR"      , OR      });
-    keywords_.insert({"INTO"    , INTO    });
-    keywords_.insert({"VALUES"  , VALUES  });
-    keywords_.insert({"DELETE"  , DELETE  });
-    keywords_.insert({"UPDATE"  , UPDATE  });
-    keywords_.insert({"SET"     , SET     });
-    keywords_.insert({"INDEX"   , INDEX   });
-    keywords_.insert({"CREATE"  , CREATE  });
-    keywords_.insert({"TABLE"   , TABLE   });
+    keywords_.insert({"NULL"    , TokenType::NULL_CONST   });
+    keywords_.insert({"SELECT"  , TokenType::SELECT  });
+    keywords_.insert({"ORDER"   , TokenType::ORDER   });
+    keywords_.insert({"GROUP"   , TokenType::GROUP   });
+    keywords_.insert({"JOIN"    , TokenType::JOIN    });
+    keywords_.insert({"DISTINCT", TokenType::DISTINCT});
+    keywords_.insert({"BY"      , TokenType::BY      });
+    keywords_.insert({"AS"      , TokenType::AS      });
+    keywords_.insert({"ON"      , TokenType::ON      });
+    keywords_.insert({"HAVING"  , TokenType::HAVING  });
+    keywords_.insert({"INSERT"  , TokenType::INSERT  });
+    keywords_.insert({"FROM"    , TokenType::FROM    });
+    keywords_.insert({"WHERE"   , TokenType::WHERE   });
+    keywords_.insert({"AND"     , TokenType::AND     });
+    keywords_.insert({"OR"      , TokenType::OR      });
+    keywords_.insert({"INTO"    , TokenType::INTO    });
+    keywords_.insert({"VALUES"  , TokenType::VALUES  });
+    keywords_.insert({"DELETE"  , TokenType::DELETE  });
+    keywords_.insert({"UPDATE"  , TokenType::UPDATE  });
+    keywords_.insert({"SET"     , TokenType::SET     });
+    keywords_.insert({"INDEX"   , TokenType::INDEX   });
+    keywords_.insert({"FALSE"   , TokenType::FALSE   });
+    keywords_.insert({"TRUE"    , TokenType::TRUE    });
+    keywords_.insert({"CREATE"  , TokenType::CREATE  });
+    keywords_.insert({"TABLE"   , TokenType::TABLE   });
     // aggregate functions
-    keywords_.insert({"SUM"  , SUM  });
-    keywords_.insert({"COUNT", COUNT});
-    keywords_.insert({"AVG"  , AVG  });
-    keywords_.insert({"MIN"  , MIN  });
-    keywords_.insert({"MAX"  , MAX  });
+    keywords_.insert({"SUM"  , TokenType::SUM  });
+    keywords_.insert({"COUNT", TokenType::COUNT});
+    keywords_.insert({"AVG"  , TokenType::AVG  });
+    keywords_.insert({"MIN"  , TokenType::MIN  });
+    keywords_.insert({"MAX"  , TokenType::MAX  });
     // datatypes
-    data_types_.insert({"VARCHAR"  , VARCHAR  });
-    data_types_.insert({"INTEGER"  , INTEGER  });
-    data_types_.insert({"BIGINT"   , BIGINT   });
-    data_types_.insert({"FLOAT"    , FLOAT    });
-    data_types_.insert({"DOUBLE"   , DOUBLE   });
-    data_types_.insert({"TIMESTAMP", TIMESTAMP});
-    data_types_.insert({"BOOLEAN"  , BOOLEAN  });
+    data_types_.insert({"VARCHAR"  , TokenType::VARCHAR  });
+    data_types_.insert({"INTEGER"  , TokenType::INTEGER  });
+    data_types_.insert({"BIGINT"   , TokenType::BIGINT   });
+    data_types_.insert({"FLOAT"    , TokenType::FLOAT    });
+    data_types_.insert({"DOUBLE"   , TokenType::DOUBLE   });
+    data_types_.insert({"TIMESTAMP", TokenType::TIMESTAMP});
+    data_types_.insert({"BOOLEAN"  , TokenType::BOOLEAN  });
     // reserved symbols 
-    symbols_.insert({"<" , LT       });
-    symbols_.insert({"<=", LTE      });
-    symbols_.insert({">" , GT       });
-    symbols_.insert({">=", GTE      });
-    symbols_.insert({"=" , EQ       });
-    symbols_.insert({"!=", NEQ      });
-    symbols_.insert({"!" , NOT      });
-    symbols_.insert({"(" , LP       });
-    symbols_.insert({")" , RP       });
-    symbols_.insert({";" , SEMICOLON});
-    symbols_.insert({"+" , PLUS     });
-    symbols_.insert({"-" , MINUS    });
-    symbols_.insert({"*" ,  STAR    });
-    symbols_.insert({"/" , SLASH    });
-    symbols_.insert({"%" , PERCENT  });
-    symbols_.insert({"." , DOT      });
-    symbols_.insert({"," , COMMA    });
+    symbols_.insert({"<" , TokenType::LT       });
+    symbols_.insert({"<=", TokenType::LTE      });
+    symbols_.insert({">" , TokenType::GT       });
+    symbols_.insert({">=", TokenType::GTE      });
+    symbols_.insert({"=" , TokenType::EQ       });
+    symbols_.insert({"!=", TokenType::NEQ      });
+    symbols_.insert({"!" , TokenType::NOT      });
+    symbols_.insert({"(" , TokenType::LP       });
+    symbols_.insert({")" , TokenType::RP       });
+    symbols_.insert({";" , TokenType::SEMICOLON});
+    symbols_.insert({"+" , TokenType::PLUS     });
+    symbols_.insert({"-" , TokenType::MINUS    });
+    symbols_.insert({"*" , TokenType:: STAR    });
+    symbols_.insert({"/" , TokenType::SLASH    });
+    symbols_.insert({"%" , TokenType::PERCENT  });
+    symbols_.insert({"." , TokenType::DOT      });
+    symbols_.insert({"," , TokenType::COMMA    });
 }
 
 bool Tokenizer::isKeyword(std::string& t){
@@ -166,6 +178,34 @@ bool Tokenizer::isDataType(std::string& t){
 
 bool Tokenizer::isSymbol(std::string& t){
     return symbols_.count(t);
+}
+
+bool Tokenizer::isDataType(TokenType t){
+    switch(t){
+        case TokenType::VARCHAR:
+        case TokenType::INTEGER:
+        case TokenType::BIGINT:
+        case TokenType::FLOAT:
+        case TokenType::DOUBLE:
+        case TokenType::TIMESTAMP:
+        case TokenType::BOOLEAN:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool Tokenizer::isAggFunc(TokenType func){
+    switch(func){
+        case TokenType::SUM:
+        case TokenType::COUNT:
+        case TokenType::MIN:
+        case TokenType::MAX:
+        case TokenType::AVG:
+            return true;
+        default:
+            return false;
+    }
 }
 
 bool Tokenizer::isAggFunc(std::string& func){
@@ -199,9 +239,9 @@ bool Tokenizer::isNumberConst (std::string& t){
 TokenType Tokenizer::getTokenType(std::string& t) {
     if(isKeyword(t))     return keywords_[t];
     if(isSymbol(t))      return symbols_[t];
-    if(isStrConst(t))    return STR_CONSTANT;
-    if(isNumberConst(t)) return NUMBER_CONSTANT;
-    return IDENTIFIER;
+    if(isStrConst(t))    return TokenType::STR_CONSTANT;
+    if(isNumberConst(t)) return TokenType::NUMBER_CONSTANT;
+    return TokenType::IDENTIFIER;
 }
 
 bool Tokenizer::isWhitespace(char ch) {
@@ -239,12 +279,12 @@ void Tokenizer::tokenize(std::string& input, std::vector<Token>& output){
                 if(!cur_token.empty()){
                     TokenType type = getTokenType(cur_token);
 
-                    output.emplace_back(type, (type < TOKENS_WITH_VAL ? cur_token: ""));
+                    output.emplace_back(type, (type < TokenType::TOKENS_WITH_VAL ? cur_token: ""));
                     cur_token.clear();
                 }
 
                 TokenType type = getTokenType(tmp);
-                output.emplace_back(type, (type < TOKENS_WITH_VAL ? tmp : ""));
+                output.emplace_back(type, (type < TokenType::TOKENS_WITH_VAL ? tmp : ""));
                 continue;
             }
             cur_token += input[pos++];
@@ -253,7 +293,7 @@ void Tokenizer::tokenize(std::string& input, std::vector<Token>& output){
         if(!cur_token.empty()){
             TokenType type = getTokenType(cur_token);
 
-            output.emplace_back(type, (type < TOKENS_WITH_VAL ? cur_token: ""));
+            output.emplace_back(type, (type < TokenType::TOKENS_WITH_VAL ? cur_token: ""));
             cur_token.clear();
         }
     }

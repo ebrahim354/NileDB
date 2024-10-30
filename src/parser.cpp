@@ -1,9 +1,14 @@
 #pragma once
 #include "tokenizer.cpp"
+#include "error.cpp"
 #include "catalog.cpp"
 #include "utils.cpp"
+#include "query_ctx.cpp"
 #include <cmath>
-#include <cstdint>
+
+struct ExpressionNode;
+struct QueryData;
+
 
 // The grammer rules are defined as structures, each struct is following the name convention: CategoryNameNode,
 // for example: the constant category the struct is named ConstantNode.
@@ -27,6 +32,15 @@ enum AggregateFuncType {
     AVG,
 };
 
+AggregateFuncType getAggFuncType(TokenType func){
+    if(func == TokenType::COUNT) return COUNT;
+    if(func == TokenType::SUM)   return SUM;
+    if(func == TokenType::MIN)   return MIN;
+    if(func == TokenType::MAX)   return MAX;
+    if(func == TokenType::AVG)   return AVG;
+    return NOT_DEFINED;
+}
+
 AggregateFuncType getAggFuncType(std::string& func){
     if(func == "COUNT") return COUNT;
     if(func == "SUM")   return SUM;
@@ -39,7 +53,11 @@ AggregateFuncType getAggFuncType(std::string& func){
 
 
 enum QueryType {
-    SELECT_DATA
+    SELECT_DATA,
+    CREATE_TABLE_DATA,
+    INSERT_DATA,
+    DELETE_DATA,
+    UPDATE_DATA,
 };
 
 enum CategoryType {
@@ -90,9 +108,6 @@ enum CategoryType {
     // add views and indexes later.
 };
 
-
-
-
 struct ASTNode {
     ASTNode(CategoryType ct, Token val = {}): category_(ct), token_(val)
     {}
@@ -100,8 +115,6 @@ struct ASTNode {
     Token token_; 
 };
 
-struct ExpressionNode;
-struct QueryData;
 
 // scoped field is a field of the format: tableName + "." + fieldName
 struct ScopedFieldNode : ASTNode {
@@ -179,6 +192,7 @@ struct EqualityNode : ASTNode {
     ComparisonNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
+
 struct AndNode : ASTNode {
     AndNode(EqualityNode* lhs, AndNode* rhs = nullptr, Token op={}): ASTNode(AND, op), cur_(lhs), next_(rhs)
     {}
@@ -189,6 +203,7 @@ struct AndNode : ASTNode {
     EqualityNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
+
 struct OrNode : ASTNode {
     OrNode(AndNode* lhs, OrNode* rhs = nullptr, Token op={}): ASTNode(OR, op), cur_(lhs), next_(rhs)
     {}
@@ -199,8 +214,6 @@ struct OrNode : ASTNode {
     AndNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
-
-
 
 struct ExpressionNode : ASTNode {
     ExpressionNode(QueryData* top_level_statement, int query_idx, ASTNode* val = nullptr): 
@@ -217,163 +230,20 @@ struct ExpressionNode : ASTNode {
                                                   // meaning that expressions with aggregate functions can't be nested.
 };
 
-
-struct FieldDefNode : ASTNode {
-    FieldDefNode(): ASTNode(FIELD_DEF)
-    {}
-    void clean() {
-        delete field_;
-        delete type_;
-    }
-    ASTNode* field_;
-    ASTNode* type_;
-};
-
-
-
-
-// this amound of specific list types is why inheritance is just bad. or maybe I'm doing it the wrong way.
-
-
-// a linked list of constants linked by the ',' sympol.
-struct FieldDefListNode : ASTNode {
-    FieldDefListNode(): ASTNode(FIELD_DEF_LIST)
-    {}
-    void clean (){
-        if(field_def_) field_def_->clean();
-        if(next_) next_->clean();
-        delete field_def_;
-        delete next_;
-    }
-    FieldDefNode* field_def_ = nullptr;
-    FieldDefListNode* next_ = nullptr;
-};
-
-// a linked list of constants linked by the ',' sympol.
-struct ConstListNode : ASTNode {
-    ConstListNode(): ASTNode(CONST_LIST)
-    {}
-    void clean (){
-        if(next_) next_->clean();
-        delete next_;
-    }
-    ConstListNode* next_ = nullptr;
-};
-
-// a linked list of table identifiers linked with the ',' sympol.
-struct TableListNode : ASTNode {
-    TableListNode(): ASTNode(TABLE_LIST)
-    {}
-    void clean (){
-        if(next_) {
-            next_->clean();
-            delete as_;
-            delete next_;
-        }
-    }
-    ASTNode* as_ = nullptr;
-    TableListNode* next_ = nullptr;
-};
-
-// a linked list of fields linked with the ',' sympol.
-struct SelectListNode : ASTNode {
-    SelectListNode(): ASTNode(SELECT_LIST)
-    {}
-    void clean(){
-        if(next_)  next_->clean();
-        if(field_) field_->clean();
-        delete field_;
-        delete next_;
-    }
-    bool star_ = false;
-    ASTNode* as_ = nullptr;
-    ExpressionNode* field_ = nullptr;
-    SelectListNode* next_ = nullptr;
-};
-
-struct FieldListNode : ASTNode {
-    FieldListNode(): ASTNode(FIELD_LIST)
-    {}
-    void clean(){
-        if(next_)  next_->clean();
-        delete field_;
-        delete next_;
-    }
-    ASTNode* field_ = nullptr;
-    FieldListNode* next_ = nullptr;
-};
-
-// a linked list of terms linked with keywords (and, or etc...).
-struct PredicateNode : ASTNode {
-    PredicateNode(Token val = {}): ASTNode(PREDICATE, val)
-    {}
-    void clean () {
-        if(next_) next_->clean();
-        if(term_) term_->clean();
-        delete term_;
-        delete next_;
-    }
-    TermNode* term_ = nullptr;
-    PredicateNode* next_ = nullptr;
-};
-
-
+// SQL statement data wrappers.
 struct QueryData {
-    QueryData(QueryType type = SELECT_DATA): type_(type)
+    QueryData(QueryType type, int parent_idx): type_(type), parent_idx_(parent_idx)
     {}
     QueryType type_;
-    // implement later.
+    int idx_ = -1;          // every query must have an id starting from 0 even the top level query.
+    int parent_idx_ = -1;   // -1 means this query is the top level query.
 };
 
-// SQL statement data wrapper.
 struct SelectStatementData : QueryData {
 
-    SelectStatementData(int parent_idx): QueryData(SELECT_DATA), parent_idx_(parent_idx) 
+    SelectStatementData(int parent_idx): QueryData(SELECT_DATA, parent_idx)
     {}
     ~SelectStatementData() {}
-
-    void init(TableListNode* tables, SelectListNode* fields,
-                        ExpressionNode* where, ConstListNode* order_by_list, std::vector<ASTNode*> group_by, bool distinct) {
-        distinct_ = distinct;
-        group_by_ = group_by;
-        where_ = where;
-        SelectListNode* field_ptr = fields;
-        while(field_ptr != nullptr){
-            has_star_ = (has_star_ || field_ptr->star_);
-            // if field_ptr->field_ == nullptr, that means it's a select * statement.
-            fields_.push_back(field_ptr->field_);
-            if(field_ptr->as_ != nullptr)
-                field_names_.push_back(field_ptr->as_->token_.val_);
-            else 
-                field_names_.push_back("");
-            if(field_ptr->field_ != nullptr && field_ptr->field_->aggregate_func_ != nullptr){
-                aggregates_.push_back(field_ptr->field_->aggregate_func_);
-            }
-            field_ptr = field_ptr->next_;
-        }
-
-        TableListNode* table_ptr = tables; 
-        while(table_ptr != nullptr){
-            std::string table_name = table_ptr->token_.val_;
-
-            if(table_ptr->as_ != nullptr)
-                table_names_.push_back(table_ptr->as_->token_.val_);
-            else 
-                table_names_.push_back("");
-
-            tables_.push_back(table_name);
-            table_ptr = table_ptr->next_;
-        }
-
-        ConstListNode* order_by_ptr = order_by_list;
-        while(order_by_ptr != nullptr){
-            std::string val = order_by_ptr->token_.val_;
-            int cur = str_to_int(val);
-            order_by_list_.push_back(cur-1); 
-            order_by_ptr = order_by_ptr->next_;
-        }
-    }
-
 
     std::vector<ExpressionNode*> fields_ = {};
     std::vector<std::string> field_names_ = {};
@@ -385,354 +255,71 @@ struct SelectStatementData : QueryData {
     std::vector<int> order_by_list_ = {};
     int idx_ = -1;          // every query must have an id starting from 0 even the top level query.
     int parent_idx_ = -1;   // -1 means this query is the top level query.
-    std::vector<QueryData*> queries_call_stack_ = {}; // only used when this query is the top level. 
     std::vector<ASTNode*> group_by_ = {}; 
     bool distinct_ = false;
 };
 
-struct CreateTableStatementNode : ASTNode {
-
-    CreateTableStatementNode(): ASTNode(CREATE_TABLE_STATEMENT)
-    {}
-    void clean() {
-        if(field_defs_) field_defs_->clean();
-        delete field_defs_;
-        delete table_;
-    }
-    FieldDefListNode* field_defs_ = nullptr;
-    ASTNode* table_ = nullptr;
+// more data will be added
+struct FieldDef {
+    std::string field_name_;
+    TokenType type_; 
 };
 
-struct DeleteStatementNode : ASTNode {
+struct CreateTableStatementData : QueryData {
 
-    DeleteStatementNode(): ASTNode(DELETE_STATEMENT)
-    {}
-    void clean (){
-        if(predicate_) predicate_->clean();
-        delete table_;
-        delete predicate_;
-    }
-    ASTNode*  table_ = nullptr;
-    PredicateNode* predicate_ = nullptr;
+    CreateTableStatementData(int parent_idx): QueryData(CREATE_TABLE_DATA, parent_idx){}
+    ~CreateTableStatementData() {}
+
+
+    std::vector<FieldDef> field_defs_ = {};
+    std::string table_name_ = {};
 };
 
-struct UpdateStatementNode : ASTNode {
+struct InsertStatementData : QueryData {
 
-    UpdateStatementNode(): ASTNode(UPDATE_STATEMENT)
-    {}
-    void clean (){
-        if(predicate_) predicate_->clean();
-        delete field_;
-        delete table_;
-        delete predicate_;
-    }
-    ASTNode*  table_ = nullptr;
-    ASTNode*  field_ = nullptr;
-    ASTNode*  expression_ = nullptr;
-    PredicateNode* predicate_ = nullptr;
+    InsertStatementData(int parent_idx): QueryData(INSERT_DATA, parent_idx){}
+    ~InsertStatementData() {}
+
+
+    std::string table_name_ = {};
+    std::vector<std::string> fields_ = {};
+    std::vector<ExpressionNode*> values_ = {};
 };
 
-struct InsertStatementNode : ASTNode {
+struct DeleteStatementData : QueryData {
 
-    InsertStatementNode(): ASTNode(INSERT_STATEMENT)
-    {}
-    void clean (){
-        if(fields_) fields_->clean();
-        if(values_) values_->clean();
-        delete fields_;
-        delete values_;
-        delete table_;
-    }
-    ASTNode*  table_;
-    FieldListNode* fields_ = nullptr;
-    ConstListNode*  values_ = nullptr;
+    DeleteStatementData(int parent_idx): QueryData(DELETE_DATA, parent_idx){}
+    ~DeleteStatementData() {}
+
+
+    std::string table_name_ = {};
+    ExpressionNode* where_ = nullptr;
 };
 
+struct UpdateStatementData : QueryData {
+
+    UpdateStatementData(int parent_idx): QueryData(UPDATE_DATA, parent_idx){}
+    ~UpdateStatementData() {}
 
 
+    std::string table_name_ = {};
+    std::string  field_ = {}; 
+    ExpressionNode* value_ = nullptr;
+    ExpressionNode* where_ = nullptr;
+};
 
 class Parser {
     public:
         Parser(Catalog* c): catalog_(c)
         {}
         ~Parser(){}
-
-        ASTNode* field(){
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].type_ == IDENTIFIER) {
-                return new ASTNode(FIELD, tokens_[cur_pos_++]);
-            }
-            return nullptr;
-        }
-
-        // scoped field is a field of the format: tableName + "." + fieldName
-        ASTNode* scoped_field(){
-            if(cur_pos_+2 < cur_size_ 
-                    && tokens_[cur_pos_].type_ == IDENTIFIER 
-                    && tokens_[cur_pos_+1].val_ == "."
-                    && tokens_[cur_pos_+2].type_ == IDENTIFIER) {
-                ASTNode* t = table();
-                if(!t) return nullptr;
-                cur_pos_++;
-                return new ScopedFieldNode(tokens_[cur_pos_++], t);
-            }
-            return nullptr;
-        }
-
-        ASTNode* agg_func(ExpressionNode* expression_ctx){
-            if(!expression_ctx) {
-                std::cout << "[ERROR] Cannot have aggregate functions in this context" << std::endl;
-                return nullptr;
-            }
-            if(cur_pos_ + 1 >= cur_size_ || tokens_[cur_pos_].type_ != KEYWORD || tokens_[cur_pos_+1].val_ != "(") 
-                return nullptr;
-            AggregateFuncType type = getAggFuncType(tokens_[cur_pos_].val_);
-            if(type == NOT_DEFINED) return nullptr;
-            cur_pos_+= 2;
-            ExpressionNode* exp = nullptr;
-            // only count can have a star parameter.
-            if(type == COUNT && cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "*"){
-                cur_pos_++;
-            } else {
-                exp = expression(expression_ctx->top_level_statement_, expression_ctx->query_idx_, 0);
-                if(!exp) return nullptr;
-                if(exp->aggregate_func_) {
-                    std::cout << "[ERROR] Cannot nest aggregate functions" << std::endl;
-                    return nullptr;
-                }
-            }
-            expression_ctx->aggregate_func_ =  new AggregateFuncNode(exp, type, expression_ctx->id_);
-
-            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")") return nullptr;
-            cur_pos_++; // ")"
-            std::string tmp = AGG_FUNC_IDENTIFIER_PREFIX;
-            tmp += intToStr(expression_ctx->id_);
-            return new ASTNode(FIELD, Token {.val_ = tmp, .type_ = IDENTIFIER });
-        }
-
-        ASTNode* type(){
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].type_ == KEYWORD 
-                    && tokenizer_.isDataType(tokens_[cur_pos_].val_)) {
-                return new ASTNode(TYPE_DEF, tokens_[cur_pos_++]);
-            }
-            return nullptr;
-        }
-
-        FieldDefNode* fieldDef(){
-            auto f = field();
-            auto t = type();
-            if(!f || !t){ 
-                delete f;
-                delete t;
-                return  nullptr;
-            }
-            FieldDefNode* fd = new FieldDefNode();
-            fd->field_ = f;
-            fd->type_  = t;
-            return fd;
-        }
-
-
+        /*
         // the user of this method is the one who should check to see if it's ok to use, this table name or not
         // using the catalog.
         // for example: a create statement should check if this table name is used before or not to avoid duplication,
         // however a select statement should check if this table name exists to search inside of it.
         // this usage is applied for all premitive Categories.
-        ASTNode* table(){
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].type_ == IDENTIFIER){
-                return new ASTNode(TABLE, tokens_[cur_pos_++]);
-            }
-            return nullptr;
-        }
         
-        ASTNode* constant(){
-            if(cur_pos_ >= cur_size_)
-                return nullptr;
-            if(tokens_[cur_pos_].type_ == STR_CONSTANT)
-                return new ASTNode(STRING_CONSTANT, tokens_[cur_pos_++]);
-            if(tokens_[cur_pos_].type_ == INT_CONSTANT)
-                return new ASTNode(INTEGER_CONSTANT, tokens_[cur_pos_++]);
-            return nullptr;
-        }
-
-        ASTNode* item(ExpressionNode* expression_ctx){
-            if(!expression_ctx) {
-                std::cout << "[ERROR] No expression context provided" << std::endl;
-                return nullptr;
-            }
-
-            ASTNode* i = nullptr;
-            if(cur_pos_ >= cur_size_) return nullptr;
-            // check for sub-queries.
-            // TODO: extend to no only support select sub-queries.
-            if(cur_pos_ + 1 < cur_size_ && tokens_[cur_pos_].val_ == "(" && tokens_[cur_pos_+1].val_ == "SELECT"){
-                cur_pos_+=2;
-                SelectStatementData* sub_query = 
-                    selectStatement(expression_ctx->query_idx_, expression_ctx->top_level_statement_);
-                if(!sub_query) {
-                    return nullptr;
-                }
-                SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
-                if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")") {
-                    return nullptr;
-                }
-                cur_pos_++;
-                return sub_query_node;
-            }
-            // nested expressions.
-            if(tokens_[cur_pos_].val_ == "("){
-                cur_pos_++;
-                int id = expression_ctx->id_;
-                auto ex = expression(expression_ctx->top_level_statement_, expression_ctx->query_idx_ ,id);
-                if(!ex) return nullptr;
-                if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")") {
-                    return nullptr;
-                }
-                cur_pos_++;
-                return ex;
-            }
-            if(expression_ctx && expression_ctx->id_ != 0)
-                i = agg_func(expression_ctx);
-            if(!i)
-                i = scoped_field();
-            if(!i)
-                i = field();
-            if(!i)
-                i = constant();
-            return i;
-        }
-
-        ASTNode* unary(ExpressionNode* expression_ctx){
-            if(cur_pos_ >= cur_size_) return nullptr;
-            if(tokens_[cur_pos_].val_ == "-" || tokens_[cur_pos_].val_ == "+"){
-                UnaryNode* u = nullptr;
-                u = new UnaryNode(nullptr, tokens_[cur_pos_]);
-                cur_pos_++;
-                ASTNode* val = item(expression_ctx);
-                if(!val) return nullptr;
-                u->cur_ = val;
-                return u;
-            }
-            // no need to wrap it in a unary if we don't find any unary operators.
-            return item(expression_ctx);
-        }
-
-        ASTNode* factor(ExpressionNode* expression_ctx){
-            ASTNode* cur = unary(expression_ctx);
-            if(!cur) return nullptr;
-            if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "*" || tokens_[cur_pos_].val_ == "/")) {
-                FactorNode* f = new FactorNode(reinterpret_cast<UnaryNode*>(cur));
-                ASTNode* next = nullptr;
-                f->token_ = tokens_[cur_pos_++];
-                next = factor(expression_ctx);
-                if(!next) {
-                    f->clean();
-                    delete cur;
-                    return nullptr;
-                }
-                f->next_ = next;
-                return f;
-            }
-            return cur;
-        }
-
-        ASTNode* term(ExpressionNode* expression_ctx = nullptr){
-            ASTNode* cur = factor(expression_ctx);
-            if(!cur) return nullptr;
-            if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "+" || tokens_[cur_pos_].val_ == "-")) { 
-                TermNode* t = new TermNode(reinterpret_cast<FactorNode*>(cur));
-                t->token_ = tokens_[cur_pos_++];
-                ASTNode* next = term(expression_ctx);
-                if(!next) {
-                    t->clean();
-                    delete cur;
-                    return nullptr;
-                }
-                t->next_ = next;
-                return t;
-            }
-            return cur;
-        }
-
-        ASTNode* comparison(ExpressionNode* expression_ctx){
-            ASTNode* cur = term(expression_ctx);
-            if(!cur) return nullptr;
-            if(cur_pos_ < cur_size_ && tokenizer_.isCompareOP(tokens_[cur_pos_].val_)) { 
-                ComparisonNode* c = new ComparisonNode(reinterpret_cast<TermNode*>(cur));
-                c->token_ = tokens_[cur_pos_++];
-                ASTNode* next = comparison(expression_ctx);
-                if(!next) {
-                    c->clean();
-                    delete cur;
-                    return nullptr;
-                }
-                c->next_ = next;
-                return c;
-            }
-            return cur;
-        }
-
-        ASTNode* equality(ExpressionNode* expression_ctx){
-            ASTNode* cur = comparison(expression_ctx);
-            if(!cur) return nullptr;
-            if(cur_pos_ < cur_size_ && tokenizer_.isEqOP(tokens_[cur_pos_].val_)) { 
-                EqualityNode* eq = new EqualityNode(reinterpret_cast<ComparisonNode*>(cur));
-                eq->token_ = tokens_[cur_pos_++];
-                ASTNode* next = equality(expression_ctx);
-                if(!next) {
-                    eq->clean();
-                    delete cur;
-                    return nullptr;
-                }
-                eq->next_ = next;
-                return eq;
-            }
-            return cur;
-        }
-
-        ASTNode* logic_and(ExpressionNode* expression_ctx){
-            ASTNode* cur = equality(expression_ctx);
-            if(!cur) return nullptr;
-            if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "AND")) { 
-                AndNode* land = new AndNode(reinterpret_cast<EqualityNode*>(cur));
-                land->token_ = tokens_[cur_pos_++];
-                ASTNode* next = logic_and(expression_ctx);
-                if(!next) {
-                    land->clean();
-                    delete cur;
-                    return nullptr;
-                }
-                land->next_ = next;
-                return land;
-            }
-            return cur;
-        }
-
-        ASTNode* logic_or(ExpressionNode* expression_ctx){
-            ASTNode* cur = logic_and(expression_ctx);
-            if(!cur) return nullptr;
-            if(cur_pos_ < cur_size_ && (tokens_[cur_pos_].val_ == "OR")) { 
-                OrNode* lor = new OrNode(reinterpret_cast<AndNode*>(cur));
-                lor->token_ = tokens_[cur_pos_++];
-                ASTNode* next = logic_or(expression_ctx);
-                if(!next) {
-                    lor->clean();
-                    delete cur;
-                    return nullptr;
-                }
-                lor->next_ = next;
-                return lor;
-            }
-            return cur;
-        }
-
-        ExpressionNode* expression(QueryData* top_level_statement, int query_idx, int id){
-            ExpressionNode* ex = new ExpressionNode(top_level_statement, query_idx);
-            ex->id_ = id;
-            ASTNode* cur = logic_or(ex);
-            if(!cur) return nullptr;
-            ex->cur_ = cur;
-            return ex;
-        }
 
         PredicateNode* predicate(){
             ASTNode* t = term();
@@ -748,58 +335,7 @@ class Parser {
         }
 
 
-        FieldDefListNode* fieldDefList(){
-            FieldDefNode* f = fieldDef();
-            if(!f) return nullptr;
-            FieldDefListNode* nw_fdl = new FieldDefListNode();
-            nw_fdl->field_def_ = f;
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
-                cur_pos_++;
-                nw_fdl->next_ = fieldDefList();
-            }
-            return nw_fdl;
-        }
 
-        SelectListNode* selectList(QueryData* top_level_statement, int query_idx, int expression_id = 1){
-            bool star = false;
-            int cnt = expression_id;
-            ExpressionNode* f = nullptr;
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "*"){
-                cur_pos_++;
-                star = true;
-            } else f = expression(top_level_statement,query_idx,cnt);
-
-            if(!star && !f) {
-                return nullptr;
-            }
-            ASTNode* name = nullptr;
-
-            // optional AS keyword.
-            if(!star && cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "AS"){
-                cur_pos_++;
-                name = field();
-                if(!name){
-                    return nullptr;
-                }
-            }
-            // optional renaming of a field.
-            if(!star && !name && cur_pos_ < cur_size_ && tokens_[cur_pos_].type_ == IDENTIFIER){
-                name = field();
-                if(!name){
-                    return nullptr;
-                }
-            }
-
-            SelectListNode* nw_fl = new SelectListNode();
-            nw_fl->field_ = f;
-            nw_fl->star_ = star;
-            nw_fl->as_ = name;
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
-                cur_pos_++;
-                nw_fl->next_ = selectList(top_level_statement, query_idx, cnt+1);
-            }
-            return nw_fl;
-        }
 
         FieldListNode* fieldList(){
             ASTNode* f = field();
@@ -813,197 +349,6 @@ class Parser {
                 nw_fl->next_ = fieldList();
             }
             return nw_fl;
-        }
-
-        TableListNode* tableList(){
-            ASTNode* table = this->table();
-            if(!table || !catalog_->isValidTable(table->token_.val_)) {
-                delete table;
-                return nullptr;
-            }
-            TableListNode* nw_tl = new TableListNode();
-            nw_tl->token_ = table->token_;
-            delete table;
-
-            // optional AS keyword.
-            ASTNode* name = nullptr;
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "AS"){
-                cur_pos_++;
-                name = field();
-                if(!name){
-                    return nullptr;
-                }
-            }
-            // optional renaming of a field.
-            if(!name && cur_pos_ < cur_size_ && tokens_[cur_pos_].type_ == IDENTIFIER){
-                name = field();
-                if(!name){
-                    return nullptr;
-                }
-            }
-            nw_tl->as_ = name;
-
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
-                nw_tl->token_ = tokens_[++cur_pos_];
-                nw_tl->next_ = tableList();
-                if(!nw_tl->next_){
-                    nw_tl->clean();
-                    return nullptr;
-                }
-            }
-            return nw_tl;
-        }
-
-        ConstListNode* constList(){
-            ASTNode* c = this->constant();
-            if(!c) return nullptr;
-            ConstListNode* nw_cl = new ConstListNode();
-            nw_cl->token_ = c->token_;
-            nw_cl->category_ = c->category_;
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
-                cur_pos_++;
-                nw_cl->next_ = constList();
-            }
-            return nw_cl;
-        }
-        // predicate, selectlist, tablelist, constlist and fieldlist 
-        // can be improved by using just one list node struct for example. (later)
-        //
-        std::vector<ASTNode*> groupByList(){
-            std::vector<ASTNode*> group_by = {};
-            while(true){
-                ASTNode* f = scoped_field();
-                if(!f) f = field();
-                if(!f) break;
-                group_by.push_back(f);
-                
-                if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
-                    cur_pos_++;
-                    continue;
-                }
-            }
-            return group_by;
-        }
-
-
-        
-        // top level statement is called with the following args (-1, nullptr).
-        SelectStatementData* selectStatement(int parent_idx, QueryData* top_level_statement){
-
-            SelectStatementData* statement = new SelectStatementData(parent_idx);
-            QueryData* top_level = nullptr;
-
-            // if current query is the top level we need to pass it if it's not pass the top level one instead.
-            if(top_level_statement == nullptr) top_level = statement;
-            else top_level = top_level_statement;
-            // push current query to the call stack.
-            statement->idx_ = reinterpret_cast<SelectStatementData*>(top_level)->queries_call_stack_.size();
-            reinterpret_cast<SelectStatementData*>(top_level)->queries_call_stack_.push_back(statement);
-
-            bool distinct = false;
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "DISTINCT"){
-                cur_pos_++;
-                distinct = true;
-            }
-            
-            SelectListNode* fields = selectList(top_level, statement->idx_);
-            TableListNode* tables = nullptr;
-            ExpressionNode*  where = nullptr;
-            ConstListNode* order_by = nullptr;
-            std::vector<ASTNode*> group_by = {};
-            if(!fields){
-                return nullptr;
-            }
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "FROM"){
-                cur_pos_++;
-                tables = tableList();
-                if(!tables){
-                    return nullptr;
-                }
-            }
-
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
-                cur_pos_++;
-                where = expression(top_level, statement->idx_, 0);
-            }
-
-            if(cur_pos_+1 < cur_size_ && tokens_[cur_pos_].val_ == "ORDER" && tokens_[cur_pos_+1].val_ == "BY"){
-                cur_pos_+=2;
-                order_by = constList();
-            }
-
-            if(cur_pos_+1 < cur_size_ && tokens_[cur_pos_].val_ == "GROUP" && tokens_[cur_pos_+1].val_ == "BY"){
-                cur_pos_+=2;
-                group_by = groupByList();
-                std::cout << group_by.size() << std::endl;
-            }
-
-            statement->init(tables, fields, where, order_by, group_by, distinct);
-            return statement; 
-        }
-
-        CreateTableStatementNode* createTableStatement(){
-            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "TABLE")
-                return nullptr;
-            cur_pos_++;
-            auto statement = new CreateTableStatementNode();
-
-            statement->table_ = table();
-
-            if(!statement->table_   || cur_pos_ >= cur_size_ 
-                    || tokens_[cur_pos_++].val_ != "(" 
-                    || catalog_->isValidTable(statement->table_->token_.val_)){
-                statement->clean();
-                return nullptr;
-            }
-
-            statement->field_defs_ = fieldDefList();
-
-
-            if(!statement->field_defs_ || cur_pos_ >= cur_size_ 
-                       || tokens_[cur_pos_++].val_ != ")"){
-                statement->clean();
-                return nullptr;
-            }
-            return statement;
-        }
-
-
-
-        InsertStatementNode* insertStatement(){
-            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "INTO")
-                return nullptr;
-            cur_pos_++;
-
-            InsertStatementNode* statement = new InsertStatementNode();
-
-            statement->table_ = table();
-            if(!statement->table_ || cur_pos_ >= cur_size_ 
-                    || !catalog_->isValidTable(statement->table_->token_.val_)){
-                statement->clean();
-                return nullptr;
-            }
-
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "("){
-                cur_pos_++;
-                statement->fields_ = fieldList();
-                if(!statement->fields_ || cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")")
-                    return nullptr;
-                cur_pos_++;
-            }
-
-            if(cur_pos_+1 < cur_size_ 
-                    && tokens_[cur_pos_].val_ == "VALUES" 
-                    && tokens_[cur_pos_+1].val_ == "("){
-                cur_pos_+=2;
-                statement->values_ = constList();
-                if(!statement->values_ || cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != ")"){
-                    statement->clean();
-                    return nullptr;
-                }
-                cur_pos_++;
-            }
-            return statement; 
         }
 
 
@@ -1063,23 +408,9 @@ class Parser {
             }
             return statement; 
         }
+*/
 
-        QueryData* new_parse(std::string& query){
-            tokens_ = tokenizer_.tokenize(query);
-            cur_size_ = tokens_.size();
-            if(cur_size_ == 0 || tokens_[0].type_ != KEYWORD) return nullptr;
-            std::string v = tokens_[0].val_;
-            cur_pos_ = 1;
-            QueryData* ret = nullptr;
-            if(v == "SELECT")
-                ret = selectStatement(-1, nullptr);
-
-            // invalid query even if it produces a valid AST.
-            if(cur_pos_ != cur_size_) return nullptr;
-
-            return ret;
-        }
-
+        /*
         // legacy parse command will be replaced in the future.
         ASTNode* parse(std::string& query){
             tokens_ = tokenizer_.tokenize(query);
@@ -1104,12 +435,681 @@ class Parser {
             // current statement is not supported yet.
             return ret;
         }
+        */
+        ASTNode* constant(QueryCTX& ctx);
+        ASTNode* table(QueryCTX& ctx);
+        ASTNode* field(QueryCTX& ctx);
+        // scoped field is a field of the format: tableName + "." + fieldName
+        ASTNode* scoped_field(QueryCTX& ctx);
+        ASTNode* agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx);
+        ASTNode* item(QueryCTX& ctx, ExpressionNode* expression_ctx);
+        ASTNode* unary(QueryCTX& ctx, ExpressionNode* expression_ctx);
+        ASTNode* factor(QueryCTX& ctx, ExpressionNode* expression_ctx);
+        ASTNode* term(QueryCTX& ctx,ExpressionNode* expression_ctx = nullptr);
+        ASTNode* comparison(QueryCTX& ctx, ExpressionNode* expression_ctx);
+        ASTNode* equality(QueryCTX& ctx, ExpressionNode* expression_ctx);
+        ASTNode* logic_and(QueryCTX& ctx,ExpressionNode* expression_ctx);
+        ASTNode* logic_or(QueryCTX& ctx, ExpressionNode* expression_ctx);
+        ExpressionNode* expression(QueryCTX& ctx, int query_idx, int id);
+
+        Value constVal(QueryCTX& ctx);
+        void tableList(QueryCTX& ctx, int query_idx);
+        void expressionList(QueryCTX& ctx, int query_idx);
+        void selectList(QueryCTX& ctx, int query_idx);
+        void groupByList(QueryCTX& ctx, int query_idx);
+        void orderByList(QueryCTX& ctx, int query_idx);
+        void fieldDefList(QueryCTX& ctx, int query_idx);
+        void fieldList(QueryCTX& ctx, int query_idx);
+
+        // top level statement is called with parent_idx  as -1.
+        void selectStatement(QueryCTX& ctx, int parent_idx);
+
+        void createTableStatement(QueryCTX& ctx, int parent_idx);
+
+
+        void insertStatement(QueryCTX& ctx, int parent_idx){
+            if((bool)ctx.error_status_) return; 
+            if(!ctx.matchMultiTokenType({TokenType::INSERT , TokenType::INTO})){
+                ctx.error_status_ = Error::EXPECTED_INSERT_INTO; 
+                return;
+            }
+            ctx += 2;
+            InsertStatementData* statement = new InsertStatementData(parent_idx);
+            statement->idx_ = ctx.queries_call_stack_.size();
+            ctx.queries_call_stack_.push_back(statement);
+
+            if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
+                ctx.error_status_ = Error::EXPECTED_IDENTIFIER; 
+                return;
+            }
+            statement->table_name_ = ctx.getCurrentToken().val_; ++ctx;
+
+            // field list is optional.
+            if(ctx.matchTokenType(TokenType::LP)){
+                ++ctx;
+                fieldList(ctx, statement->idx_);
+                if(!statement->fields_.size()){
+                    ctx.error_status_ = Error::EXPECTED_FIELDS;
+                    return;
+                }
+                if(!ctx.matchTokenType(TokenType::RP)){
+                    ctx.error_status_ = Error::EXPECTED_RIGHT_PARANTH; 
+                    return;
+                }
+                ++ctx;
+            }
+
+            if(!ctx.matchTokenType(TokenType::VALUES)){
+                ctx.error_status_ = Error::EXPECTED_VALUES; 
+                return;
+            }
+            ++ctx;
+
+            if(!ctx.matchTokenType(TokenType::LP)){
+                ctx.error_status_ = Error::EXPECTED_LEFT_PARANTH; 
+                return;
+            }
+            ++ctx;
+
+            expressionList(ctx,statement->idx_);
+
+            if(!statement->values_.size()){
+                ctx.error_status_ = Error::EXPECTED_VALUES;
+                return;
+            }
+
+            if(!ctx.matchTokenType(TokenType::RP)){
+                ctx.error_status_ = Error::EXPECTED_RIGHT_PARANTH; 
+                return;
+            }
+            ++ctx;
+        }
+
+        // query : input.
+        // ctx   : output.
+        void parse(std::string& query, QueryCTX& ctx);
+
     private:
         Tokenizer tokenizer_ {};
-        std::vector<Token> tokens_;
         Catalog* catalog_;
-        uint32_t cur_pos_;
-        uint32_t cur_size_;
 };
 
+Value Parser::constVal(QueryCTX& ctx){
+    if((bool)ctx.error_status_) return Value();
+    Token token = ctx.getCurrentToken();
+    switch(token.type_){
+        case TokenType::STR_CONSTANT:
+            return Value(token.val_);
+        // TODO: handle floats.
+        case TokenType::NUMBER_CONSTANT:
+            return Value(str_to_int(token.val_));
+        case TokenType::TRUE:
+            return Value(true);
+        case TokenType::FALSE:
+            return Value(false);
+        case TokenType::NULL_CONST:
+            return Value(NULL_TYPE);
+        default:
+            return Value();
+    }
+}
 
+
+void Parser::parse(std::string& query, QueryCTX& ctx){
+    if((bool)ctx.error_status_) return; 
+    tokenizer_.tokenize(query, ctx.tokens_);
+
+    if(ctx.tokens_.size() == 0)
+        return;
+
+    switch(ctx.tokens_[0].type_){
+        case TokenType::SELECT:
+            selectStatement(ctx,-1);
+            break;
+        default:
+            ctx.error_status_ = Error::QUERY_NOT_SUPPORTED;
+    }
+
+}
+
+void Parser::expressionList(QueryCTX& ctx, int query_idx){
+    if((bool)ctx.error_status_) return; 
+    int cnt = 1;
+    auto query = reinterpret_cast<InsertStatementData*>(ctx.queries_call_stack_[query_idx]);
+    while(1){
+        ExpressionNode* f = expression(ctx, query_idx, cnt);
+        if(!f){
+            ctx.error_status_ = Error::EXPECTED_EXPRESSION;
+            return;
+        }
+        query->values_.push_back(f);
+        if(ctx.matchTokenType(TokenType::COMMA)){
+            ++ctx;
+            ++cnt;
+            continue;
+        }
+        break;
+    }
+}
+
+void Parser::selectList(QueryCTX& ctx, int query_idx){
+    if((bool)ctx.error_status_) return; 
+    int cnt = 1;
+    auto query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[query_idx]);
+    while(1){
+        bool star = false;
+        ExpressionNode* f = nullptr;
+        if(ctx.matchTokenType(TokenType::STAR)){
+            ++ctx;
+            star = true;
+        } else f = expression(ctx, query_idx, cnt);
+
+        if(!star && !f)
+            return;
+
+        bool rename = false;
+        // optional AS keyword.
+        if(!star && ctx.matchTokenType(TokenType::AS)){
+            ++ctx;
+            rename = true;
+            if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
+                ctx.error_status_ = Error::EXPECTED_IDENTIFIER;
+                return;
+            } else {
+                query->field_names_.push_back(ctx.getCurrentToken().val_);
+                ++ctx;
+            }
+        }
+        // optional renaming of a field.
+        if(!star && !rename && ctx.matchTokenType(TokenType::IDENTIFIER)){
+            rename = true;
+            query->field_names_.push_back(ctx.getCurrentToken().val_);
+            ++ctx;
+        }
+
+        query->has_star_ = (query->has_star_ || star);
+        // if field_ptr->field_ == nullptr, that means it's a select * statement.
+        query->fields_.push_back(f);
+        if(!rename)
+            query->field_names_.push_back("");
+
+        if(f != nullptr && f->aggregate_func_ != nullptr){
+            query->aggregates_.push_back(f->aggregate_func_);
+        }
+
+        if(ctx.matchTokenType(TokenType::COMMA)){
+            ++ctx;
+            ++cnt;
+            continue;
+        }
+        break;
+    }
+}
+
+
+void Parser::tableList(QueryCTX& ctx, int query_idx){
+    if((bool)ctx.error_status_) return; 
+    auto query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[query_idx]);
+    while(1){
+        if(ctx.matchTokenType(TokenType::IDENTIFIER)){
+            query->tables_.push_back(ctx.getCurrentToken().val_);
+            ++ctx;
+        } else return;
+
+        // optional AS keyword.
+        bool rename = false;
+        if(ctx.matchTokenType(TokenType::AS)){
+            ++ctx;
+            if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
+                return;
+            }
+            query->table_names_.push_back(ctx.getCurrentToken().val_);
+            ++ctx;
+            rename = true;
+        }
+
+        // optional renaming of a field.
+        if(!rename && ctx.matchTokenType(TokenType::IDENTIFIER)){
+            query->table_names_.push_back(ctx.getCurrentToken().val_);
+            ++ctx;
+        }
+
+        if(!rename)
+            query->table_names_.push_back("");
+
+        if(!ctx.matchTokenType(TokenType::COMMA)) 
+            break;
+        ++ctx;
+    }
+}
+
+
+void Parser::orderByList(QueryCTX& ctx, int query_idx){
+    if((bool)ctx.error_status_) return; 
+    auto query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[query_idx]);
+    while(1){
+        Value val = constVal(ctx);
+        if(val.isInvalid())
+            return;
+        ++ctx;
+        if(val.type_ == Type::INT) 
+            query->order_by_list_.push_back(val.getIntVal() - 1); 
+
+        if(!ctx.matchTokenType(TokenType::COMMA)) 
+            break;
+        ++ctx;
+    }
+}
+
+void Parser::fieldDefList(QueryCTX& ctx, int query_idx){
+    if((bool)ctx.error_status_) return;
+    auto query = reinterpret_cast<CreateTableStatementData*>(ctx.queries_call_stack_[query_idx]);
+    while(1){
+        FieldDef field_def = {}; 
+        if(!ctx.matchTokenType(TokenType::IDENTIFIER)) {
+            ctx.error_status_ = Error::EXPECTED_IDENTIFIER;
+            return;
+        }
+        Token token = ctx.getCurrentToken(); ++ctx;
+        field_def.field_name_ = token.val_;
+        if(!tokenizer_.isDataType(ctx.getCurrentToken().type_)) {
+            ctx.error_status_ = Error::EXPECTED_DATA_TYPE;
+            return;
+        }
+        token = ctx.getCurrentToken(); ++ctx;
+        field_def.type_ = token.type_;
+
+        query->field_defs_.push_back(field_def);
+
+        if(ctx.matchTokenType(TokenType::COMMA)) 
+            break;
+        ++ctx;
+    }
+
+}
+
+void Parser::fieldList(QueryCTX& ctx, int query_idx){
+    if((bool)ctx.error_status_) return;
+    auto query = reinterpret_cast<InsertStatementData*>(ctx.queries_call_stack_[query_idx]);
+    while(1){
+        if(!ctx.matchTokenType(TokenType::IDENTIFIER)) {
+            ctx.error_status_ = Error::EXPECTED_IDENTIFIER;
+            return;
+        }
+        Token token = ctx.getCurrentToken(); ++ctx;
+        query->fields_.push_back(token.val_);
+        if(ctx.matchTokenType(TokenType::COMMA)) 
+            break;
+        ++ctx;
+    }
+
+}
+
+void Parser::groupByList(QueryCTX& ctx, int query_idx) {
+    if((bool)ctx.error_status_) return; 
+    auto query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[query_idx]);
+    while(1){
+        ASTNode* f = scoped_field(ctx);
+        if(!f) f = field(ctx);
+        if(!f) break;
+        query->group_by_.push_back(f);
+
+        if(!ctx.matchTokenType(TokenType::COMMA)) 
+            break;
+        ++ctx;
+    }
+}
+
+ASTNode* Parser::constant(QueryCTX& ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    ASTNode* ret = nullptr;
+    if(ctx.matchTokenType(TokenType::STR_CONSTANT)){
+        ret =  new ASTNode(STRING_CONSTANT, ctx.getCurrentToken()); ++ctx;
+    } else if(ctx.matchTokenType(TokenType::NUMBER_CONSTANT))
+        ret = new ASTNode(INTEGER_CONSTANT, ctx.getCurrentToken()); ++ctx;
+    return ret;
+}
+
+ASTNode* Parser::table(QueryCTX& ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    if(ctx.matchTokenType(TokenType::IDENTIFIER)){
+        auto token = ctx.getCurrentToken(); ++ctx;
+        return new ASTNode(TABLE, token);
+    }
+    return nullptr;
+}
+
+ASTNode* Parser::field(QueryCTX& ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    if(ctx.matchTokenType(TokenType::IDENTIFIER)) {
+        auto token = ctx.getCurrentToken(); ++ctx;
+        return new ASTNode(FIELD, token);
+    }
+    return nullptr;
+}
+
+ASTNode* Parser::scoped_field(QueryCTX& ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    if(ctx.matchMultiTokenType({TokenType::IDENTIFIER, TokenType::DOT, TokenType::IDENTIFIER})) {
+        ASTNode* t = table(ctx);
+        if(!t) return nullptr;
+        ++ctx;
+        auto field_name = ctx.getCurrentToken();++ctx;
+        return new ScopedFieldNode(field_name, t);
+    }
+    return nullptr;
+}
+
+ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    if(!expression_ctx) {
+        ctx.error_status_ = Error::CANT_HAVE_AGGREGATION; 
+        // TODO: use logger.
+        std::cout << "[ERROR] Cannot have aggregate functions in this context" << std::endl;
+        return nullptr;
+    }
+    if(!ctx.matchAnyTokenType({TokenType::MIN, TokenType::MAX, TokenType::AVG, TokenType::COUNT, TokenType::SUM})) 
+        return nullptr;
+    AggregateFuncType type = getAggFuncType(ctx.getCurrentToken().type_);
+    if(type == NOT_DEFINED) return nullptr;
+    ++ctx;
+    if(!ctx.matchTokenType(TokenType::LP)) 
+        return nullptr;
+    ++ctx;
+    ExpressionNode* exp = nullptr;
+    // only count can have a star parameter.
+    if(type == COUNT && ctx.matchTokenType(TokenType::STAR)){
+        ++ctx;
+    } else {
+        exp = expression(ctx, expression_ctx->query_idx_, 0);
+        if(!exp) return nullptr;
+        if(exp->aggregate_func_) {
+            ctx.error_status_ = Error::CANT_NEST_AGGREGATION; 
+            std::cout << "[ERROR] Cannot nest aggregate functions" << std::endl; // TODO: use logger.
+            return nullptr;
+        }
+    }
+    expression_ctx->aggregate_func_ =  new AggregateFuncNode(exp, type, expression_ctx->id_);
+
+    if(!ctx.matchTokenType(TokenType::RP)) return nullptr;
+    ++ctx;
+    std::string tmp = AGG_FUNC_IDENTIFIER_PREFIX;
+    tmp += intToStr(expression_ctx->id_);
+    return new ASTNode(FIELD, Token (TokenType::IDENTIFIER, tmp));
+}
+
+ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    if(!expression_ctx) {
+        ctx.error_status_ = Error::NO_EXPRESSION_CONTEXT;
+        std::cout << "[ERROR] No expression context provided" << std::endl; // TODO: move error logging to it's module.
+        return nullptr;
+    }
+
+    ASTNode* i = nullptr;
+    // check for sub-queries.
+    // TODO: extend to not only support select sub-queries.
+    if(ctx.matchMultiTokenType({TokenType::LP, TokenType::SELECT})){
+        ctx += 1;
+        int sub_query_id = ctx.queries_call_stack_.size();
+        selectStatement(ctx, expression_ctx->query_idx_);
+        SelectStatementData* sub_query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[sub_query_id]);
+        if(!sub_query) {
+            return nullptr;
+        }
+        SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
+        if(!ctx.matchTokenType(TokenType::RP)){
+            return nullptr;
+        }
+        ++ctx;
+        return sub_query_node;
+    }
+    // nested expressions.
+    if(ctx.matchTokenType(TokenType::LP)){
+        ++ctx;
+        int id = expression_ctx->id_;
+        auto ex = expression(ctx, expression_ctx->query_idx_ ,id);
+        if(!ex) return nullptr;
+        if(!ctx.matchTokenType(TokenType::RP)){
+            return nullptr;
+        }
+        ++ctx;
+        return ex;
+    }
+    if(expression_ctx && expression_ctx->id_ != 0)
+        i = agg_func(ctx , expression_ctx);
+    if(!i)
+        i = scoped_field(ctx);
+    if(!i)
+        i = field(ctx);
+    if(!i)
+        i = constant(ctx);
+    return i;
+}
+
+ASTNode* Parser::unary(QueryCTX& ctx, ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    if(ctx.matchAnyTokenType({TokenType::PLUS, TokenType::MINUS})) { 
+        UnaryNode* u = nullptr;
+        u = new UnaryNode(nullptr, ctx.getCurrentToken());
+        ++ctx;
+        ASTNode* val = item(ctx , expression_ctx);
+        if(!val) return nullptr;
+        u->cur_ = val;
+        return u;
+    }
+    // no need to wrap it in a unary if we don't find any unary operators.
+    return item(ctx, expression_ctx);
+}
+
+ASTNode* Parser::factor(QueryCTX& ctx, ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    ASTNode* cur = unary(ctx, expression_ctx);
+    if(!cur) return nullptr;
+    if(ctx.matchAnyTokenType({TokenType::STAR, TokenType::SLASH})) { 
+        FactorNode* f = new FactorNode(reinterpret_cast<UnaryNode*>(cur));
+        ASTNode* next = nullptr;
+        f->token_ = ctx.getCurrentToken(); ++ctx; 
+        next = factor(ctx, expression_ctx);
+        if(!next) {
+            f->clean();
+            delete cur;
+            return nullptr;
+        }
+        f->next_ = next;
+        return f;
+    }
+    return cur;
+}
+
+ASTNode* Parser::term(QueryCTX& ctx,ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    ASTNode* cur = factor(ctx, expression_ctx);
+    if(!cur) return nullptr;
+    if(ctx.matchAnyTokenType({TokenType::PLUS, TokenType::MINUS})) { 
+        TermNode* t = new TermNode(reinterpret_cast<FactorNode*>(cur));
+        t->token_ = ctx.getCurrentToken(); ++ctx; 
+        ASTNode* next = term(ctx, expression_ctx);
+        if(!next) {
+            t->clean();
+            delete cur;
+            return nullptr;
+        }
+        t->next_ = next;
+        return t;
+    }
+    return cur;
+}
+
+ASTNode* Parser::comparison(QueryCTX& ctx, ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    ASTNode* cur = term(ctx, expression_ctx);
+    if(!cur) return nullptr;
+    if(ctx.matchAnyTokenType({TokenType::LT, TokenType::LTE, TokenType::GT, TokenType::GTE })) { 
+        ComparisonNode* c = new ComparisonNode(reinterpret_cast<TermNode*>(cur));
+        c->token_ = ctx.getCurrentToken(); ++ctx; 
+        ASTNode* next = comparison(ctx, expression_ctx);
+        if(!next) {
+            c->clean();
+            delete cur;
+            return nullptr;
+        }
+        c->next_ = next;
+        return c;
+    }
+    return cur;
+}
+
+ASTNode* Parser::equality(QueryCTX& ctx, ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    ASTNode* cur = comparison(ctx, expression_ctx);
+    if(!cur) return nullptr;
+    if(ctx.matchAnyTokenType({TokenType::EQ, TokenType::NEQ })) { 
+        EqualityNode* eq = new EqualityNode(reinterpret_cast<ComparisonNode*>(cur));
+        eq->token_ = ctx.getCurrentToken(); ++ctx; 
+        ASTNode* next = equality(ctx, expression_ctx);
+        if(!next) {
+            eq->clean();
+            delete cur;
+            return nullptr;
+        }
+        eq->next_ = next;
+        return eq;
+    }
+    return cur;
+}
+
+ASTNode* Parser::logic_and(QueryCTX& ctx,ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    ASTNode* cur = equality(ctx, expression_ctx);
+    if(!cur) return nullptr;
+    if(ctx.matchTokenType(TokenType::AND)) { 
+        AndNode* land = new AndNode(reinterpret_cast<EqualityNode*>(cur));
+        land->token_ = ctx.getCurrentToken(); ++ctx;
+        ASTNode* next = logic_and(ctx, expression_ctx);
+        if(!next) {
+            land->clean();
+            delete cur;
+            return nullptr;
+        }
+        land->next_ = next;
+        return land;
+    }
+    return cur;
+}
+
+ASTNode* Parser::logic_or(QueryCTX& ctx, ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    ASTNode* cur = logic_and(ctx, expression_ctx);
+    if(!cur) return nullptr;
+    if(ctx.matchTokenType(TokenType::OR)) { 
+        OrNode* lor = new OrNode(reinterpret_cast<AndNode*>(cur));
+        lor->token_ = ctx.getCurrentToken(); ++ctx;
+        ASTNode* next = logic_or(ctx, expression_ctx);
+        if(!next) {
+            lor->clean();
+            delete cur;
+            return nullptr;
+        }
+        lor->next_ = next;
+        return lor;
+    }
+    return cur;
+}
+
+ExpressionNode* Parser::expression(QueryCTX& ctx, int query_idx, int id){
+    if((bool)ctx.error_status_) return nullptr;
+    ExpressionNode* ex = new ExpressionNode(ctx.queries_call_stack_[0], query_idx);
+    ex->id_ = id;
+    ASTNode* cur = logic_or(ctx, ex);
+    if(!cur) return nullptr;
+    ex->cur_ = cur;
+    return ex;
+}
+
+void Parser::selectStatement(QueryCTX& ctx, int parent_idx){
+    if((bool)ctx.error_status_) return; 
+    ++ctx;
+    SelectStatementData* statement = new SelectStatementData(parent_idx);
+    statement->idx_ = ctx.queries_call_stack_.size();
+    ctx.queries_call_stack_.push_back(statement);
+
+    if(ctx.matchTokenType(TokenType::DISTINCT)){
+        ++ctx;
+        statement->distinct_ = true;
+    }
+
+    // parse selectlist (fields) for the current query.
+    selectList(ctx, statement->idx_);
+    if(!statement->fields_.size()){
+        ctx.error_status_ = Error::EXPECTED_FIELDS;
+        return;
+    }
+
+    std::vector<ASTNode*> group_by = {};
+    if(ctx.matchTokenType(TokenType::FROM)){
+        ++ctx;
+        tableList(ctx, statement->idx_);
+        if(!statement->tables_.size()){
+            ctx.error_status_ = Error::EXPECTED_TABLE_LIST;
+            return;
+        }
+    }
+
+    if(ctx.matchTokenType(TokenType::WHERE)){
+        ++ctx;
+        statement->where_ = expression(ctx,statement->idx_, 0);
+        if(!statement->where_) {
+            ctx.error_status_ = Error::EXPECTED_EXPRESSION_IN_WHERE_CLAUSE;
+            return;
+        }
+    }
+
+    if(ctx.matchMultiTokenType({TokenType::ORDER, TokenType::BY})){
+        ctx += 2;
+        orderByList(ctx, statement->idx_);
+        if(!statement->order_by_list_.size()){
+            ctx.error_status_ = Error::EXPECTED_ORDER_BY_LIST;
+            return;
+        }
+    }
+
+    if(ctx.matchMultiTokenType({TokenType::GROUP, TokenType::BY})){
+        ctx += 2;
+        groupByList(ctx, statement->idx_);
+        if(!statement->group_by_.size()){
+            ctx.error_status_ = Error::EXPECTED_GROUP_BY_LIST;
+            return;
+        }
+    }
+}
+
+void Parser::createTableStatement(QueryCTX& ctx, int parent_idx){
+    if((bool)ctx.error_status_) return; 
+    if(!ctx.matchMultiTokenType({TokenType::CREATE , TokenType::TABLE}))
+        return;
+    ctx += 2;
+    CreateTableStatementData* statement = new CreateTableStatementData(parent_idx);
+    statement->idx_ = ctx.queries_call_stack_.size();
+    ctx.queries_call_stack_.push_back(statement);
+
+    if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
+        ctx.error_status_ = Error::EXPECTED_IDENTIFIER; 
+        return;
+    }
+    statement->table_name_ = ctx.getCurrentToken().val_; ++ctx;
+    if(!ctx.matchTokenType(TokenType::LP)){
+        ctx.error_status_ = Error::EXPECTED_LEFT_PARANTH; 
+        return;
+    }
+    ++ctx;
+    fieldDefList(ctx, statement->idx_);
+    if(!statement->field_defs_.size()){
+        ctx.error_status_ = Error::EXPECTED_FIELD_DEFS;
+        return;
+    }
+    if(!ctx.matchTokenType(TokenType::RP)){
+        ctx.error_status_ = Error::EXPECTED_RIGHT_PARANTH; 
+        return;
+    }
+}

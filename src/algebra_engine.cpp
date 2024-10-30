@@ -21,11 +21,11 @@ enum AlgebraOperationType {
 
 struct AlgebraOperation {
     public:
-        AlgebraOperation (AlgebraOperationType type, std::vector<AlgebraOperation*>* call_stack) : 
-            type_(type), call_stack_(call_stack)
+        AlgebraOperation (AlgebraOperationType type, QueryCTX& ctx) : 
+            type_(type), ctx_(ctx)
         {}
+        QueryCTX& ctx_;
         AlgebraOperationType type_;
-        std::vector<AlgebraOperation*>* call_stack_{};
         int query_idx_ = -1;
         int query_parent_idx_ = -1;
         bool distinct_ = false;
@@ -33,8 +33,8 @@ struct AlgebraOperation {
 
 struct ScanOperation: AlgebraOperation {
     public:
-        ScanOperation(std::vector<AlgebraOperation*>* call_stack,std::string table_name, std::string table_rename): 
-            AlgebraOperation(SCAN, call_stack),
+        ScanOperation(QueryCTX& ctx,std::string table_name, std::string table_rename): 
+            AlgebraOperation(SCAN, ctx),
             table_name_(table_name),
             table_rename_(table_rename)
         {}
@@ -46,10 +46,10 @@ struct ScanOperation: AlgebraOperation {
 
 struct FilterOperation: AlgebraOperation {
     public:
-        FilterOperation(std::vector<AlgebraOperation*>* call_stack,AlgebraOperation* child, ExpressionNode* filter, 
+        FilterOperation(QueryCTX& ctx,AlgebraOperation* child, ExpressionNode* filter, 
                 std::vector<ExpressionNode*>& fields, 
                 std::vector<std::string>& field_names): 
-            AlgebraOperation(FILTER, call_stack),
+            AlgebraOperation(FILTER, ctx),
             child_(child), 
             filter_(filter),
             fields_(fields),
@@ -65,8 +65,8 @@ struct FilterOperation: AlgebraOperation {
 
 struct AggregationOperation: AlgebraOperation {
     public:
-        AggregationOperation(std::vector<AlgebraOperation*>* call_stack, AlgebraOperation* child, std::vector<AggregateFuncNode*> aggregates, std::vector<ASTNode*> group_by): 
-            AlgebraOperation(AGGREGATION, call_stack),
+        AggregationOperation(QueryCTX& ctx, AlgebraOperation* child, std::vector<AggregateFuncNode*> aggregates, std::vector<ASTNode*> group_by): 
+            AlgebraOperation(AGGREGATION, ctx),
             child_(child), 
             aggregates_(aggregates),
             group_by_(group_by)
@@ -81,8 +81,8 @@ struct AggregationOperation: AlgebraOperation {
 
 struct ProjectionOperation: AlgebraOperation {
     public:
-        ProjectionOperation(std::vector<AlgebraOperation*>* call_stack, AlgebraOperation* child, std::vector<ExpressionNode*> fields): 
-            AlgebraOperation(PROJECTION, call_stack),
+        ProjectionOperation(QueryCTX& ctx, AlgebraOperation* child, std::vector<ExpressionNode*> fields): 
+            AlgebraOperation(PROJECTION, ctx),
             child_(child), 
             fields_(fields)
         {}
@@ -94,8 +94,8 @@ struct ProjectionOperation: AlgebraOperation {
 
 struct SortOperation: AlgebraOperation {
     public:
-        SortOperation(std::vector<AlgebraOperation*>* call_stack, AlgebraOperation* child, std::vector<int> order_by_list): 
-            AlgebraOperation(SORT, call_stack),
+        SortOperation(QueryCTX& ctx, AlgebraOperation* child, std::vector<int> order_by_list): 
+            AlgebraOperation(SORT, ctx),
             child_(child), 
             order_by_list_(order_by_list)
         {}
@@ -113,26 +113,24 @@ class AlgebraEngine {
         ~AlgebraEngine(){}
 
         
-        AlgebraOperation* createAlgebraExpression(QueryData* data){
-
-            switch(data->type_){
-
-                case SELECT_DATA:
-                    {
-                        std::vector<AlgebraOperation*>* call_stack = new std::vector<AlgebraOperation*>();
-                        auto select_data = reinterpret_cast<SelectStatementData*>(data);
-                        for(size_t i = 0; i < select_data->queries_call_stack_.size(); i++){
-                            auto current_data = reinterpret_cast<SelectStatementData*>(select_data->queries_call_stack_[i]);
-                            AlgebraOperation* op = createSelectStatementExpression(current_data, call_stack);
-                            op->distinct_ = current_data->distinct_;
-                            call_stack->push_back(op);
-                        }
-
-                        if(call_stack->size() < 1) return nullptr;
-                        return (*call_stack)[0]; 
-                    }
+        void createAlgebraExpression(QueryCTX& ctx){
+            for(auto data : ctx.queries_call_stack_){
+                switch(data->type_){
+                    case SELECT_DATA:
+                        {
+                            auto select_data = reinterpret_cast<SelectStatementData*>(data);
+                            AlgebraOperation* op = createSelectStatementExpression(ctx, select_data);
+                            if(!op){
+                                ctx.error_status_ = Error::LOGICAL_PLAN_ERROR;
+                                return;
+                            }
+                            op->distinct_ = select_data->distinct_;
+                            ctx.operators_call_stack_.push_back(op);
+                        } break;
+                    default:
+                        return;
+                }
             }
-            return nullptr;
         }
     private:
 
@@ -158,22 +156,22 @@ class AlgebraEngine {
             return  true;
         }
 
-        AlgebraOperation* createSelectStatementExpression(SelectStatementData* data, std::vector<AlgebraOperation*>* call_stack){
+        AlgebraOperation* createSelectStatementExpression(QueryCTX& ctx, SelectStatementData* data){
             if(!isValidSelectStatementData(data))
                 return nullptr;
 
             AlgebraOperation* result = nullptr;
             // only use the first table until we add support for the product operation.
-            if(data->tables_.size())
-                result = new ScanOperation(call_stack, data->tables_[0], data->table_names_[0]);
+            if(data->tables_.size() && data->table_names_.size())
+                result = new ScanOperation(ctx, data->tables_[0], data->table_names_[0]);
             if(data->where_)
-                result = new FilterOperation(call_stack, result, data->where_, data->fields_, data->field_names_);
+                result = new FilterOperation(ctx, result, data->where_, data->fields_, data->field_names_);
             if(data->aggregates_.size())
-                result = new AggregationOperation(call_stack, result, data->aggregates_, data->group_by_);
+                result = new AggregationOperation(ctx, result, data->aggregates_, data->group_by_);
             if(data->fields_.size())
-                result = new ProjectionOperation(call_stack, result, data->fields_);
+                result = new ProjectionOperation(ctx, result, data->fields_);
             if(data->order_by_list_.size())
-                result = new SortOperation(call_stack, result, data->order_by_list_);
+                result = new SortOperation(ctx, result, data->order_by_list_);
             if(result) {
                 result->query_idx_ = data->idx_;
                 result->query_parent_idx_ = data->parent_idx_;

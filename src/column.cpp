@@ -8,7 +8,10 @@
 // varchar => variable length string (less than page size).
 
 
-enum Type { INVALID = -1, BOOLEAN, INT, BIGINT, FLOAT, DOUBLE, TIMESTAMP, VARCHAR}; 
+// if you need to add a new type append it to the end because those types are saved to disk as int values
+// if you add the new type from the begining that will shift the int value of the rest.
+// and changing those values will work for new .NDB files but will not work for older ones.
+enum Type { INVALID = -1, BOOLEAN, INT, BIGINT, FLOAT, DOUBLE, TIMESTAMP, VARCHAR, NULL_TYPE}; 
 bool checkSameType(Type lhs, Type rhs) {
     return lhs == rhs;
 }

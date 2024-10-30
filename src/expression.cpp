@@ -84,20 +84,20 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                    } 
         case EQUALITY : {
                             EqualityNode* eq = reinterpret_cast<EqualityNode*>(expression);
-                            std::string op = eq->token_.val_;
+                            TokenType op = eq->token_.type_;
                             Value lhs = evaluate_expression(eq->cur_, evaluator);
                             ASTNode* ptr = eq->next_;
                             while(ptr){
                                 Value rhs = evaluate_expression(ptr, evaluator);
-                                if(op == "=" && lhs == rhs) lhs = Value(true);
-                                else if(op == "=" && lhs != rhs) lhs = Value(false);
+                                if(op == TokenType::EQ && lhs == rhs) lhs = Value(true);
+                                else if(op == TokenType::EQ && lhs != rhs) lhs = Value(false);
 
-                                if(op == "!=" && lhs == rhs) lhs = Value(false);
-                                else if(op == "!=" && lhs != rhs) lhs = Value(true);
+                                if(op == TokenType::NEQ && lhs == rhs) lhs = Value(false);
+                                else if(op == TokenType::NEQ && lhs != rhs) lhs = Value(true);
 
                                 if(ptr->category_ == EQUALITY) {
                                     EqualityNode* tmp = reinterpret_cast<EqualityNode*>(ptr);
-                                    op = ptr->token_.val_;
+                                    op = ptr->token_.type_;
                                     ptr = tmp->next_;
                                 } else break;
                             }
@@ -105,28 +105,28 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                         } 
         case COMPARISON : {
                               ComparisonNode* comp = reinterpret_cast<ComparisonNode*>(expression);
-                              std::string op = comp->token_.val_;
+                              TokenType op = comp->token_.type_;
                               Value lhs = evaluate_expression(comp->cur_, evaluator, comp->cur_->category_ == COMPARISON);
                               ASTNode* ptr = comp->next_;
                               while(ptr){
                                   Value rhs = evaluate_expression(ptr, evaluator, comp->cur_->category_ == COMPARISON);
 
-                                  if(op == ">" && lhs > rhs ) lhs = Value(true);
-                                  else if(op == ">") lhs = Value(false);
+                                  if(op == TokenType::GT && lhs > rhs ) lhs = Value(true);
+                                  else if(op == TokenType::GT) lhs = Value(false);
 
-                                  if(op == "<" && lhs < rhs) return Value(true);
-                                  else if(op == "<") lhs = Value(false);
+                                  if(op == TokenType::LT && lhs < rhs) return Value(true);
+                                  else if(op == TokenType::LT) lhs = Value(false);
 
-                                  if(op == ">=" && lhs >= rhs) return Value(true);
-                                  else if(op == ">=") lhs = Value(false);
+                                  if(op == TokenType::GTE && lhs >= rhs) return Value(true);
+                                  else if(op == TokenType::GTE) lhs = Value(false);
 
-                                  if(op == "<=" && lhs <= rhs) lhs = Value(true);
-                                  else if(op == "<=")  lhs = Value(false);
+                                  if(op == TokenType::LTE && lhs <= rhs) lhs = Value(true);
+                                  else if(op == TokenType::LTE)  lhs = Value(false);
 
                                   //lhs = compareStr(lhs, rhs, op);
                                   if(ptr->category_ == COMPARISON){
                                       ComparisonNode* tmp = reinterpret_cast<ComparisonNode*>(ptr);
-                                      op = ptr->token_.val_;
+                                      op = ptr->token_.type_;
                                       ptr = tmp->next_;
                                   } else break;
                               }
@@ -136,18 +136,18 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                         TermNode* t = reinterpret_cast<TermNode*>(expression);
                         Value lhs = evaluate_expression(t->cur_, evaluator, t->cur_->category_ == TERM);
                         if(only_one) return lhs;
-                        std::string op = t->token_.val_;
+                        TokenType op = t->token_.type_;
                         ASTNode* ptr = t->next_;
                         while(ptr){
                             Value rhs = evaluate_expression(ptr, evaluator, ptr->category_ == TERM);
                             int lhs_num = lhs.getIntVal();
                             int rhs_num = rhs.getIntVal();
-                            if(op == "+") lhs_num += rhs_num; 
-                            if(op == "-") lhs_num -= rhs_num;
+                            if(op == TokenType::PLUS) lhs_num += rhs_num; 
+                            if(op == TokenType::MINUS) lhs_num -= rhs_num;
                             lhs = Value(lhs_num);
                             if(ptr->category_ == TERM){
                                 TermNode* tmp = reinterpret_cast<TermNode*>(ptr);
-                                op = ptr->token_.val_;
+                                op = ptr->token_.type_;
                                 ptr = tmp->next_;
                             } else break;
                         }
@@ -157,18 +157,18 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                           FactorNode* f = reinterpret_cast<FactorNode*>(expression);
                           Value lhs = evaluate_expression(f->cur_, evaluator, f->cur_->category_ == FACTOR);
                           if(only_one) return lhs;
-                          std::string op = f->token_.val_;
+                          TokenType op = f->token_.type_;
                           ASTNode* ptr = f->next_;
                           while(ptr){
                               Value rhs = evaluate_expression(ptr, evaluator, ptr->category_ == FACTOR);
                               int lhs_num = lhs.getIntVal();
                               int rhs_num = rhs.getIntVal();
-                              if(op == "*") lhs_num *= rhs_num; 
-                              if(op == "/" && rhs_num != 0) lhs_num /= rhs_num;
+                              if(op == TokenType::STAR) lhs_num *= rhs_num; 
+                              if(op == TokenType::SLASH && rhs_num != 0) lhs_num /= rhs_num;
                               lhs = Value(lhs_num);
                               if(ptr->category_ == FACTOR){
                                   FactorNode* tmp = reinterpret_cast<FactorNode*>(ptr);
-                                  op = ptr->token_.val_;
+                                  op = ptr->token_.type_;
                                   ptr = tmp->next_;
                               } else break;
                           }
@@ -177,7 +177,7 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
         case UNARY : {
                          UnaryNode* u = reinterpret_cast<UnaryNode*>(expression);
                          Value cur = evaluate_expression(u->cur_, evaluator);
-                         if(u->token_.val_ == "-"){
+                         if(u->token_.type_ == TokenType::MINUS){
                             return Value(cur.getIntVal()*-1);
                          }
                          return cur;
