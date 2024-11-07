@@ -18,7 +18,10 @@ class QueryProcessor{
                 std::cout << "[ERROR] Invalid query data" << std::endl;
                 return false;
             }
-
+            if(query_ctx.direct_execution_){
+                // DDL commands that operate directly on the system catalog such as create table, create index etc...
+                return engine_->directExecute(query_ctx);
+            }
             std::cout << "[INFO] Creating logical plan" << std::endl;
             algebra_->createAlgebraExpression(query_ctx);
             if(query_ctx.operators_call_stack_.size() != query_ctx.queries_call_stack_.size() || 

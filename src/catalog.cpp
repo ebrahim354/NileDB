@@ -3,6 +3,7 @@
 #include "table.cpp"
 #include "column.cpp"
 #include "value.cpp"
+#include "tokenizer.cpp"
 #include <sstream>
 #include <algorithm>
 #include <cstdint>
@@ -391,6 +392,28 @@ class Catalog {
 
             return INVALID;
         }
+
+        Type tokenTypeToColType(TokenType t){
+            switch(t){
+                case TokenType::BOOLEAN:
+                    return Type::BOOLEAN;
+                case TokenType::INTEGER:
+                    return Type::INT;
+                case TokenType::BIGINT:
+                    return Type::BIGINT;
+                case TokenType::FLOAT:
+                    return Type::FLOAT;
+                case TokenType::DOUBLE:
+                    return Type::DOUBLE;
+                case TokenType::TIMESTAMP:
+                    return Type::TIMESTAMP;
+                case TokenType::VARCHAR:
+                    return Type::VARCHAR;
+                default:
+                    return INVALID;
+            }
+        }
+
         std::vector<std::string> getTableNames(){
             std::vector<std::string> output;
             for(auto& t : tables_){

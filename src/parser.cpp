@@ -566,6 +566,10 @@ void Parser::parse(std::string& query, QueryCTX& ctx){
         case TokenType::SELECT:
             selectStatement(ctx,-1);
             break;
+        // TODO: separate create table and create index.
+        case TokenType::CREATE:
+            createTableStatement(ctx,-1);
+            break;
         default:
             ctx.error_status_ = Error::QUERY_NOT_SUPPORTED;
     }
@@ -721,7 +725,7 @@ void Parser::fieldDefList(QueryCTX& ctx, int query_idx){
 
         query->field_defs_.push_back(field_def);
 
-        if(ctx.matchTokenType(TokenType::COMMA)) 
+        if(!ctx.matchTokenType(TokenType::COMMA)) 
             break;
         ++ctx;
     }
@@ -738,7 +742,7 @@ void Parser::fieldList(QueryCTX& ctx, int query_idx){
         }
         Token token = ctx.getCurrentToken(); ++ctx;
         query->fields_.push_back(token.val_);
-        if(ctx.matchTokenType(TokenType::COMMA)) 
+        if(!ctx.matchTokenType(TokenType::COMMA)) 
             break;
         ++ctx;
     }
@@ -1112,4 +1116,6 @@ void Parser::createTableStatement(QueryCTX& ctx, int parent_idx){
         ctx.error_status_ = Error::EXPECTED_RIGHT_PARANTH; 
         return;
     }
+    ++ctx;
+    ctx.direct_execution_ = 1;
 }

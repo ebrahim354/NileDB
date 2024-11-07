@@ -750,17 +750,21 @@ class ExecutionEngine {
     {}
         ~ExecutionEngine() {}
 
-        bool create_table_handler(ASTNode* statement_root) {
-            CreateTableStatementNode* create_table = reinterpret_cast<CreateTableStatementNode*>(statement_root);
-            std::string table_name = create_table->table_->token_.val_;
-            auto fields = create_table->field_defs_;
+        // DDL handlers.
+        bool create_table_handler(QueryCTX& ctx) {
+            CreateTableStatementData* create_table = reinterpret_cast<CreateTableStatementData*>(ctx.queries_call_stack_[0]);
+            std::string table_name = create_table->table_name_;
+            std::vector<FieldDef> fields = create_table->field_defs_;
             std::deque<std::string> col_names;
             std::deque<Type> col_types;
-            while(fields != nullptr){
+            for(int i = 0; i < fields.size(); ++i){
                 // a little too much nesting (fix that later).
-                std::string name = fields->field_def_->field_->token_.val_;
-                Type type = catalog_->stringToType(fields->field_def_->type_->token_.val_);
-                if(type == INVALID) return false;
+                std::string name = fields[i].field_name_;
+                Type type = catalog_->tokenTypeToColType(fields[i].type_);
+                if(type == INVALID) {
+                    std::cout << "[ERROR] Invalid type\n";
+                    return false;
+                }
                 // variable columns first;
                 if(type == VARCHAR) {
                     col_names.push_front(name);
@@ -769,7 +773,6 @@ class ExecutionEngine {
                     col_names.push_back(name);
                     col_types.push_back(type);
                 }
-                fields = fields->next_;
             }
             std::vector<Column> columns;
             uint8_t offset_ptr = 0;
@@ -783,6 +786,7 @@ class ExecutionEngine {
             return false;
         }
 
+        /*
         bool insert_handler(ASTNode* statement_root){
             InsertStatementNode* insert = reinterpret_cast<InsertStatementNode*>(statement_root);
             // We are going to assume that there are no default values for now.
@@ -849,57 +853,6 @@ class ExecutionEngine {
             if(!err) return true;
             return false;
         }
-
-
-        /*
-        bool select_handler(ASTNode* statement_root, QueryResult* result){
-            if(!result) return false;
-            SelectStatementNode* select = reinterpret_cast<SelectStatementNode*>(statement_root);
-            // nothing to be selected.
-            if(select->fields_ == nullptr) return false;
-            SelectExecutor* executor = new SelectExecutor(select, catalog_);
-
-            bool valid_order_by = true;
-            std::vector<int> order_by;
-
-            auto order_by_ptr = select->order_by_list_;
-            while(order_by_ptr){
-                std::string val = order_by_ptr->token_.val_;
-                int cur = str_to_int(val);
-                if(cur == 0) {
-                    valid_order_by = false;
-                    break;
-                }
-                order_by.push_back(cur-1); 
-                order_by_ptr = order_by_ptr->next_;
-            }
-            while(!executor->errorStatus() && !executor->finished()){
-                std::vector<std::string> tmp = executor->next();
-                if(tmp.size() == 0) break;
-                if(order_by.size() > tmp.size()) {
-                    std::cout << "[ERROR] order by list should be between 1 and " <<  tmp.size() << std::endl;
-                    return false;
-                }
-                    
-                for(int i = 0; i < tmp.size(); i++){
-                    std::cout << tmp[i] << std::endl;
-                }
-                result->push_back(tmp);
-            }
-            if(valid_order_by && executor->errorStatus() == 0) {
-                std::sort(result->begin(), result->end(), 
-                    [&order_by](std::vector<std::string>& lhs, std::vector<std::string>& rhs){
-                        for(int i = 0; i < order_by.size(); i++){
-                            if(lhs[order_by[i]] < rhs[order_by[i]]) return true;
-                            if(lhs[order_by[i]] == rhs[order_by[i]]) continue;
-                        }
-                        return false;
-                    });
-            }
-
-            return (executor->errorStatus() == 0);
-        }*/
-
         bool delete_handler(ASTNode* statement_root){
             DeleteStatementNode* delete_statement = reinterpret_cast<DeleteStatementNode*>(statement_root);
 
@@ -964,25 +917,46 @@ class ExecutionEngine {
             return true;
             // handle filters later.
         }
+        */
 
-        bool execute(ASTNode* statement_root, QueryResult* result){
-            if(!statement_root) return false;
-
-            switch (statement_root->category_) {
-                case CREATE_TABLE_STATEMENT:
-                    return create_table_handler(statement_root);
-                case INSERT_STATEMENT:
-                    return insert_handler(statement_root);
-                //case SELECT_STATEMENT:
-                 //   return select_handler(statement_root, result);
-                case DELETE_STATEMENT:
-                    return delete_handler(statement_root);
-                case UPDATE_STATEMENT:
-                    return update_handler(statement_root);
+        // DDL execution.
+        bool directExecute(QueryCTX& ctx){
+            // should always be 1.
+            if(ctx.queries_call_stack_.size() != 1) return false;
+            std::cout << "[INFO] executing DDL command" << std::endl;
+            QueryType type = ctx.queries_call_stack_[0]->type_;
+            switch (type) {
+                case CREATE_TABLE_DATA:
+                    return create_table_handler(ctx);
                 default:
                     return false;
             }
         }
+
+        // DML execution.
+        bool executePlan(QueryCTX& ctx, QueryResult* result){
+            if(ctx.queries_call_stack_.size() < 1 || !result) return false;
+            std::cout << "[INFO] Creating physical plan" << std::endl;
+
+            for(auto cur_plan : ctx.operators_call_stack_){
+                Executor* created_physical_plan = buildExecutionPlan(ctx, cur_plan, cur_plan->query_idx_, cur_plan->query_parent_idx_);
+                if(!created_physical_plan){
+                    std::cout << "[ERROR] Could not build physical operation\n";
+                    return false;
+                }
+                if(cur_plan->distinct_){
+                    DistinctExecutor* distinct = new DistinctExecutor(created_physical_plan, created_physical_plan->output_schema_, ctx, cur_plan->query_idx_, cur_plan->query_parent_idx_);
+                    ctx.executors_call_stack_.push_back(distinct);
+                } else 
+                    ctx.executors_call_stack_.push_back(created_physical_plan);
+            }
+
+            std::cout << "[INFO] executing physical plan" << std::endl;
+            return runExecutor(ctx, result);
+        }
+
+    private:
+
         Executor* buildExecutionPlan(QueryCTX& ctx, AlgebraOperation* logical_plan, int query_idx, int parent_query_idx) {
             if(!logical_plan) return nullptr;
             switch(logical_plan->type_) {
@@ -1062,7 +1036,6 @@ class ExecutionEngine {
                     return nullptr;
             }
         }
-
         bool runExecutor(QueryCTX& ctx, QueryResult* result){
             if(ctx.executors_call_stack_.size() < 1 || (bool) ctx.error_status_ ) return false;
             auto physical_plan = ctx.executors_call_stack_[0];
@@ -1075,27 +1048,5 @@ class ExecutionEngine {
             }
             return (physical_plan->error_status_ == 0);
         }
-
-        bool executePlan(QueryCTX& ctx, QueryResult* result){
-            if(ctx.queries_call_stack_.size() < 1 || !result) return false;
-            std::cout << "[INFO] Creating physical plan" << std::endl;
-
-            for(auto cur_plan : ctx.operators_call_stack_){
-                Executor* created_physical_plan = buildExecutionPlan(ctx, cur_plan, cur_plan->query_idx_, cur_plan->query_parent_idx_);
-                if(!created_physical_plan){
-                    std::cout << "[ERROR] Could not build physical operation\n";
-                    return false;
-                }
-                if(cur_plan->distinct_){
-                    DistinctExecutor* distinct = new DistinctExecutor(created_physical_plan, created_physical_plan->output_schema_, ctx, cur_plan->query_idx_, cur_plan->query_parent_idx_);
-                    ctx.executors_call_stack_.push_back(distinct);
-                } else 
-                    ctx.executors_call_stack_.push_back(created_physical_plan);
-            }
-
-            std::cout << "[INFO] executing physical plan" << std::endl;
-            return runExecutor(ctx, result);
-        }
-    private:
         Catalog* catalog_;
 };

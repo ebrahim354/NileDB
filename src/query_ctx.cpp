@@ -1,7 +1,6 @@
 #pragma once
 #include "tokenizer.cpp"
 #include "error.cpp"
-#include <iostream>
 
 struct ExpressionNode;
 struct QueryData;
@@ -55,10 +54,12 @@ struct QueryCTX {
     inline Token getCurrentToken(){
         return tokens_[cursor_];
     }
+
     std::vector<Token> tokens_;
-    uint32_t cursor_ = 0;
-    Error error_status_ = Error::NO_ERROR;
     std::vector<QueryData*> queries_call_stack_ = {};
     std::vector<AlgebraOperation*> operators_call_stack_ = {};
     std::vector<Executor*> executors_call_stack_ = {};
+    uint32_t cursor_ = 0;
+    Error error_status_ = Error::NO_ERROR;
+    bool direct_execution_ = 0;    // directly execeute without translating to algebra, Usually set to true for DDL.
 };

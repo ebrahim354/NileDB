@@ -238,6 +238,7 @@ bool Tokenizer::isNumberConst (std::string& t){
 
 TokenType Tokenizer::getTokenType(std::string& t) {
     if(isKeyword(t))     return keywords_[t];
+    if(isDataType(t))    return data_types_[t];
     if(isSymbol(t))      return symbols_[t];
     if(isStrConst(t))    return TokenType::STR_CONSTANT;
     if(isNumberConst(t)) return TokenType::NUMBER_CONSTANT;
