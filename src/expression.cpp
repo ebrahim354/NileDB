@@ -1,7 +1,6 @@
 #pragma once
 
 #include "parser.cpp"
-#include "catalog.cpp"
 
 
 

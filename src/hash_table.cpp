@@ -90,8 +90,7 @@ class HashTableIterator {
             }
         }
 
-        ~HashTableIterator();
-
+        ~HashTableIterator(){};
         /*
         bool operator==(const HashTableIterator &itr) const {
         }
@@ -112,11 +111,14 @@ class HashTableIterator {
                 }
                 bucket_idx_ = 0;
             }
-            cnt_++;
+            if(dir_idx_ < table_->dir_.size()) cnt_++;
             return *this;
         }
 
-        V& operator*() {
+        V operator*() {
+            if(dir_idx_ >= table_->dir_.size() || bucket_idx_ >= table_->dir_[dir_idx_]->list_.size()){
+                return {};
+            }
             return table_->dir_[dir_idx_]->list_[bucket_idx_].second;
         }
 
@@ -130,7 +132,7 @@ class HashTableIterator {
         HashTable<K, V>* table_ = nullptr;
         int dir_idx_ = -1;
         int bucket_idx_ = -1;
-        int cnt_ = 0;
+        int cnt_ = 1;
 };
 
 template <typename K, typename V>
@@ -249,6 +251,10 @@ class  HashTable {
             size_t idx = IndexOf(key);
             std::shared_ptr<Bucket<K,V>> ptr = dir_[idx];
             return static_cast<bool>(ptr->Remove(key));
+        }
+
+        HashTableIterator<K, V> begin(){
+            return HashTableIterator<K, V>(this);
         }
 
     private:

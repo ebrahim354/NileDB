@@ -253,8 +253,6 @@ struct SelectStatementData : QueryData {
     std::vector<std::string> tables_ = {};
     ExpressionNode* where_ = nullptr;
     std::vector<int> order_by_list_ = {};
-    int idx_ = -1;          // every query must have an id starting from 0 even the top level query.
-    int parent_idx_ = -1;   // -1 means this query is the top level query.
     std::vector<ASTNode*> group_by_ = {}; 
     bool distinct_ = false;
 };
@@ -565,6 +563,9 @@ void Parser::parse(std::string& query, QueryCTX& ctx){
     switch(ctx.tokens_[0].type_){
         case TokenType::SELECT:
             selectStatement(ctx,-1);
+            break;
+        case TokenType::INSERT:
+            insertStatement(ctx,-1);
             break;
         // TODO: separate create table and create index.
         case TokenType::CREATE:

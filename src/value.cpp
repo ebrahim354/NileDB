@@ -24,6 +24,17 @@ class Value {
             }
             this->type_ = rhs.type_;
         } 
+
+        Value& operator=(const Value& rhs){
+            this->size_ = rhs.size_;
+            if(!rhs.isNull()){
+                this->content_ = new char[size_];
+                memcpy(this->content_, rhs.content_, size_);
+            }
+            this->type_ = rhs.type_;
+            return *this;
+        } 
+
         Value(std::string str){
             size_ = str.size(); 
             content_ = new char[size_];

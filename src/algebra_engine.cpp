@@ -12,6 +12,7 @@ enum AlgebraOperationType {
     SORT,
     LIMIT,
     RENAME,
+    INSERTION,
 
     // two table operations.
     PRODUCT,
@@ -42,6 +43,15 @@ struct ScanOperation: AlgebraOperation {
         {}
         std::string table_name_{};
         std::string table_rename_{};
+};
+
+struct InsertionOperation: AlgebraOperation {
+    public:
+        InsertionOperation(QueryCTX& ctx): 
+            AlgebraOperation(INSERTION, ctx)
+        {}
+        ~InsertionOperation()
+        {}
 };
 
 struct FilterOperation: AlgebraOperation {
@@ -127,6 +137,16 @@ class AlgebraEngine {
                             op->distinct_ = select_data->distinct_;
                             ctx.operators_call_stack_.push_back(op);
                         } break;
+                    case INSERT_DATA:
+                        {
+                            auto insert_data = reinterpret_cast<InsertStatementData*>(data);
+                            AlgebraOperation* op = createInsertStatementExpression(ctx, insert_data);
+                            if(!op){
+                                ctx.error_status_ = Error::LOGICAL_PLAN_ERROR;
+                                return;
+                            }
+                            ctx.operators_call_stack_.push_back(op);
+                        } break;
                     default:
                         return;
                 }
@@ -154,6 +174,21 @@ class AlgebraEngine {
             }
             // TODO: provide validation for fields and filters.
             return  true;
+        }
+        bool isValidInsertStatementData (InsertStatementData* data){
+            // TODO: provide validation.
+            return true;
+        }
+
+
+        AlgebraOperation* createInsertStatementExpression(QueryCTX& ctx, InsertStatementData* data){
+            if(!isValidInsertStatementData(data))
+                return nullptr;
+
+            AlgebraOperation* result = new InsertionOperation(ctx);
+            result->query_idx_ = data->idx_;
+            result->query_parent_idx_ = data->parent_idx_;
+            return result;
         }
 
         AlgebraOperation* createSelectStatementExpression(QueryCTX& ctx, SelectStatementData* data){

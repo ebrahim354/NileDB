@@ -4,7 +4,6 @@
 #include "expression.cpp"
 #include "algebra_engine.cpp"
 #include "utils.cpp"
-#include "hash_table.cpp"
 #include <deque>
 
 
@@ -28,6 +27,7 @@ typedef std::vector<std::vector<Value>> QueryResult;
 
 enum ExecutorType {
     SEQUENTIAL_SCAN_EXECUTOR,
+    INSERTION_EXECUTOR,
     FILTER_EXECUTOR,
     AGGREGATION_EXECUTOR,
     PROJECTION_EXECUTOR,
@@ -88,6 +88,122 @@ class SeqScanExecutor : public Executor {
     private:
         TableSchema* table_ = nullptr;
         TableIterator* it_ = nullptr;
+};
+
+class InsertionExecutor : public Executor {
+    public:
+        InsertionExecutor(TableSchema* table, QueryCTX& ctx, int query_idx, int parent_query_idx)
+            : Executor(INSERTION_EXECUTOR, table, ctx, query_idx, parent_query_idx, nullptr), table_(table)
+        {}
+        ~InsertionExecutor()
+        {}
+
+        Value evaluate(ASTNode* item){
+            if(item->category_ != FIELD && item->category_ != SCOPED_FIELD){
+                std::cout << "[ERROR] Item type is not supported!" << std::endl;
+                error_status_ = 1;
+                return Value();
+            }
+
+            std::string field = item->token_.val_;
+            if(!output_schema_) {
+                std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
+                error_status_ = 1;
+                return Value();
+            }
+            int idx = -1;
+            if(item->category_ == SCOPED_FIELD){
+                std::string table = output_schema_->getTableName();
+                table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
+                std::string col = table;col += "."; col+= field;
+                idx = output_schema_->colExist(col);
+                //    output_schema_->printTableHeader();
+                if(idx < 0 || idx >= output_.size()) {
+                    std::cout << "[ERROR] Invalid field name " << col << std::endl;
+                    error_status_ = 1;
+                    return Value();
+                }
+            } else {
+                int num_of_matches = 0;
+                auto columns = output_schema_->getColumns();
+                for(size_t i = 0; i < columns.size(); ++i){
+                    std::vector<std::string> splittedStr = strSplit(columns[i].getName(), '.');
+                    if(splittedStr.size() != 2) {
+                        //output_schema_->printTableHeader();
+                        std::cout << "[ERROR] Invalid schema " << std::endl;
+                        error_status_ = 1;
+                        return Value();
+                    }
+                    if(field == splittedStr[1]){
+                        num_of_matches++;
+                        idx = i;
+                    }
+                }
+                if(num_of_matches > 1){
+                    std::cout << "[ERROR] Ambiguous field name: " << field << std::endl;
+                    error_status_ = 1;
+                    return Value();
+                }
+                if(idx < 0 || idx >= output_.size()) {
+                    std::cout << "[ERROR] Invalid field name " << field << std::endl;
+                    //output_schema_->printTableHeader();
+                    error_status_ = 1;
+                    return Value();
+                }
+            }
+            return output_[idx];
+        } 
+
+        void init() {
+            error_status_ = 0;
+            finished_ = 0;
+            if(!table_){
+                error_status_ = 1;
+                return;
+            }
+            vals_.resize(table_->numOfCols());
+            statement = reinterpret_cast<InsertStatementData*>(ctx_.queries_call_stack_[query_idx_]);
+            // fields
+            if(!statement->fields_.size() || statement->fields_.size() < table_->getCols().size()){
+                statement->fields_ = table_->getCols();
+            } else {
+                for(auto& field_name : statement->fields_){
+                    int idx = table_->colExist(field_name);
+                    if(!table_->isValidCol(field_name) || idx < 0) {
+                        error_status_ = 0;
+                        return;
+                    }
+                }
+            }
+            if(statement->values_.size() != statement->fields_.size()){
+                error_status_ = 0;
+                return;
+            }
+            // values
+            for(int i = 0; i < statement->values_.size(); ++i){
+                ExpressionNode* val_exp = statement->values_[i];
+                int idx = table_->colExist(statement->fields_[i]); 
+                vals_[idx] = evaluate_expression(val_exp, eval);
+            }
+        }
+
+        std::vector<Value> next() {
+            RecordID* rid = new RecordID();
+            Record* record = table_->translateToRecord(vals_);
+            int err = table_->getTable()->insertRecord(rid, *record);
+            if(err) {
+                error_status_ = 1;
+                return {};
+            }
+            finished_ = 1;
+            return vals_;
+        }
+    private:
+        TableSchema* table_ = nullptr;
+        InsertStatementData* statement = nullptr;
+        std::vector<Value> vals_  {};
+        std::function<Value(ASTNode*)>
+            eval = std::bind(&InsertionExecutor::evaluate, this, std::placeholders::_1);
 };
 
 
@@ -349,38 +465,47 @@ class AggregationExecutor : public Executor {
         void init() {
             finished_ = 0;
             error_status_ = 0;
-            aggregated_values_ = new HashTable<std::string, std::vector<Value>>(100); // bucket_size should not be const literal.
+            aggregated_values_.clear();
 
 
             if(child_executor_){
                 child_executor_->init();
             }
+            // build the search key for the hash table.
+            std::string hash_key = "PREFIX_"; // this prefix to ensure we have at least one entry in the hash table.
+            for(int i = 0; i < group_by_.size(); i++){
+                Value cur = evaluate(group_by_[i]);
+                hash_key += cur.toString();
+            }
+
+            // we always maintain rows count even if the user did not ask for it, that's why the size is | colmuns | + 1
+            output_ = std::vector<Value> (output_schema_->getCols().size() + 1, Value(0));
+            aggregated_values_[hash_key] = output_;
 
             while(true){
                 std::vector<Value> child_output; 
                 if(child_executor_){
                     child_output = child_executor_->next();
-                    if(child_executor_->error_status_)  return;
-                    if(child_executor_->finished_) 
+                    if(child_executor_->error_status_)  {
+                        error_status_ = true;
+                        return;
+                    }
+                    if(child_executor_->finished_) {
                         break;
+                    }
                 } 
 
-                // we always maintain rows count even if the user did not ask for it, that's why the size is | colmuns | + 1
-                output_ = std::vector<Value> (output_schema_->getCols().size() + 1, Value(0));
+
+
+                // weather the key exists or not we'll just insert the new output vector or an updated one.
+
+                if(aggregated_values_.count(hash_key)){
+                    output_ = aggregated_values_[hash_key];
+                }
 
                 for(int i = 0; i < child_output.size(); i++){
                     output_[i] = child_output[i];
                 }
-
-                // build the search key for the hash table.
-                std::string hash_key = "PREFIX_"; // this prefix to ensure we have at least one entry in the hash table.
-                for(int i = 0; i < group_by_.size(); i++){
-                    Value cur = evaluate(group_by_[i]);
-                    hash_key += cur.toString();
-                }
-
-                // weather the key exists or not we'll just insert the new output vector or an updated one.
-                aggregated_values_->Find(hash_key, output_);
                 // update the extra counter.
                 output_[output_.size() - 1] += 1; 
                 Value* counter = &output_[output_.size() - 1];
@@ -431,33 +556,31 @@ class AggregationExecutor : public Executor {
                     }
                     if(error_status_)  return;
                 }
-                aggregated_values_->Insert(hash_key, output_);
+                aggregated_values_[hash_key] = output_;
                 if(!child_executor_) break;
             }
-            it_ = new HashTableIterator<std::string, std::vector<Value>>(aggregated_values_);
+            it_ = aggregated_values_.begin();
         }
 
         std::vector<Value> next() {
             if(error_status_ || finished_)  return {};
-            output_ = **it_;
+            output_ = it_->second;
             for(int i = 0; i < aggregates_.size(); i++){
                 int idx = (i + output_.size() - aggregates_.size())- 1;
                 if(aggregates_[i]->type_ == AVG && output_[output_.size()-1] != 0){
                     output_[idx] = Value( (float)output_[idx].getIntVal()/(float) output_[output_.size()-1].getIntVal());
                 }
             }
-            if(it_->hasNext())
-                ++(*it_);
-            else
+            ++it_;
+            if(it_== aggregated_values_.end())
                 finished_ = true;
-            output_.pop_back();
             return output_;
         }
     private:
         std::vector<AggregateFuncNode*> aggregates_;
         std::vector<ASTNode*> group_by_;
-        HashTable<std::string, std::vector<Value>>* aggregated_values_ = nullptr;
-        HashTableIterator<std::string, std::vector<Value>>* it_ = nullptr;
+        std::unordered_map<std::string, std::vector<Value>> aggregated_values_;
+        std::unordered_map<std::string, std::vector<Value>>::iterator it_;
         std::function<Value(ASTNode*)>
             eval = std::bind(&AggregationExecutor::evaluate, this, std::placeholders::_1);
 };
@@ -718,7 +841,6 @@ class DistinctExecutor : public Executor {
             finished_ = 0;
             error_status_ = 0;
             child_executor_->init();
-            hashed_tuples_ = new HashTable<std::string, int>(100); // bucket_size should not be const literal.
         }
 
         std::vector<Value> next() {
@@ -728,18 +850,17 @@ class DistinctExecutor : public Executor {
                 finished_ = child_executor_->finished_;
                 error_status_ = child_executor_->error_status_;
                 if(finished_ || error_status_ || tuple.size() == 0) return {};
-                int tuple_cnt = -1;
                 std::string stringified_tuple = "";
                 for(size_t i = 0; i < tuple.size(); i++) stringified_tuple += tuple[i].toString();
-                if(hashed_tuples_->Find(stringified_tuple, tuple_cnt)) continue; // duplicated tuple => skip it.
-                hashed_tuples_->Insert(stringified_tuple, 1);
+                if(hashed_tuples_.count(stringified_tuple)) continue; // duplicated tuple => skip it.
+                hashed_tuples_[stringified_tuple] =  1;
                 output_ = tuple;
                 return output_;
             }
         }
 
     private:
-        HashTable<std::string, int> *hashed_tuples_;
+        std::unordered_map<std::string, int> hashed_tuples_;
 };
 
 
@@ -852,7 +973,9 @@ class ExecutionEngine {
             int err = schema->getTable()->insertRecord(rid, *record);
             if(!err) return true;
             return false;
-        }
+        }*/
+
+        /*
         bool delete_handler(ASTNode* statement_root){
             DeleteStatementNode* delete_statement = reinterpret_cast<DeleteStatementNode*>(statement_root);
 
@@ -1030,6 +1153,14 @@ class ExecutionEngine {
                         TableSchema* new_output_schema = new TableSchema(tname, schema->getTable(), columns);
                         SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
                         return scan;
+                    } break;
+                case INSERTION: 
+                    {
+                        auto statement = reinterpret_cast<InsertStatementData*>(ctx.queries_call_stack_[query_idx]);
+                        TableSchema* table = catalog_->getTableSchema(statement->table_name_);
+
+                        InsertionExecutor* insert = new InsertionExecutor(table, ctx, query_idx, parent_query_idx);
+                        return insert;
                     } break;
                 default: 
                     std::cout << "[ERROR] unsupported Algebra Operaion\n";
