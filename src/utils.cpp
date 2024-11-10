@@ -76,6 +76,20 @@ int strToInt(std::string str){
 	return tmp;
 }
 
+std::string doubleToStr(double d){
+    std::ostringstream ss;
+    ss << d;
+    std::string s(ss.str());
+    return s;
+}
+
+std::string floatToStr(float f){
+    std::ostringstream ss;
+    ss << f;
+    std::string s(ss.str());
+    return s;
+}
+
 std::string intToStr(int t){
     if(t == 0) return "0";
     std::string str = "";

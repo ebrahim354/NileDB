@@ -62,6 +62,7 @@ enum QueryType {
 
 enum CategoryType {
     FIELD,       
+    CASE_EXPRESSION,
                 // scoped field is a field of the format: tableName + "." + fieldName
     SCOPED_FIELD,
     STRING_CONSTANT,
@@ -113,6 +114,14 @@ struct ASTNode {
     {}
     CategoryType category_;
     Token token_; 
+};
+
+struct CaseExpressionNode : ASTNode {
+    CaseExpressionNode(std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs, ExpressionNode* else_exp = nullptr):
+        ASTNode(CASE_EXPRESSION), when_then_pairs_(when_then_pairs), else_(else_exp)
+    {}
+    std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs_; // should be evaluated in order.
+    ExpressionNode* else_ = nullptr;
 };
 
 
@@ -439,6 +448,7 @@ class Parser {
         ASTNode* field(QueryCTX& ctx);
         // scoped field is a field of the format: tableName + "." + fieldName
         ASTNode* scoped_field(QueryCTX& ctx);
+        ASTNode* case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* item(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* unary(QueryCTX& ctx, ExpressionNode* expression_ctx);
@@ -805,6 +815,51 @@ ASTNode* Parser::scoped_field(QueryCTX& ctx){
     return nullptr;
 }
 
+ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    if(!expression_ctx) {
+        ctx.error_status_ = Error::CANT_HAVE_CASE_EXPRESSION; 
+        // TODO: use logger.
+        std::cout << "[ERROR] Cannot have case expression in this context" << std::endl;
+        return nullptr;
+    }
+    if(!ctx.matchMultiTokenType({TokenType::CASE, TokenType::WHEN})) 
+        return nullptr;
+    // only eat the "CASE" token.
+    ++ctx;
+    std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs;
+    ExpressionNode* else_exp = nullptr;
+    int id = expression_ctx->id_;
+    int query_idx = expression_ctx->query_idx_;
+    // WHEN + expression + THEN + expression.
+    while(true){
+        if(!ctx.matchTokenType(TokenType::WHEN)) 
+            break;
+        ++ctx;
+        auto when = expression(ctx, query_idx, id);
+        if(!when) return nullptr;
+        if(!ctx.matchTokenType(TokenType::THEN)) 
+            return nullptr;
+        ++ctx;
+        auto then = expression(ctx, query_idx, id);
+        if(!then) return nullptr;
+
+        when_then_pairs.push_back({when, then});
+    }
+    // optional ELSE
+    if(ctx.matchTokenType(TokenType::ELSE)) {
+        ++ctx;
+        else_exp = expression(ctx, query_idx, id);
+        if(!else_exp) return nullptr;
+    }
+    // must have END
+    if(!ctx.matchTokenType(TokenType::END)) 
+        return nullptr;
+    ++ctx;
+
+    return new CaseExpressionNode(when_then_pairs, else_exp);
+}
+
 ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if((bool)ctx.error_status_) return nullptr;
     if(!expression_ctx) {
@@ -881,7 +936,9 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
         ++ctx;
         return ex;
     }
-    if(expression_ctx && expression_ctx->id_ != 0)
+    if(expression_ctx)
+        i = case_expression(ctx, expression_ctx);
+    if(!i && expression_ctx && expression_ctx->id_ != 0)
         i = agg_func(ctx , expression_ctx);
     if(!i)
         i = scoped_field(ctx);

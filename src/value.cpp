@@ -84,10 +84,14 @@ class Value {
                     return intToStr(getIntVal());
                 case BIGINT:
                     return intToStr(getBigIntVal());
-                case INVALID:
-                    return "NULL";
                 case FLOAT:
+                    return floatToStr(getFloatVal());
                 case DOUBLE:
+                    return doubleToStr(getDoubleVal());
+                case NULL_TYPE:
+                    return "NULL";
+                case INVALID:
+                    return "INVALID";
                 default :
                     return "NOT SUPPORTED YET";
             }
@@ -104,9 +108,23 @@ class Value {
             return std::string(content_, size_);  
         }
         bool getBoolVal() const{
+            if(type_ == FLOAT){
+                return getFloatVal();
+            } else if(type_ == DOUBLE){
+                return getDoubleVal();
+            } else if(type_ == INT){
+                return getIntVal();
+            }
             return *reinterpret_cast<bool*>(content_);
         }
         int getIntVal() const {
+            if(type_ == FLOAT){
+                return getFloatVal();
+            } else if(type_ == DOUBLE){
+                return getDoubleVal();
+            } else if(type_ == BOOLEAN){
+                return getBoolVal();
+            }
             return *reinterpret_cast<int*>(content_);
         }
         long long getBigIntVal() const {
@@ -212,7 +230,6 @@ class Value {
 
         // return true of lhs (this) > rhs else return false.
         bool operator>(const Value &rhs) const { 
-            if(!checkSameType(type_, rhs.type_)) return false;
             // not the best solution to our current problem.
             switch (type_) {
                 case VARCHAR: 
@@ -233,7 +250,6 @@ class Value {
         }
 
         bool operator>=(const Value &rhs) const { 
-            if(!checkSameType(type_, rhs.type_)) return false;
             // not the best solution to our current problem.
             switch (type_) {
                 case VARCHAR: 

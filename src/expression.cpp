@@ -45,6 +45,15 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                                ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(expression);
                                return evaluate_expression(ex->cur_, evaluator, false);
                            }
+        case CASE_EXPRESSION  : {
+                               CaseExpressionNode* case_ex = reinterpret_cast<CaseExpressionNode*>(expression);
+                               for(auto& [when, then] : case_ex->when_then_pairs_){
+                                   if(evaluate_expression(when, evaluator).getBoolVal()) 
+                                       return evaluate_expression(then, evaluator);
+                               }
+                               if(case_ex->else_) return evaluate_expression(case_ex->else_, evaluator);
+                               return Value(NULL_TYPE);
+                           }
         case OR  : {
                        OrNode* lor = reinterpret_cast<OrNode*>(expression);
                        ASTNode* ptr = lor;
