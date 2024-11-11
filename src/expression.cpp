@@ -31,6 +31,12 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                 if(case_ex->else_) return evaluate_expression(case_ex->else_, evaluator);
                 return Value(NULL_TYPE);
             }
+        case NOT  : 
+            {
+                NotNode* lnot = reinterpret_cast<NotNode*>(expression);
+                Value val = evaluate_expression(lnot->cur_, evaluator);
+                return Value((bool)(lnot->effective_^val.getBoolVal())); // 1 1 = 0, 1 0 = 1, 0 1 = 1, 0 0 = 0
+            }
         case OR  : 
             {
                 OrNode* lor = reinterpret_cast<OrNode*>(expression);

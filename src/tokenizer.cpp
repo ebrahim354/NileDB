@@ -55,6 +55,7 @@ enum class TokenType {
     INSERT,
     FROM,
     WHERE,
+    BETWEEN,
     AND,
     OR,
     INTO,
@@ -124,6 +125,8 @@ Tokenizer::Tokenizer(){
     keywords_.insert({"INSERT"  , TokenType::INSERT  });
     keywords_.insert({"FROM"    , TokenType::FROM    });
     keywords_.insert({"WHERE"   , TokenType::WHERE   });
+    keywords_.insert({"BETWEEN" , TokenType::BETWEEN   });
+    keywords_.insert({"NOT"     , TokenType::NOT      });
     keywords_.insert({"AND"     , TokenType::AND     });
     keywords_.insert({"OR"      , TokenType::OR      });
     keywords_.insert({"INTO"    , TokenType::INTO    });
@@ -163,7 +166,6 @@ Tokenizer::Tokenizer(){
     symbols_.insert({">=", TokenType::GTE      });
     symbols_.insert({"=" , TokenType::EQ       });
     symbols_.insert({"!=", TokenType::NEQ      });
-    symbols_.insert({"!" , TokenType::NOT      });
     symbols_.insert({"(" , TokenType::LP       });
     symbols_.insert({")" , TokenType::RP       });
     symbols_.insert({";" , TokenType::SEMICOLON});

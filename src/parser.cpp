@@ -84,7 +84,8 @@ enum CategoryType {
     TERM,       // term         := factor ( ( "+" | "-" ) factor )*
     COMPARISON, // comparison   := term   ( ( "<" | ">" | "<=" | ">=" ) term )*
     EQUALITY,   // equality     := comparison   ( ( "=" | "!=" ) comparison )*
-    AND,        // and          := equality     ( ( "AND" ) equality )*
+    NOT,        // not          := ( "NOT" )* equality
+    AND,        // and          := not     ( ( "AND" ) not )*
     OR,         // or           := and     ( ( "OR" ) and )*
     EXPRESSION, // expression   := or
     PREDICATE,  // sub_query    := select_statment,  only select sub-queries are allowed (for now)
@@ -165,19 +166,12 @@ struct AggregateFuncNode : ASTNode {
 struct UnaryNode : ASTNode {
     UnaryNode(ASTNode* val, Token op={}): ASTNode(UNARY, op), cur_(val)
     {}
-    void clean(){
-        delete cur_;
-    }
     ASTNode* cur_ = nullptr;
 };
 
 struct FactorNode : ASTNode {
     FactorNode(UnaryNode* lhs, FactorNode* rhs = nullptr, Token op={}): ASTNode(FACTOR, op), cur_(lhs), next_(rhs)
     {}
-    void clean(){
-        delete cur_;
-        delete next_;
-    }
     UnaryNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
@@ -185,10 +179,6 @@ struct FactorNode : ASTNode {
 struct TermNode : ASTNode {
     TermNode(FactorNode* lhs, TermNode* rhs = nullptr, Token op={}): ASTNode(TERM, op), cur_(lhs), next_(rhs)
     {}
-    void clean(){
-        delete cur_;
-        delete next_;
-    }
     FactorNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
@@ -196,10 +186,6 @@ struct TermNode : ASTNode {
 struct ComparisonNode : ASTNode {
     ComparisonNode(TermNode* lhs, ComparisonNode* rhs = nullptr, Token op={}): ASTNode(COMPARISON, op), cur_(lhs), next_(rhs)
     {}
-    void clean(){
-        delete cur_;
-        delete next_;
-    }
     TermNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
@@ -207,32 +193,30 @@ struct ComparisonNode : ASTNode {
 struct EqualityNode : ASTNode {
     EqualityNode(ComparisonNode* lhs, EqualityNode* rhs = nullptr, Token op={}): ASTNode(EQUALITY, op), cur_(lhs), next_(rhs)
     {}
-    void clean(){
-        delete cur_;
-        delete next_;
-    }
     ComparisonNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
 
-struct AndNode : ASTNode {
-    AndNode(EqualityNode* lhs, AndNode* rhs = nullptr, Token op={}): ASTNode(AND, op), cur_(lhs), next_(rhs)
+struct NotNode : ASTNode {
+    NotNode(EqualityNode* cur=nullptr, Token op={}): ASTNode(NOT, op), cur_(cur)
     {}
-    void clean(){
-        delete cur_;
-        delete next_;
-    }
     EqualityNode* cur_ = nullptr;
+    // only works if an odd number of NOT operators are listed: NOT 1, NOT NOT NOT 1 = false, but NOT NOT 1 = true,
+    // the effective_ variable captures if it works or not.
+    bool effective_ = true; 
+};
+
+
+struct AndNode : ASTNode {
+    AndNode(NotNode* lhs, AndNode* rhs = nullptr, Token op={}): ASTNode(AND, op), cur_(lhs), next_(rhs)
+    {}
+    NotNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
 
 struct OrNode : ASTNode {
     OrNode(AndNode* lhs, OrNode* rhs = nullptr, Token op={}): ASTNode(OR, op), cur_(lhs), next_(rhs)
     {}
-    void clean(){
-        delete cur_;
-        delete next_;
-    }
     AndNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
@@ -241,9 +225,6 @@ struct ExpressionNode : ASTNode {
     ExpressionNode(QueryData* top_level_statement, int query_idx, ASTNode* val = nullptr): 
         ASTNode(EXPRESSION), cur_(val), query_idx_(query_idx), top_level_statement_(top_level_statement)
     {}
-    void clean(){
-        delete cur_;
-    }
     int id_ = 0; // 0 means it's a single expression => usually used in a where clause and can't have aggregations.
     int query_idx_ = -1; // the index of the query that this expression belongs to, -1 means top level query
     QueryData* top_level_statement_ = nullptr;
@@ -470,6 +451,7 @@ class Parser {
         ASTNode* term(QueryCTX& ctx,ExpressionNode* expression_ctx = nullptr);
         ASTNode* comparison(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* equality(QueryCTX& ctx, ExpressionNode* expression_ctx);
+        ASTNode* logic_not(QueryCTX& ctx,ExpressionNode* expression_ctx);
         ASTNode* logic_and(QueryCTX& ctx,ExpressionNode* expression_ctx);
         ASTNode* logic_or(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ExpressionNode* expression(QueryCTX& ctx, int query_idx, int id);
@@ -995,14 +977,7 @@ ASTNode* Parser::unary(QueryCTX& ctx, ExpressionNode* expression_ctx){
         UnaryNode* u = nullptr;
         u = new UnaryNode(nullptr, ctx.getCurrentToken());
         ++ctx;
-        std::cout << ctx.cursor_ << std::endl;
-        for(int i = 0; i < ctx.tokens_.size(); i++){
-            std::cout << (int) ctx.tokens_[i].type_ << " ";
-        }
-        std::cout << "\n";
         ASTNode* val = item(ctx , expression_ctx);
-        std::cout << val->category_ << std::endl;
-        std::cout << ctx.cursor_ << std::endl;
         if(!val) return nullptr;
         u->cur_ = val;
         return u;
@@ -1021,8 +996,6 @@ ASTNode* Parser::factor(QueryCTX& ctx, ExpressionNode* expression_ctx){
         f->token_ = ctx.getCurrentToken(); ++ctx; 
         next = factor(ctx, expression_ctx);
         if(!next) {
-            f->clean();
-            delete cur;
             return nullptr;
         }
         f->next_ = next;
@@ -1040,8 +1013,6 @@ ASTNode* Parser::term(QueryCTX& ctx,ExpressionNode* expression_ctx){
         t->token_ = ctx.getCurrentToken(); ++ctx; 
         ASTNode* next = term(ctx, expression_ctx);
         if(!next) {
-            t->clean();
-            delete cur;
             return nullptr;
         }
         t->next_ = next;
@@ -1059,8 +1030,6 @@ ASTNode* Parser::comparison(QueryCTX& ctx, ExpressionNode* expression_ctx){
         c->token_ = ctx.getCurrentToken(); ++ctx; 
         ASTNode* next = comparison(ctx, expression_ctx);
         if(!next) {
-            c->clean();
-            delete cur;
             return nullptr;
         }
         c->next_ = next;
@@ -1076,29 +1045,39 @@ ASTNode* Parser::equality(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if(ctx.matchAnyTokenType({TokenType::EQ, TokenType::NEQ })) { 
         EqualityNode* eq = new EqualityNode(reinterpret_cast<ComparisonNode*>(cur));
         eq->token_ = ctx.getCurrentToken(); ++ctx; 
-        ASTNode* next = equality(ctx, expression_ctx);
-        if(!next) {
-            eq->clean();
-            delete cur;
+        eq->next_ = equality(ctx, expression_ctx);
+        if(!eq->next_) 
             return nullptr;
-        }
-        eq->next_ = next;
         return eq;
     }
     return cur;
 }
 
+ASTNode* Parser::logic_not(QueryCTX& ctx,ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    if(ctx.matchTokenType(TokenType::NOT)) { 
+        NotNode* lnot = new NotNode();
+        lnot->token_ = ctx.getCurrentToken(); ++ctx;
+        lnot->effective_ = true;
+        while(ctx.matchTokenType(TokenType::NOT)){
+            lnot->effective_ = !lnot->effective_;
+            ++ctx;
+        }
+        lnot->cur_ = reinterpret_cast<EqualityNode*>(equality(ctx, expression_ctx));
+        return lnot;
+    }
+    return equality(ctx, expression_ctx);
+}
+
 ASTNode* Parser::logic_and(QueryCTX& ctx,ExpressionNode* expression_ctx){
     if((bool)ctx.error_status_) return nullptr;
-    ASTNode* cur = equality(ctx, expression_ctx);
+    ASTNode* cur = logic_not(ctx, expression_ctx);
     if(!cur) return nullptr;
     if(ctx.matchTokenType(TokenType::AND)) { 
-        AndNode* land = new AndNode(reinterpret_cast<EqualityNode*>(cur));
+        AndNode* land = new AndNode(reinterpret_cast<NotNode*>(cur));
         land->token_ = ctx.getCurrentToken(); ++ctx;
         ASTNode* next = logic_and(ctx, expression_ctx);
         if(!next) {
-            land->clean();
-            delete cur;
             return nullptr;
         }
         land->next_ = next;
@@ -1116,8 +1095,6 @@ ASTNode* Parser::logic_or(QueryCTX& ctx, ExpressionNode* expression_ctx){
         lor->token_ = ctx.getCurrentToken(); ++ctx;
         ASTNode* next = logic_or(ctx, expression_ctx);
         if(!next) {
-            lor->clean();
-            delete cur;
             return nullptr;
         }
         lor->next_ = next;
