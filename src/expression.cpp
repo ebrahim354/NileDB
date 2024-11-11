@@ -24,12 +24,31 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
         case CASE_EXPRESSION  : 
             {
                 CaseExpressionNode* case_ex = reinterpret_cast<CaseExpressionNode*>(expression);
+                Value initial_value;
+                if(case_ex->initial_value_){
+                    initial_value = evaluate_expression(case_ex->initial_value_, evaluator);
+                }
                 for(auto& [when, then] : case_ex->when_then_pairs_){
-                    if(evaluate_expression(when, evaluator).getBoolVal()) 
+                    Value evaluated_when = evaluate_expression(when, evaluator);
+                    if(case_ex->initial_value_ && evaluated_when == initial_value){
+                        return evaluate_expression(then, evaluator);
+                    }
+                    else if(!case_ex->initial_value_ && evaluated_when.getBoolVal()) 
                         return evaluate_expression(then, evaluator);
                 }
                 if(case_ex->else_) return evaluate_expression(case_ex->else_, evaluator);
                 return Value(NULL_TYPE);
+            }
+        case BETWEEN  : 
+            {
+                BetweenNode* between = reinterpret_cast<BetweenNode*>(expression);
+                Value val = evaluate_expression(between->val_, evaluator, false);
+                Value lhs = evaluate_expression(between->lhs_, evaluator, false);
+                Value rhs = evaluate_expression(between->rhs_, evaluator, false);
+                bool answer = false;
+                if(val >= lhs && val <= rhs) answer = true;
+                if(between->negated_) answer = !answer;
+                return Value(answer);
             }
         case NOT  : 
             {

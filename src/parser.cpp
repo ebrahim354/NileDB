@@ -84,6 +84,7 @@ enum CategoryType {
     TERM,       // term         := factor ( ( "+" | "-" ) factor )*
     COMPARISON, // comparison   := term   ( ( "<" | ">" | "<=" | ">=" ) term )*
     EQUALITY,   // equality     := comparison   ( ( "=" | "!=" ) comparison )*
+    BETWEEN,    // between      := equality | ( equality ("BETWEEN" | "NOT BETWEEN") equality "AND" equality )*
     NOT,        // not          := ( "NOT" )* equality
     AND,        // and          := not     ( ( "AND" ) not )*
     OR,         // or           := and     ( ( "OR" ) and )*
@@ -120,9 +121,10 @@ struct ASTNode {
 };
 
 struct CaseExpressionNode : ASTNode {
-    CaseExpressionNode(std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs, ExpressionNode* else_exp = nullptr):
-        ASTNode(CASE_EXPRESSION), when_then_pairs_(when_then_pairs), else_(else_exp)
+    CaseExpressionNode(std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs, ExpressionNode* else_exp, ExpressionNode* initial_value):
+        ASTNode(CASE_EXPRESSION), when_then_pairs_(when_then_pairs), else_(else_exp), initial_value_(initial_value)
     {}
+    ExpressionNode* initial_value_ = nullptr;
     std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs_; // should be evaluated in order.
     ExpressionNode* else_ = nullptr;
 };
@@ -197,10 +199,20 @@ struct EqualityNode : ASTNode {
     ASTNode* next_ = nullptr;
 };
 
-struct NotNode : ASTNode {
-    NotNode(EqualityNode* cur=nullptr, Token op={}): ASTNode(NOT, op), cur_(cur)
+struct BetweenNode : ASTNode {
+    BetweenNode(ASTNode* val, ASTNode* lhs, ASTNode* rhs, bool negated): 
+        ASTNode(BETWEEN), lhs_(lhs), rhs_(rhs), val_(val), negated_(negated)
     {}
-    EqualityNode* cur_ = nullptr;
+    ASTNode* val_ = nullptr;
+    ASTNode* lhs_ = nullptr;
+    ASTNode* rhs_ = nullptr;
+    bool negated_ = false;
+};
+
+struct NotNode : ASTNode {
+    NotNode(BetweenNode* cur=nullptr, Token op={}): ASTNode(NOT, op), cur_(cur)
+    {}
+    BetweenNode* cur_ = nullptr;
     // only works if an odd number of NOT operators are listed: NOT 1, NOT NOT NOT 1 = false, but NOT NOT 1 = true,
     // the effective_ variable captures if it works or not.
     bool effective_ = true; 
@@ -451,6 +463,7 @@ class Parser {
         ASTNode* term(QueryCTX& ctx,ExpressionNode* expression_ctx = nullptr);
         ASTNode* comparison(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* equality(QueryCTX& ctx, ExpressionNode* expression_ctx);
+        ASTNode* between(QueryCTX& ctx,ExpressionNode* expression_ctx);
         ASTNode* logic_not(QueryCTX& ctx,ExpressionNode* expression_ctx);
         ASTNode* logic_and(QueryCTX& ctx,ExpressionNode* expression_ctx);
         ASTNode* logic_or(QueryCTX& ctx, ExpressionNode* expression_ctx);
@@ -776,8 +789,9 @@ ASTNode* Parser::constant(QueryCTX& ctx){
     ASTNode* ret = nullptr;
     if(ctx.matchTokenType(TokenType::STR_CONSTANT)){
         ret =  new ASTNode(STRING_CONSTANT, ctx.getCurrentToken()); ++ctx;
-    } else if(ctx.matchTokenType(TokenType::NUMBER_CONSTANT))
+    } else if(ctx.matchTokenType(TokenType::NUMBER_CONSTANT)){
         ret = new ASTNode(INTEGER_CONSTANT, ctx.getCurrentToken()); ++ctx;
+    }
     return ret;
 }
 
@@ -819,7 +833,7 @@ ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
         std::cout << "[ERROR] Cannot have case expression in this context" << std::endl;
         return nullptr;
     }
-    if(!ctx.matchMultiTokenType({TokenType::CASE, TokenType::WHEN})) 
+    if(!ctx.matchTokenType(TokenType::CASE)) 
         return nullptr;
     // only eat the "CASE" token.
     ++ctx;
@@ -827,6 +841,10 @@ ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
     ExpressionNode* else_exp = nullptr;
     int id = expression_ctx->id_;
     int query_idx = expression_ctx->query_idx_;
+    // this value converts the case into something similar to a switch statement, read the following for contextx:
+    // https://www.postgresql.org/docs/current/functions-conditional.html#FUNCTIONS-CASE
+    // optional initial value if it does not exists it should be null by default from the expression function.
+    ExpressionNode* initial_value = expression(ctx, query_idx, id);
     // WHEN + expression + THEN + expression.
     while(true){
         if(!ctx.matchTokenType(TokenType::WHEN)) 
@@ -852,8 +870,14 @@ ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if(!ctx.matchTokenType(TokenType::END)) 
         return nullptr;
     ++ctx;
+    if(when_then_pairs.size() == 0){
+        ctx.error_status_ = Error::INCORRECT_CASE_EXPRESSION; 
+        // TODO: use logger.
+        std::cout << "[ERROR] incorrect case expression" << std::endl;
+        return nullptr;
+    }
 
-    return new CaseExpressionNode(when_then_pairs, else_exp);
+    return new CaseExpressionNode(when_then_pairs, else_exp, initial_value);
 }
 
 ASTNode* Parser::scalar_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
@@ -1053,6 +1077,27 @@ ASTNode* Parser::equality(QueryCTX& ctx, ExpressionNode* expression_ctx){
     return cur;
 }
 
+ASTNode* Parser::between(QueryCTX& ctx,ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    ASTNode* val = equality(ctx, expression_ctx);
+    if(!val) return nullptr;
+    if(ctx.matchTokenType(TokenType::BETWEEN) || ctx.matchMultiTokenType({TokenType::NOT, TokenType::BETWEEN})) { 
+        bool negated = (ctx.getCurrentToken().type_ == TokenType::NOT);
+        if(negated) ++ctx;
+        ++ctx;
+        ASTNode* lhs = equality(ctx, expression_ctx);
+        if(!lhs || !ctx.matchTokenType(TokenType::AND))
+            return nullptr;
+        ++ctx;
+        ASTNode* rhs = equality(ctx, expression_ctx);
+        if(!rhs) {
+            return nullptr;
+        }
+        return new BetweenNode(val, lhs, rhs, negated);
+    }
+    return val;
+}
+
 ASTNode* Parser::logic_not(QueryCTX& ctx,ExpressionNode* expression_ctx){
     if((bool)ctx.error_status_) return nullptr;
     if(ctx.matchTokenType(TokenType::NOT)) { 
@@ -1063,11 +1108,12 @@ ASTNode* Parser::logic_not(QueryCTX& ctx,ExpressionNode* expression_ctx){
             lnot->effective_ = !lnot->effective_;
             ++ctx;
         }
-        lnot->cur_ = reinterpret_cast<EqualityNode*>(equality(ctx, expression_ctx));
+        lnot->cur_ = reinterpret_cast<BetweenNode*>(between(ctx, expression_ctx));
         return lnot;
     }
-    return equality(ctx, expression_ctx);
+    return between(ctx, expression_ctx);
 }
+
 
 ASTNode* Parser::logic_and(QueryCTX& ctx,ExpressionNode* expression_ctx){
     if((bool)ctx.error_status_) return nullptr;
