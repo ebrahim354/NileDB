@@ -10,10 +10,12 @@ class Value {
         char* content_ = nullptr;  
         uint16_t size_ = 0;
         Type type_ = INVALID;
-        Value(){} 
+        //Value(){} 
         ~Value(){}
 
-        Value(Type type){type_ = type;} 
+        Value(Type type = NULL_TYPE){
+            type_ = type;
+        } 
         // handle memory leaks later.
         // constuctors for different value types.
         Value(const Value& rhs){
@@ -105,9 +107,11 @@ class Value {
             return (type_ == NULL_TYPE);
         }
         std::string getStringVal() const {
+            if(!content_) return "";
             return std::string(content_, size_);  
         }
         bool getBoolVal() const{
+            if(!content_) return false;
             if(type_ == FLOAT){
                 return getFloatVal();
             } else if(type_ == DOUBLE){
@@ -118,6 +122,7 @@ class Value {
             return *reinterpret_cast<bool*>(content_);
         }
         int getIntVal() const {
+            if(!content_) return 0;
             if(type_ == FLOAT){
                 return getFloatVal();
             } else if(type_ == DOUBLE){
@@ -128,12 +133,15 @@ class Value {
             return *reinterpret_cast<int*>(content_);
         }
         long long getBigIntVal() const {
+            if(!content_) return 0;
             return *reinterpret_cast<long long*>(content_);
         }
         float getFloatVal() const {
+            if(!content_) return 0.0f;
             return *reinterpret_cast<float*>(content_);
         }
         double getDoubleVal() const {
+            if(!content_) return 0.0f;
             return *reinterpret_cast<double*>(content_);
         }
         // We assume that the user of these operators has already checked for the types to be equal.

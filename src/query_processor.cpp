@@ -14,7 +14,8 @@ class QueryProcessor{
             std::cout << "[INFO] Parsing query" << std::endl;
             QueryCTX query_ctx(query.size());
             parser_->parse(query, query_ctx);
-            if(!query_ctx.queries_call_stack_.size() || query_ctx.error_status_ != Error::NO_ERROR){
+            if(!query_ctx.queries_call_stack_.size() || query_ctx.error_status_ != Error::NO_ERROR || query_ctx.cursor_ != query_ctx.tokens_.size()){
+                std::cout << query_ctx.cursor_ << " " << query_ctx.tokens_.size() << std::endl;
                 std::cout << "[ERROR] Invalid query data" << std::endl;
                 return false;
             }

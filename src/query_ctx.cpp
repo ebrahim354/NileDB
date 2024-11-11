@@ -41,8 +41,7 @@ struct QueryCTX {
     }
     // advance the cursor_.
     QueryCTX& operator++() {
-        if(cursor_ < tokens_.size() - 1)
-            cursor_++;
+        cursor_++;
         return *this;
     }
     QueryCTX& operator+=(int val) {

@@ -72,8 +72,10 @@ enum CategoryType {
                 // item will be extendted later to have booleans and null
                 //
                 //
+                // scalar functions are either reserved functions or user defined functions. 
+                // TODO: user defined functions are not supported yet.
+    SCALAR_FUNC,// scalar_func     := identifier "(" expression ")", and expression can contain another function.
                 //
-                // func_name    := "COUNT" | "MIN" | "MAX" | "SUM" | "AVG" | ...
                 // Nested aggregations are not allowed: count(count(*)).
     AGG_FUNC,   // agg_func     := func_name "(" expression ")", and expression can not contain another aggregation.
     ITEM,       // item         := field  | STRING_CONSTANT | INTEGER_CONSTANT  | "(" expression ")" | agg_func | "(" sub_query ")"
@@ -138,6 +140,16 @@ struct SubQueryNode : ASTNode {
     {}
     int idx_ = -1;
     int parent_idx_ = -1;
+};
+
+struct ScalarFuncNode : ASTNode {
+    // TODO: exp should be changed to an argument list of expressions. 
+    ScalarFuncNode(ExpressionNode* exp, std::string name, int parent_id = 0): 
+        ASTNode(SCALAR_FUNC), exp_(exp), name_(name), parent_id_(parent_id)
+    {}
+    std::string name_;
+    int parent_id_ = 0;
+    ExpressionNode* exp_ = nullptr;
 };
 
 struct AggregateFuncNode : ASTNode {
@@ -449,6 +461,7 @@ class Parser {
         // scoped field is a field of the format: tableName + "." + fieldName
         ASTNode* scoped_field(QueryCTX& ctx);
         ASTNode* case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx);
+        ASTNode* scalar_func(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* item(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* unary(QueryCTX& ctx, ExpressionNode* expression_ctx);
@@ -860,6 +873,26 @@ ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
     return new CaseExpressionNode(when_then_pairs, else_exp);
 }
 
+ASTNode* Parser::scalar_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    if(!expression_ctx) {
+        ctx.error_status_ = Error::CANT_CALL_FUNCTION; 
+        // TODO: use logger.
+        std::cout << "[ERROR] Cannot have scalar function calls in this context" << std::endl;
+        return nullptr;
+    }
+    if(!ctx.matchMultiTokenType({TokenType::IDENTIFIER, TokenType::LP})) 
+        return nullptr;
+    std::string name = ctx.getCurrentToken().val_; 
+    ctx+=2;
+    ExpressionNode* exp = nullptr;
+    exp = expression(ctx, expression_ctx->query_idx_, 0);
+    if(!exp) return nullptr;
+    if(!ctx.matchTokenType(TokenType::RP)) return nullptr;
+    ++ctx;
+    return new ScalarFuncNode(exp, name, expression_ctx->id_);
+}
+
 ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if((bool)ctx.error_status_) return nullptr;
     if(!expression_ctx) {
@@ -939,6 +972,8 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if(expression_ctx)
         i = case_expression(ctx, expression_ctx);
     if(!i && expression_ctx && expression_ctx->id_ != 0)
+        i = scalar_func(ctx , expression_ctx);
+    if(!i && expression_ctx && expression_ctx->id_ != 0)
         i = agg_func(ctx , expression_ctx);
     if(!i)
         i = scoped_field(ctx);
@@ -955,7 +990,14 @@ ASTNode* Parser::unary(QueryCTX& ctx, ExpressionNode* expression_ctx){
         UnaryNode* u = nullptr;
         u = new UnaryNode(nullptr, ctx.getCurrentToken());
         ++ctx;
+        std::cout << ctx.cursor_ << std::endl;
+        for(int i = 0; i < ctx.tokens_.size(); i++){
+            std::cout << (int) ctx.tokens_[i].type_ << " ";
+        }
+        std::cout << "\n";
         ASTNode* val = item(ctx , expression_ctx);
+        std::cout << val->category_ << std::endl;
+        std::cout << ctx.cursor_ << std::endl;
         if(!val) return nullptr;
         u->cur_ = val;
         return u;

@@ -9,8 +9,7 @@ enum class TokenType {
 	FLOATING_CONSTANT,
 	IDENTIFIER,
     TOKENS_WITH_VAL,
-    // symbols
-    LT,
+    LT, // symbols
     LTE,
     GT,
     GTE,
@@ -26,17 +25,15 @@ enum class TokenType {
     SLASH,
     PERCENT,
     DOT,
-    COMMA,
-    // datatypes
-    VARCHAR,
+    COMMA, 
+    VARCHAR,// datatypes
     INTEGER,
     BIGINT,
     FLOAT,
     DOUBLE,
     TIMESTAMP,
     BOOLEAN,
-    // keywords
-	SELECT,
+	SELECT, // keywords
     ORDER,
     GROUP,
     JOIN,
@@ -71,7 +68,6 @@ enum class TokenType {
     AVG,
     MIN,
     MAX,
-
     INVALID_TOKEN,
 };
 
