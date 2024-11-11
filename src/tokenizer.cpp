@@ -38,6 +38,7 @@ enum class TokenType {
     GROUP,
     JOIN,
     INDEX,
+    EXISTS,
     CASE,
     WHEN,
     THEN,
@@ -132,6 +133,7 @@ Tokenizer::Tokenizer(){
     keywords_.insert({"SET"     , TokenType::SET     });
     keywords_.insert({"INDEX"   , TokenType::INDEX   });
     keywords_.insert({"CASE"    , TokenType::CASE   });
+    keywords_.insert({"EXISTS"  , TokenType::EXISTS   });
     keywords_.insert({"WHEN"    , TokenType::WHEN   });
     keywords_.insert({"THEN"    , TokenType::THEN   });
     keywords_.insert({"ELSE"    , TokenType::ELSE   });

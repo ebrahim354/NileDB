@@ -140,6 +140,7 @@ struct SubQueryNode : ASTNode {
     {}
     int idx_ = -1;
     int parent_idx_ = -1;
+    bool used_with_exists_ = false;
 };
 
 struct ScalarFuncNode : ASTNode {
@@ -941,8 +942,11 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
 
     ASTNode* i = nullptr;
     // check for sub-queries.
-    // TODO: extend to not only support select sub-queries.
-    if(ctx.matchMultiTokenType({TokenType::LP, TokenType::SELECT})){
+    // EXISTS(sub-query), (sub-query) 
+    if( ctx.matchMultiTokenType({TokenType::EXISTS, TokenType::LP, TokenType::SELECT }) ||
+            ctx.matchMultiTokenType({TokenType::LP, TokenType::SELECT})){
+        bool exists = (ctx.getCurrentToken().type_ == TokenType::EXISTS);
+        if(exists) ++ctx;
         ctx += 1;
         int sub_query_id = ctx.queries_call_stack_.size();
         selectStatement(ctx, expression_ctx->query_idx_);
@@ -955,6 +959,7 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
             return nullptr;
         }
         ++ctx;
+        sub_query_node->used_with_exists_ = exists;
         return sub_query_node;
     }
     // nested expressions.

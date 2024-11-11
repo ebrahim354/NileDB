@@ -223,6 +223,37 @@ class FilterExecutor : public Executor {
         {}
 
         Value evaluate(ASTNode* item){
+
+            if(item->category_ == SUB_QUERY){
+                auto sub_query = reinterpret_cast<SubQueryNode*>(item);
+                bool used_with_exists = sub_query->used_with_exists_;
+                Executor* sub_query_executor = ctx_.executors_call_stack_[sub_query->idx_]; 
+                sub_query_executor->init();
+                if(sub_query_executor->error_status_){
+                    std::cout << "[ERROR] could not initialize sub-query" << std::endl;
+                    error_status_ = 1;
+                    return Value();
+                }
+                std::vector<Value> tmp = sub_query_executor->next();
+                if(tmp.size() == 0 && sub_query_executor->finished_) {
+                    if(used_with_exists) return Value(false);
+                    return Value();
+                }
+
+                if(sub_query_executor->error_status_) {
+                    std::cout << "[ERROR] could not execute sub-query" << std::endl;
+                    error_status_ = 1;
+                    return Value();
+                }
+                if(used_with_exists) return Value(tmp.size() != 0);
+                if(tmp.size() != 1) {
+                    std::cout << "[ERROR] sub-query should return exactly 1 column" << std::endl;
+                    error_status_ = 1;
+                    return Value();
+                }
+                return tmp[0];
+            }
+
             if(item->category_ != FIELD && item->category_ != SCOPED_FIELD){
                 std::cout << "[ERROR] Item type is not supported!" << std::endl;
                 error_status_ = 1;
@@ -596,6 +627,7 @@ class ProjectionExecutor : public Executor {
         Value evaluate(ASTNode* item){
             if(item->category_ == SUB_QUERY){
                 auto sub_query = reinterpret_cast<SubQueryNode*>(item);
+                bool used_with_exists = sub_query->used_with_exists_;
                 Executor* sub_query_executor = ctx_.executors_call_stack_[sub_query->idx_]; 
                 sub_query_executor->init();
                 if(sub_query_executor->error_status_){
@@ -605,14 +637,16 @@ class ProjectionExecutor : public Executor {
                 }
                 std::vector<Value> tmp = sub_query_executor->next();
                 if(tmp.size() == 0 && sub_query_executor->finished_) {
+                    if(used_with_exists) return Value(false);
                     return Value();
                 }
 
-                if(tmp.size() == 0 || sub_query_executor->error_status_) {
+                if(sub_query_executor->error_status_) {
                     std::cout << "[ERROR] could not execute sub-query" << std::endl;
                     error_status_ = 1;
                     return Value();
                 }
+                if(used_with_exists) return Value(tmp.size() != 0);
                 if(tmp.size() != 1) {
                     std::cout << "[ERROR] sub-query should return exactly 1 column" << std::endl;
                     error_status_ = 1;
