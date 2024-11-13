@@ -79,7 +79,7 @@ enum CategoryType {
                 // Nested aggregations are not allowed: count(count(*)).
     AGG_FUNC,   // agg_func     := func_name "(" expression ")", and expression can not contain another aggregation.
     ITEM,       // item         := field  | STRING_CONSTANT | INTEGER_CONSTANT  | "(" expression ")" | agg_func | "(" sub_query ")"
-    UNARY,      // unary        := item   | ("-") uneray
+    UNARY,      // unary        := item   | ("-" | "+") uneray
     FACTOR,     // factor       := unary  ( ( "/" | "*" ) unary  )*
     TERM,       // term         := factor ( ( "+" | "-" ) factor )*
     COMPARISON, // comparison   := term   ( ( "<" | ">" | "<=" | ">=" ) term )*
@@ -1001,7 +1001,7 @@ ASTNode* Parser::unary(QueryCTX& ctx, ExpressionNode* expression_ctx){
         UnaryNode* u = nullptr;
         u = new UnaryNode(nullptr, ctx.getCurrentToken());
         ++ctx;
-        ASTNode* val = item(ctx , expression_ctx);
+        ASTNode* val = unary(ctx , expression_ctx);
         if(!val) return nullptr;
         u->cur_ = val;
         return u;
@@ -1169,6 +1169,9 @@ void Parser::selectStatement(QueryCTX& ctx, int parent_idx){
     if(ctx.matchTokenType(TokenType::DISTINCT)){
         ++ctx;
         statement->distinct_ = true;
+    } else if(ctx.matchTokenType(TokenType::ALL)){
+        ++ctx;
+        statement->distinct_ = false;
     }
 
     // parse selectlist (fields) for the current query.

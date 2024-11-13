@@ -45,6 +45,18 @@ struct ScanOperation: AlgebraOperation {
         std::string table_rename_{};
 };
 
+struct ProductOperation: AlgebraOperation {
+    public:
+        ProductOperation(QueryCTX& ctx,AlgebraOperation* lhs, AlgebraOperation* rhs): 
+            AlgebraOperation(PRODUCT, ctx), lhs_(lhs), rhs_(rhs)
+        {}
+        ~ProductOperation()
+        {}
+
+        AlgebraOperation* lhs_ = nullptr;
+        AlgebraOperation* rhs_ = nullptr;
+};
+
 struct InsertionOperation: AlgebraOperation {
     public:
         InsertionOperation(QueryCTX& ctx): 
@@ -196,9 +208,13 @@ class AlgebraEngine {
                 return nullptr;
 
             AlgebraOperation* result = nullptr;
-            // only use the first table until we add support for the product operation.
-            if(data->tables_.size() && data->table_names_.size())
-                result = new ScanOperation(ctx, data->tables_[0], data->table_names_[0]);
+            int idx = 0;
+            while(idx < data->tables_.size() && idx < data->table_names_.size()){
+                auto scan = new ScanOperation(ctx, data->tables_[idx], data->table_names_[idx]);
+                if(!result) result = scan;
+                else result = new ProductOperation(ctx, result, scan); 
+                idx++;
+            }
             if(data->where_)
                 result = new FilterOperation(ctx, result, data->where_, data->fields_, data->field_names_);
             if(data->aggregates_.size())

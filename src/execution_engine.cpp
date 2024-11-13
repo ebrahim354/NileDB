@@ -33,6 +33,7 @@ enum ExecutorType {
     PROJECTION_EXECUTOR,
     SORT_EXECUTOR,
     DISTINCT_EXECUTOR,
+    PRODUCT_EXECUTOR,
 };
 
 struct Executor {
@@ -54,6 +55,61 @@ struct Executor {
         int query_idx_ = -1;
         int parent_query_idx_ = -1;
         QueryCTX& ctx_;
+};
+
+class ProductExecutor : public Executor {
+    public:
+        ProductExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs)
+            : Executor(PRODUCT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs)
+        {}
+        ~ProductExecutor()
+        {}
+
+        void init() {
+            error_status_ = 0;
+            finished_ = 0;
+            if(!left_child_ || !right_child_){
+                error_status_ = true;
+                return;
+            }
+            left_child_->init();
+            right_child_->init();
+            error_status_ = left_child_->error_status_ || right_child_->error_status_;
+            finished_ = left_child_->finished_;
+            output_.resize(left_child_->output_schema_->getColumns().size() + right_child_->output_schema_->getColumns().size()); 
+            if(!finished_){
+                auto left_output = left_child_->next();
+                for(int i = 0; i < left_output.size(); ++i)
+                    output_[i] = left_output[i];
+            }
+        }
+
+        std::vector<Value> next() {
+            if(error_status_ || finished_)  return {};
+            std::vector<Value> left_output;
+            std::vector<Value> right_output = right_child_->next();
+            if(right_child_->finished_){
+              left_output = left_child_->next();
+              if(left_child_->finished_){
+                finished_ = true;
+                return {};
+              }
+              right_child_->init();
+              right_output = right_child_->next();
+            } 
+            if(right_output.size() == 0) return {};
+
+            for(int i = 0; i < left_output.size(); ++i)
+                output_[i] = left_output[i];
+            for(int i = 0;i < right_output.size(); ++i)
+                output_[i+(output_.size() - right_output.size())] = right_output[i];
+
+            finished_ = left_child_->finished_;
+            return output_;
+        }
+    private:
+        Executor* left_child_ = nullptr;
+        Executor* right_child_ = nullptr;
 };
 
 class SeqScanExecutor : public Executor {
@@ -1187,6 +1243,20 @@ class ExecutionEngine {
                         TableSchema* new_output_schema = new TableSchema(tname, schema->getTable(), columns);
                         SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
                         return scan;
+                    } break;
+                case PRODUCT: 
+                    {
+                        ProductOperation* op = reinterpret_cast<ProductOperation*>(logical_plan);
+                        Executor* lhs = buildExecutionPlan(ctx, op->lhs_, query_idx, parent_query_idx);
+                        Executor* rhs = buildExecutionPlan(ctx, op->rhs_, query_idx, parent_query_idx);
+                        std::vector<Column> lhs_columns = lhs->output_schema_->getColumns();
+                        std::vector<Column> rhs_columns = rhs->output_schema_->getColumns();
+                        for(int i = 0; i < rhs_columns.size(); i++)
+                            lhs_columns.push_back(rhs_columns[i]);
+
+                        TableSchema* product_output_schema = new TableSchema("TMP_PRODUCT_TABLE", nullptr, lhs_columns);
+                        ProductExecutor* product = new ProductExecutor(product_output_schema, ctx, query_idx, parent_query_idx, lhs, rhs);
+                        return product;
                     } break;
                 case INSERTION: 
                     {
