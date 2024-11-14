@@ -209,6 +209,14 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                           Value exp_val = evaluate_expression(sfn->exp_, evaluator);
                           return reserved_functions[sfn->name_](exp_val);
                       } 
+        case TYPE_CAST: 
+                      {
+                          TypeCastNode* cast = reinterpret_cast<TypeCastNode*>(expression);
+                          Value val = evaluate_expression(cast->exp_, evaluator);
+                          if(val.type_ == NULL_TYPE) return val; // NULL values can't be casted? 
+                          val.type_ = cast->type_; // TODO: do more usefull type casting.
+                          return val;
+                      } 
         case STRING_CONSTANT: 
                       {
                           std::string val = "";
@@ -220,6 +228,10 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
         case INTEGER_CONSTANT: 
                       {
                           return Value(str_to_int(expression->token_.val_));
+                      }
+        case NULL_CONSTANT: 
+                      {
+                          return Value(NULL_TYPE);
                       }
         default:
                       {

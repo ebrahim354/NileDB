@@ -32,6 +32,28 @@ enum AggregateFuncType {
     AVG,
 };
 
+Type tokenTypeToDBType(TokenType tt){
+    // enum Type { INVALID = -1, BOOLEAN, INT, BIGINT, FLOAT, DOUBLE, TIMESTAMP, VARCHAR, NULL_TYPE}; 
+    switch(tt){
+        case TokenType::BOOLEAN:
+            return BOOLEAN;
+        case TokenType::INTEGER: // TODO: token types and internal system types should be the same.
+            return INT;
+        case TokenType::BIGINT:
+            return BIGINT;
+        case TokenType::FLOAT:
+            return FLOAT;
+        case TokenType::DOUBLE:
+            return DOUBLE;
+        case TokenType::TIMESTAMP:
+            return TIMESTAMP;
+        case TokenType::VARCHAR:
+            return VARCHAR;
+        default: 
+            return INVALID;
+    }
+}
+
 AggregateFuncType getAggFuncType(TokenType func){
     if(func == TokenType::COUNT) return COUNT;
     if(func == TokenType::SUM)   return SUM;
@@ -67,6 +89,7 @@ enum CategoryType {
     SCOPED_FIELD,
     STRING_CONSTANT,
     INTEGER_CONSTANT,
+    NULL_CONSTANT,
                 // grammer of expressions is copied with some modifications from the following link :
                 // https://craftinginterpreters.com/appendix-i.html
                 // item will be extendted later to have booleans and null
@@ -91,6 +114,7 @@ enum CategoryType {
     EXPRESSION, // expression   := or
     PREDICATE,  // sub_query    := select_statment,  only select sub-queries are allowed (for now)
     SUB_QUERY,
+    TYPE_CAST,
 
     TABLE,
     SELECT_STATEMENT,
@@ -144,6 +168,15 @@ struct SubQueryNode : ASTNode {
     int idx_ = -1;
     int parent_idx_ = -1;
     bool used_with_exists_ = false;
+};
+
+struct TypeCastNode : ASTNode {
+    // TODO: exp should be changed to an argument list of expressions. 
+    TypeCastNode(ExpressionNode* exp, Type new_type): 
+        ASTNode(TYPE_CAST), exp_(exp), type_(new_type)
+    {}
+    Type type_ = INVALID;
+    ExpressionNode* exp_ = nullptr;
 };
 
 struct ScalarFuncNode : ASTNode {
@@ -455,6 +488,7 @@ class Parser {
         // scoped field is a field of the format: tableName + "." + fieldName
         ASTNode* scoped_field(QueryCTX& ctx);
         ASTNode* case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx);
+        ASTNode* type_cast(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* scalar_func(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* item(QueryCTX& ctx, ExpressionNode* expression_ctx);
@@ -791,6 +825,8 @@ ASTNode* Parser::constant(QueryCTX& ctx){
         ret =  new ASTNode(STRING_CONSTANT, ctx.getCurrentToken()); ++ctx;
     } else if(ctx.matchTokenType(TokenType::NUMBER_CONSTANT)){
         ret = new ASTNode(INTEGER_CONSTANT, ctx.getCurrentToken()); ++ctx;
+    } else if(ctx.matchTokenType(TokenType::NULL_CONST)){
+        ret = new ASTNode(NULL_CONSTANT, ctx.getCurrentToken()); ++ctx;
     }
     return ret;
 }
@@ -878,6 +914,32 @@ ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
     }
 
     return new CaseExpressionNode(when_then_pairs, else_exp, initial_value);
+}
+
+ASTNode* Parser::type_cast(QueryCTX& ctx, ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    if(!expression_ctx) {
+        ctx.error_status_ = Error::CANT_CAST_TYPE; 
+        // TODO: use logger.
+        std::cout << "[ERROR] Cannot have type cast calls in this context" << std::endl;
+        return nullptr;
+    }
+    if(!ctx.matchMultiTokenType({TokenType::CAST, TokenType::LP})) 
+        return nullptr;
+    ctx+=2;
+    ExpressionNode* exp = expression(ctx, expression_ctx->query_idx_, 0);
+    if(!exp) return nullptr;
+    if(!ctx.matchTokenType(TokenType::AS)) return nullptr;
+    ++ctx;
+    if(!tokenizer_.isDataType(ctx.getCurrentToken().type_)) {
+        std::cout << "[ERROR] Invalid type" << std::endl;
+        return nullptr;
+    }
+    Type t = tokenTypeToDBType(ctx.getCurrentToken().type_);
+    ++ctx;
+    if(!ctx.matchTokenType(TokenType::RP)) return nullptr;
+    ++ctx;
+    return new TypeCastNode(exp, t);
 }
 
 ASTNode* Parser::scalar_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
@@ -982,6 +1044,8 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
     }
     if(expression_ctx)
         i = case_expression(ctx, expression_ctx);
+    if(!i && expression_ctx && expression_ctx->id_ != 0)
+        i = type_cast(ctx , expression_ctx);
     if(!i && expression_ctx && expression_ctx->id_ != 0)
         i = scalar_func(ctx , expression_ctx);
     if(!i && expression_ctx && expression_ctx->id_ != 0)

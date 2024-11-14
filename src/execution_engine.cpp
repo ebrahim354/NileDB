@@ -558,18 +558,10 @@ class AggregationExecutor : public Executor {
             if(child_executor_){
                 child_executor_->init();
             }
-            // build the search key for the hash table.
-            std::string hash_key = "PREFIX_"; // this prefix to ensure we have at least one entry in the hash table.
-            for(int i = 0; i < group_by_.size(); i++){
-                Value cur = evaluate(group_by_[i]);
-                hash_key += cur.toString();
-            }
-
-            // we always maintain rows count even if the user did not ask for it, that's why the size is | colmuns | + 1
-            output_ = std::vector<Value> (output_schema_->getCols().size() + 1, Value(0));
-            aggregated_values_[hash_key] = output_;
 
             while(true){
+                // we always maintain rows count even if the user did not ask for it, that's why the size is | colmuns | + 1
+                output_ = std::vector<Value> (output_schema_->getCols().size() + 1, Value(0));
                 std::vector<Value> child_output; 
                 if(child_executor_){
                     child_output = child_executor_->next();
@@ -582,17 +574,22 @@ class AggregationExecutor : public Executor {
                     }
                 } 
 
+                for(int i = 0; i < child_output.size(); i++){
+                    output_[i] = child_output[i];
+                }
 
+                // build the search key for the hash table.
+                std::string hash_key = "PREFIX_"; // prefix to ensure we have at least one entry in the hash table.
+                for(int i = 0; i < group_by_.size(); i++){
+                    Value cur = evaluate(group_by_[i]);
+                    hash_key += cur.toString();
+                }
 
-                // weather the key exists or not we'll just insert the new output vector or an updated one.
-
+                // if the hash key exists we need to load it first.
                 if(aggregated_values_.count(hash_key)){
                     output_ = aggregated_values_[hash_key];
                 }
 
-                for(int i = 0; i < child_output.size(); i++){
-                    output_[i] = child_output[i];
-                }
                 // update the extra counter.
                 output_[output_.size() - 1] += 1; 
                 Value* counter = &output_[output_.size() - 1];
@@ -661,6 +658,7 @@ class AggregationExecutor : public Executor {
             ++it_;
             if(it_== aggregated_values_.end())
                 finished_ = true;
+            output_.pop_back(); // remove the custom counter.
             return output_;
         }
     private:
@@ -937,8 +935,8 @@ class DistinctExecutor : public Executor {
             if(error_status_ || finished_)  return {};
             while(true){
                 std::vector<Value> tuple = child_executor_->next();
-                finished_ = child_executor_->finished_;
-                error_status_ = child_executor_->error_status_;
+                //finished_ = child_executor_->finished_;
+                //error_status_ = child_executor_->error_status_;
                 if(finished_ || error_status_ || tuple.size() == 0) return {};
                 std::string stringified_tuple = "";
                 for(size_t i = 0; i < tuple.size(); i++) stringified_tuple += tuple[i].toString();

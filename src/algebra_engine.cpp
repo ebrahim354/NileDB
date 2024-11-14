@@ -217,7 +217,7 @@ class AlgebraEngine {
             }
             if(data->where_)
                 result = new FilterOperation(ctx, result, data->where_, data->fields_, data->field_names_);
-            if(data->aggregates_.size())
+            if(data->aggregates_.size() || data->group_by_.size())
                 result = new AggregationOperation(ctx, result, data->aggregates_, data->group_by_);
             if(data->fields_.size())
                 result = new ProjectionOperation(ctx, result, data->fields_);
