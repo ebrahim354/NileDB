@@ -207,9 +207,10 @@ class AlgebraEngine {
             if(!isValidSelectStatementData(data))
                 return nullptr;
 
+
             AlgebraOperation* result = nullptr;
             int idx = 0;
-            while(idx < data->tables_.size() && idx < data->table_names_.size()){
+            while(idx < data->tables_.size()){
                 auto scan = new ScanOperation(ctx, data->tables_[idx], data->table_names_[idx]);
                 if(!result) result = scan;
                 else result = new ProductOperation(ctx, result, scan); 
@@ -217,8 +218,12 @@ class AlgebraEngine {
             }
             if(data->where_)
                 result = new FilterOperation(ctx, result, data->where_, data->fields_, data->field_names_);
-            if(data->aggregates_.size() || data->group_by_.size())
+            if(data->aggregates_.size() || data->group_by_.size()){
                 result = new AggregationOperation(ctx, result, data->aggregates_, data->group_by_);
+                // TODO: make a specific having operator and executor.
+                if(data->having_)
+                  result = new FilterOperation(ctx, result, data->having_, data->fields_, data->field_names_);
+            }
             if(data->fields_.size())
                 result = new ProjectionOperation(ctx, result, data->fields_);
             if(data->order_by_list_.size())

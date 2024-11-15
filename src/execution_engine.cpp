@@ -513,7 +513,7 @@ class AggregationExecutor : public Executor {
                 table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
                 std::string col = table;col += "."; col+= field;
                 idx = output_schema_->colExist(col);
-                //    output_schema_->printTableHeader();
+                //output_schema_->printTableHeader();
                 if(idx < 0 || idx >= output_.size()) {
                     std::cout << "[ERROR] Invalid field name " << col << std::endl;
                     error_status_ = 1;
@@ -648,6 +648,10 @@ class AggregationExecutor : public Executor {
 
         std::vector<Value> next() {
             if(error_status_ || finished_)  return {};
+            if(it_== aggregated_values_.end()){
+              finished_ = true;
+              return {};
+            }
             output_ = it_->second;
             for(int i = 0; i < aggregates_.size(); i++){
                 int idx = (i + output_.size() - aggregates_.size())- 1;

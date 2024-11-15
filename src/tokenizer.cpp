@@ -29,13 +29,14 @@ enum class TokenType {
     VARCHAR,// datatypes
     INTEGER,
     BIGINT,
-    FLOAT,
-    DOUBLE,
+    FLOAT,// float4
+    REAL, // float8
     TIMESTAMP,
     BOOLEAN,
 	SELECT, // keywords
     ORDER,
     GROUP,
+    CROSS,
     JOIN,
     INDEX,
     EXISTS,
@@ -118,6 +119,7 @@ Tokenizer::Tokenizer(){
     keywords_.insert({"SELECT"  , TokenType::SELECT  });
     keywords_.insert({"ORDER"   , TokenType::ORDER   });
     keywords_.insert({"GROUP"   , TokenType::GROUP   });
+    keywords_.insert({"CROSS"   , TokenType::CROSS   });
     keywords_.insert({"JOIN"    , TokenType::JOIN    });
     keywords_.insert({"DISTINCT", TokenType::DISTINCT});
     keywords_.insert({"ALL"     , TokenType::ALL     });
@@ -160,7 +162,7 @@ Tokenizer::Tokenizer(){
     data_types_.insert({"INTEGER"  , TokenType::INTEGER  });
     data_types_.insert({"BIGINT"   , TokenType::BIGINT   });
     data_types_.insert({"FLOAT"    , TokenType::FLOAT    });
-    data_types_.insert({"DOUBLE"   , TokenType::DOUBLE   });
+    data_types_.insert({"REAL"     , TokenType::REAL   });
     data_types_.insert({"TIMESTAMP", TokenType::TIMESTAMP});
     data_types_.insert({"BOOLEAN"  , TokenType::BOOLEAN  });
     // reserved symbols 
@@ -170,6 +172,7 @@ Tokenizer::Tokenizer(){
     symbols_.insert({">=", TokenType::GTE      });
     symbols_.insert({"=" , TokenType::EQ       });
     symbols_.insert({"!=", TokenType::NEQ      });
+    symbols_.insert({"<>", TokenType::NEQ      });
     symbols_.insert({"(" , TokenType::LP       });
     symbols_.insert({")" , TokenType::RP       });
     symbols_.insert({";" , TokenType::SEMICOLON});
@@ -200,7 +203,7 @@ bool Tokenizer::isDataType(TokenType t){
         case TokenType::INTEGER:
         case TokenType::BIGINT:
         case TokenType::FLOAT:
-        case TokenType::DOUBLE:
+        case TokenType::REAL:
         case TokenType::TIMESTAMP:
         case TokenType::BOOLEAN:
             return true;
@@ -238,7 +241,7 @@ bool Tokenizer::isCompareOP(std::string& op){
 }
 
 bool Tokenizer::isEqOP(std::string& op){
-    if(op == "=" || op == "!=") return true;
+    if(op == "=" || op == "!=" || op == "<>") return true;
     return false;
 }
 

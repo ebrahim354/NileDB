@@ -54,6 +54,7 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
             {
                 NotNode* lnot = reinterpret_cast<NotNode*>(expression);
                 Value val = evaluate_expression(lnot->cur_, evaluator);
+                if(val.isNull()) return val; 
                 return Value((bool)(lnot->effective_^val.getBoolVal())); // 1 1 = 0, 1 0 = 1, 0 1 = 1, 0 0 = 0
             }
         case OR  : 
@@ -102,6 +103,7 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                 ASTNode* ptr = eq->next_;
                 while(ptr){
                     Value rhs = evaluate_expression(ptr, evaluator);
+                    if(lhs.isNull() || rhs.isNull()) return Value(NULL_TYPE);
                     if(op == TokenType::EQ && lhs == rhs) lhs = Value(true);
                     else if(op == TokenType::EQ && lhs != rhs) lhs = Value(false);
 
@@ -124,6 +126,7 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                 ASTNode* ptr = comp->next_;
                 while(ptr){
                     Value rhs = evaluate_expression(ptr, evaluator, comp->cur_->category_ == COMPARISON);
+                    if(lhs.isNull() || rhs.isNull()) return Value(NULL_TYPE);
 
                     if(op == TokenType::GT && lhs > rhs ) lhs = Value(true);
                     else if(op == TokenType::GT) lhs = Value(false);
@@ -155,6 +158,7 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                 ASTNode* ptr = t->next_;
                 while(ptr){
                     Value rhs = evaluate_expression(ptr, evaluator, ptr->category_ == TERM);
+                    if(lhs.isNull() || rhs.isNull()) return Value(NULL_TYPE);
                     int lhs_num = lhs.getIntVal();
                     int rhs_num = rhs.getIntVal();
                     if(op == TokenType::PLUS) lhs_num += rhs_num; 
@@ -176,6 +180,7 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                           ASTNode* ptr = f->next_;
                           while(ptr){
                               Value rhs = evaluate_expression(ptr, evaluator, ptr->category_ == FACTOR);
+                              if(lhs.isNull() || rhs.isNull()) return Value(NULL_TYPE);
                               int lhs_num = lhs.getIntVal();
                               int rhs_num = rhs.getIntVal();
                               if(op == TokenType::STAR) lhs_num *= rhs_num; 
@@ -193,6 +198,7 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                       {
                           UnaryNode* u = reinterpret_cast<UnaryNode*>(expression);
                           Value cur = evaluate_expression(u->cur_, evaluator);
+                          if(cur.isNull()) return cur;
                           if(u->token_.type_ == TokenType::MINUS){
                               return Value(cur.getIntVal()*-1);
                           }

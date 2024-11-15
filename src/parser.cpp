@@ -43,7 +43,7 @@ Type tokenTypeToDBType(TokenType tt){
             return BIGINT;
         case TokenType::FLOAT:
             return FLOAT;
-        case TokenType::DOUBLE:
+        case TokenType::REAL:
             return DOUBLE;
         case TokenType::TIMESTAMP:
             return TIMESTAMP;
@@ -300,6 +300,7 @@ struct SelectStatementData : QueryData {
     bool has_star_ = false;
     std::vector<std::string> tables_ = {};
     ExpressionNode* where_ = nullptr;
+    ExpressionNode* having_ = nullptr;
     std::vector<int> order_by_list_ = {};
     std::vector<ASTNode*> group_by_ = {}; 
     bool distinct_ = false;
@@ -709,10 +710,12 @@ void Parser::tableList(QueryCTX& ctx, int query_idx){
     if((bool)ctx.error_status_) return; 
     auto query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[query_idx]);
     while(1){
-        if(ctx.matchTokenType(TokenType::IDENTIFIER)){
-            query->tables_.push_back(ctx.getCurrentToken().val_);
-            ++ctx;
-        } else return;
+        if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
+          return;
+        }
+
+        query->tables_.push_back(ctx.getCurrentToken().val_);
+        ++ctx;
 
         // optional AS keyword.
         bool rename = false;
@@ -730,14 +733,23 @@ void Parser::tableList(QueryCTX& ctx, int query_idx){
         if(!rename && ctx.matchTokenType(TokenType::IDENTIFIER)){
             query->table_names_.push_back(ctx.getCurrentToken().val_);
             ++ctx;
+            rename =  true;
         }
 
         if(!rename)
             query->table_names_.push_back("");
 
-        if(!ctx.matchTokenType(TokenType::COMMA)) 
-            break;
-        ++ctx;
+        if(ctx.matchTokenType(TokenType::COMMA)) {
+          ++ctx;
+          continue;
+        } 
+
+        if(ctx.matchMultiTokenType({TokenType::CROSS, TokenType::JOIN})) {
+          ctx += 2;
+          continue;
+        } 
+
+        break;
     }
 }
 
@@ -1249,7 +1261,7 @@ void Parser::selectStatement(QueryCTX& ctx, int parent_idx){
     if(ctx.matchTokenType(TokenType::FROM)){
         ++ctx;
         tableList(ctx, statement->idx_);
-        if(!statement->tables_.size()){
+        if(!statement->tables_.size() || statement->table_names_.size() != statement->tables_.size()){
             ctx.error_status_ = Error::EXPECTED_TABLE_LIST;
             return;
         }
@@ -1281,6 +1293,16 @@ void Parser::selectStatement(QueryCTX& ctx, int parent_idx){
             return;
         }
     }
+
+    if(ctx.matchTokenType(TokenType::HAVING)){
+        ++ctx;
+        statement->having_ = expression(ctx,statement->idx_, 0);
+        if(!statement->having_) {
+            ctx.error_status_ = Error::EXPECTED_EXPRESSION_IN_HAVING_CLAUSE;
+            return;
+        }
+    }
+
 }
 
 void Parser::createTableStatement(QueryCTX& ctx, int parent_idx){

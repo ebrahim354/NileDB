@@ -403,7 +403,7 @@ class Catalog {
                     return Type::BIGINT;
                 case TokenType::FLOAT:
                     return Type::FLOAT;
-                case TokenType::DOUBLE:
+                case TokenType::REAL:
                     return Type::DOUBLE;
                 case TokenType::TIMESTAMP:
                     return Type::TIMESTAMP;
