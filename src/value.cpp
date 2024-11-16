@@ -152,7 +152,7 @@ class Value {
         //
         // return true of lhs (this) == rhs else return false.
         bool operator==(const Value &rhs) const { 
-            if(!checkSameType(type_, rhs.type_)) return false;
+            if(isNull() && rhs.isNull()) return true;
             // not the best solution to our current problem.
             switch (type_) {
                 case VARCHAR: 
@@ -173,7 +173,7 @@ class Value {
         }
 
         bool operator!=(const Value &rhs) const { 
-            if(!checkSameType(type_, rhs.type_)) return false;
+            if(isNull() && rhs.isNull()) return false;
             // not the best solution to our current problem.
             switch (type_) {
                 case VARCHAR: 

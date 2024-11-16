@@ -4,15 +4,32 @@
 #include <string>
 #include <unordered_map>
 
-Value abs_func(Value val){
-    int int_val = val.getIntVal(); 
-    if(int_val < 0) 
-        return Value(-int_val);
-    return val;
+Value abs_func(std::vector<Value> vals){
+  if(vals.size() != 1){
+    std::cout << "[ERROR] Incorrect number of arguments\n";
+    return Value();
+  }
+  int int_val = vals[0].getIntVal(); 
+  if(int_val < 0) 
+    return Value(-int_val);
+  return vals[0];
+}
+
+Value coalesce_func(std::vector<Value> vals){
+  if(!vals.size()){
+    std::cout << "[ERROR] Incorrect number of arguments\n";
+    return Value();
+  }
+  for(Value& val : vals){
+    if(!val.isNull()) 
+      return val;
+  }
+  return Value(NULL_TYPE);
 }
 
 //TODO: should be moved the the catalog class.
-std::unordered_map<std::string, std::function<Value(Value)>> reserved_functions = {{"ABS", abs_func}, {"abs", abs_func}};
+std::unordered_map<std::string, std::function<Value(std::vector<Value>)>> reserved_functions = 
+{{"ABS", abs_func}, {"COALESCE", coalesce_func}};
 
 Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>evaluator, bool only_one = true) {
     switch(expression->category_){
@@ -103,7 +120,11 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                 ASTNode* ptr = eq->next_;
                 while(ptr){
                     Value rhs = evaluate_expression(ptr, evaluator);
-                    if(lhs.isNull() || rhs.isNull()) return Value(NULL_TYPE);
+                    bool is_or_isnot = (op == TokenType::IS || op == TokenType::ISNOT);
+                    if((lhs.isNull() || rhs.isNull()) && !is_or_isnot) return Value(NULL_TYPE); 
+                    if(op == TokenType::IS)    op = TokenType::EQ;
+                    if(op == TokenType::ISNOT) op = TokenType::NEQ;
+
                     if(op == TokenType::EQ && lhs == rhs) lhs = Value(true);
                     else if(op == TokenType::EQ && lhs != rhs) lhs = Value(false);
 
@@ -212,8 +233,11 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                               std::cout << "[ERROR] undefined function call " << sfn->name_ << "\n";
                               return Value();
                           }
-                          Value exp_val = evaluate_expression(sfn->exp_, evaluator);
-                          return reserved_functions[sfn->name_](exp_val);
+                          std::vector<Value> vals;
+                          for(int i = 0; i < sfn->args_.size(); ++i){
+                            vals.emplace_back(evaluate_expression(sfn->args_[i], evaluator));
+                          }
+                          return reserved_functions[sfn->name_](vals);
                       } 
         case TYPE_CAST: 
                       {

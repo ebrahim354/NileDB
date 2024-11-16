@@ -15,7 +15,6 @@ enum class TokenType {
     GTE,
     EQ,
     NEQ,
-    NOT,
     LP,
     RP,
     SEMICOLON,
@@ -42,6 +41,9 @@ enum class TokenType {
     EXISTS,
     CAST,
     CASE,
+    NOT,
+    IS,
+    ISNOT,
     WHEN,
     THEN,
     ELSE,
@@ -132,6 +134,7 @@ Tokenizer::Tokenizer(){
     keywords_.insert({"WHERE"   , TokenType::WHERE   });
     keywords_.insert({"BETWEEN" , TokenType::BETWEEN });
     keywords_.insert({"NOT"     , TokenType::NOT     });
+    keywords_.insert({"IS"      , TokenType::IS     });
     keywords_.insert({"AND"     , TokenType::AND     });
     keywords_.insert({"OR"      , TokenType::OR      });
     keywords_.insert({"INTO"    , TokenType::INTO    });
@@ -178,7 +181,7 @@ Tokenizer::Tokenizer(){
     symbols_.insert({";" , TokenType::SEMICOLON});
     symbols_.insert({"+" , TokenType::PLUS     });
     symbols_.insert({"-" , TokenType::MINUS    });
-    symbols_.insert({"*" , TokenType:: STAR    });
+    symbols_.insert({"*" , TokenType::STAR     });
     symbols_.insert({"/" , TokenType::SLASH    });
     symbols_.insert({"%" , TokenType::PERCENT  });
     symbols_.insert({"." , TokenType::DOT      });

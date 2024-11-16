@@ -180,13 +180,12 @@ struct TypeCastNode : ASTNode {
 };
 
 struct ScalarFuncNode : ASTNode {
-    // TODO: exp should be changed to an argument list of expressions. 
-    ScalarFuncNode(ExpressionNode* exp, std::string name, int parent_id = 0): 
-        ASTNode(SCALAR_FUNC), exp_(exp), name_(name), parent_id_(parent_id)
+    ScalarFuncNode(std::vector<ExpressionNode*> arguments, std::string name, int parent_id = 0): 
+        ASTNode(SCALAR_FUNC), args_(arguments), name_(name), parent_id_(parent_id)
     {}
     std::string name_;
     int parent_id_ = 0;
-    ExpressionNode* exp_ = nullptr;
+    std::vector<ExpressionNode*> args_ = {};
 };
 
 struct AggregateFuncNode : ASTNode {
@@ -507,6 +506,7 @@ class Parser {
         Value constVal(QueryCTX& ctx);
         void tableList(QueryCTX& ctx, int query_idx);
         void expressionList(QueryCTX& ctx, int query_idx);
+        void argumentList(QueryCTX& ctx, int query_idx, std::vector<ExpressionNode*>& args);
         void selectList(QueryCTX& ctx, int query_idx);
         void groupByList(QueryCTX& ctx, int query_idx);
         void orderByList(QueryCTX& ctx, int query_idx);
@@ -642,6 +642,25 @@ void Parser::expressionList(QueryCTX& ctx, int query_idx){
             return;
         }
         query->values_.push_back(f);
+        if(ctx.matchTokenType(TokenType::COMMA)){
+            ++ctx;
+            ++cnt;
+            continue;
+        }
+        break;
+    }
+}
+
+void Parser::argumentList(QueryCTX& ctx, int query_idx, std::vector<ExpressionNode*>& args){
+    if((bool)ctx.error_status_) return; 
+    int cnt = 1;
+    while(1){
+        ExpressionNode* f = expression(ctx, query_idx, cnt);
+        if(!f){
+            ctx.error_status_ = Error::EXPECTED_EXPRESSION;
+            return;
+        }
+        args.push_back(f);
         if(ctx.matchTokenType(TokenType::COMMA)){
             ++ctx;
             ++cnt;
@@ -966,12 +985,12 @@ ASTNode* Parser::scalar_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
         return nullptr;
     std::string name = ctx.getCurrentToken().val_; 
     ctx+=2;
-    ExpressionNode* exp = nullptr;
-    exp = expression(ctx, expression_ctx->query_idx_, 0);
-    if(!exp) return nullptr;
+    std::vector<ExpressionNode*> args = {};
+    argumentList(ctx, expression_ctx->query_idx_, args);
+    if(args.size() == 0) return nullptr;
     if(!ctx.matchTokenType(TokenType::RP)) return nullptr;
     ++ctx;
-    return new ScalarFuncNode(exp, name, expression_ctx->id_);
+    return new ScalarFuncNode(args, name, expression_ctx->id_);
 }
 
 ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
@@ -1142,9 +1161,12 @@ ASTNode* Parser::equality(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if((bool)ctx.error_status_) return nullptr;
     ASTNode* cur = comparison(ctx, expression_ctx);
     if(!cur) return nullptr;
-    if(ctx.matchAnyTokenType({TokenType::EQ, TokenType::NEQ })) { 
+    if(ctx.matchAnyTokenType({TokenType::EQ, TokenType::NEQ, TokenType::IS})) { 
         EqualityNode* eq = new EqualityNode(reinterpret_cast<ComparisonNode*>(cur));
         eq->token_ = ctx.getCurrentToken(); ++ctx; 
+        if(ctx.getCurrentToken().type_ == TokenType::NOT){
+          eq->token_ = Token(TokenType::ISNOT); ++ctx;
+        }
         eq->next_ = equality(ctx, expression_ctx);
         if(!eq->next_) 
             return nullptr;
