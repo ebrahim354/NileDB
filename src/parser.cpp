@@ -1027,9 +1027,9 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
     }
     if(expression_ctx)
         i = case_expression(ctx, expression_ctx);
-    if(!i && expression_ctx && expression_ctx->id_ != 0)
+    if(!i && expression_ctx)
         i = type_cast(ctx , expression_ctx);
-    if(!i && expression_ctx && expression_ctx->id_ != 0)
+    if(!i && expression_ctx)
         i = scalar_func(ctx , expression_ctx);
     if(!i && expression_ctx && expression_ctx->id_ != 0)
         i = agg_func(ctx , expression_ctx);

@@ -46,6 +46,16 @@ class Record {
             return data_ == nullptr;
         }
 
+        void print(){
+          auto sz = getRecordSize();
+          std::cout << " record with size: " << sz << std::endl;
+          for(int i = 0; i < sz; i++){
+            std::cout << +(char)(*getFixedPtr(i)) << (i != sz-1 ? "," : "");
+          }
+          std::cout << std::endl;
+        }
+
+
 
 
         // a pointer to a variable length colomn.

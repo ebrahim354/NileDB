@@ -618,6 +618,8 @@ class AggregationExecutor : public Executor {
                                    {
                                        Value val = evaluate_expression(exp, eval);
                                        if(val.type_ == INT) output_[idx] += val; 
+                                       else if(val.isNull())
+                                         *counter += -1;
                                    }
                                    break;
                         case MIN:

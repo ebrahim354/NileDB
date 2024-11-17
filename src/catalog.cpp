@@ -198,10 +198,19 @@ class TableSchema {
         // return 1 in case of an error.
         // values is the output.
         int translateToValues(Record& r, std::vector<Value>& values){
-            for(auto c : columns_){
+            for(int i = 0; i < columns_.size(); ++i){
+                // check the bitmap if this value is null.
+                char * bitmap_ptr = r.getFixedPtr(size_)+(i/8);  
+                int is_null = *bitmap_ptr & (1 << (i%8));
+                if(is_null) {
+                  values.push_back(Value(NULL_TYPE));
+                  continue;
+                }
+                auto c = columns_[i];
                 Value val{};
                 char* content = getValue(c.getName(), r, &val.size_);
-                if(!content) return 1;
+                if(!content)
+                  return 1;
                 val.content_ = content;
                 val.type_ = c.getType();
                 values.push_back(val);
@@ -239,9 +248,15 @@ class TableSchema {
                     // just copy the data into its fixed offset.
                     memcpy(data + columns_[i].getOffset(), values[i].content_, values[i].size_);
                 }
-                // should initialize the bitmap byte (TODO).
+                // initialize the bitmap, 1 means null and 0 means not null.
+                if(values[i].isNull()){
+                  char * bitmap_ptr = data+size_+(i/8);  
+                  *bitmap_ptr = *bitmap_ptr | (1 << (i%8));
+                }
             }
-            return new Record(data, fixed_part_size + var_part_size);
+
+            auto r = new Record(data, fixed_part_size + var_part_size);
+            return r;
         }
         Table* getTable(){
             return table_;
@@ -344,7 +359,7 @@ class Catalog {
                     std::vector<Value> vals;
                     vals.emplace_back(Value(table_name));
                     vals.emplace_back(Value(c.getName()));
-                    vals.emplace_back(Value(c.getType()));
+                    vals.emplace_back(Value((int)c.getType()));
                     vals.emplace_back(Value(c.getOffset()));
                     vals.emplace_back(Value(c.isNullable()));
                     vals.emplace_back(Value(c.isPrimaryKey()));
@@ -352,6 +367,7 @@ class Catalog {
                     vals.emplace_back(Value(c.isUnique()));
                     // translate the vals to a record and persist them.
                     Record* record = meta_table_schema_->translateToRecord(vals);
+
                     /*
                     if(record == nullptr) std::cout << " invalid record " << std::endl;
                     std::cout << " translated a schema to a record with size: " 

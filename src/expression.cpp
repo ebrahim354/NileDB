@@ -56,6 +56,7 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                 }
                 for(auto& [when, then] : case_ex->when_then_pairs_){
                     Value evaluated_when = evaluate_expression(when, evaluator);
+                    if(evaluated_when.isNull()) continue;
                     if(case_ex->initial_value_ && evaluated_when == initial_value){
                         return evaluate_expression(then, evaluator);
                     }
@@ -86,6 +87,7 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                 Value val = evaluate_expression(between->val_, evaluator, false);
                 Value lhs = evaluate_expression(between->lhs_, evaluator, false);
                 Value rhs = evaluate_expression(between->rhs_, evaluator, false);
+                if(val.isNull() || lhs.isNull() || rhs.isNull()) return Value(NULL_TYPE);
                 bool answer = false;
                 if(val >= lhs && val <= rhs) answer = true;
                 if(between->negated_) answer = !answer;
@@ -115,6 +117,7 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                         break;
                     };
                 }
+                if(lhs.isNull()) return Value(NULL_TYPE);
                 return lhs.getBoolVal() != 0 ? Value(true) : Value(false);
             }
         case AND : 
@@ -124,6 +127,7 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                 Value lhs;
                 while(ptr){
                     lhs = evaluate_expression(land->cur_, evaluator);
+                    if(lhs.isNull()) break; 
                     if(lhs.getBoolVal() == 0) break;
                     ptr = land->next_;
                     if(!ptr) break;
@@ -134,6 +138,7 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                         break;
                     }
                 }
+                if(lhs.isNull()) return Value(NULL_TYPE);
                 return lhs.getBoolVal() == 0 ? Value(false) : Value(true);
             } 
         case EQUALITY : 

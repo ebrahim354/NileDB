@@ -7,10 +7,21 @@ int main() {
     // ndb is heap allocated to allow multi-threading(TODO).    
     NileDB *ndb = new NileDB();
     bool prompt_is_running = true;
+    std::string outer_query = "";
     while(prompt_is_running){
-        std::cout << "> ";
-        std::string query;
-        std::getline(std::cin, query);
+        if(!outer_query.size())
+            std::cout << "> ";
+        std::string tmp = "";
+        std::getline(std::cin, tmp);
+        if(tmp.size() < 0) continue;
+        if(tmp[tmp.size()-1] != ';') {
+            outer_query += tmp;
+            continue;
+        } 
+        std::string query = outer_query;
+        tmp.pop_back();
+        query += tmp;
+        outer_query = "";
         QueryResult result =  QueryResult();
         if(query[0] == '\\')
             std::cout << (ndb->CMD(query) ? "SUCCESS" : "FAIL") << std::endl;
