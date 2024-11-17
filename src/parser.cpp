@@ -106,13 +106,14 @@ enum CategoryType {
     FACTOR,     // factor       := unary  ( ( "/" | "*" ) unary  )*
     TERM,       // term         := factor ( ( "+" | "-" ) factor )*
     COMPARISON, // comparison   := term   ( ( "<" | ">" | "<=" | ">=" ) term )*
-    EQUALITY,   // equality     := comparison   ( ( "=" | "!=" ) comparison )*
-    BETWEEN,    // between      := equality | ( equality ("BETWEEN" | "NOT BETWEEN") equality "AND" equality )*
-    NOT,        // not          := ( "NOT" )* equality
+    EQUALITY,   // equality     := comparison   ( ( "=" | "!=" | "IS" | "IS NOT") comparison )*
+    IN,         // IN           := equality | ( equality "IN" "(" (expression)+ ")" )*
+    BETWEEN,    // between      := in | ( in ("BETWEEN" | "NOT BETWEEN") in "AND" in )*
+    NOT,        // not          := ( "NOT" )* between
     AND,        // and          := not     ( ( "AND" ) not )*
     OR,         // or           := and     ( ( "OR" ) and )*
     EXPRESSION, // expression   := or
-    PREDICATE,  // sub_query    := select_statment,  only select sub-queries are allowed (for now)
+    PREDICATE,  // sub_query    := select_statment
     SUB_QUERY,
     TYPE_CAST,
 
@@ -229,6 +230,15 @@ struct EqualityNode : ASTNode {
     {}
     ComparisonNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
+};
+
+struct InNode : ASTNode {
+    InNode(ASTNode* val, std::vector<ASTNode*> list, bool negated): 
+        ASTNode(IN), val_(val), list_(list), negated_(negated) 
+    {}
+    ASTNode* val_ = nullptr;
+    std::vector<ASTNode*> list_;
+    bool negated_ = false;
 };
 
 struct BetweenNode : ASTNode {
@@ -497,6 +507,7 @@ class Parser {
         ASTNode* term(QueryCTX& ctx,ExpressionNode* expression_ctx = nullptr);
         ASTNode* comparison(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* equality(QueryCTX& ctx, ExpressionNode* expression_ctx);
+        ASTNode* in(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* between(QueryCTX& ctx,ExpressionNode* expression_ctx);
         ASTNode* logic_not(QueryCTX& ctx,ExpressionNode* expression_ctx);
         ASTNode* logic_and(QueryCTX& ctx,ExpressionNode* expression_ctx);
@@ -515,67 +526,8 @@ class Parser {
 
         // top level statement is called with parent_idx  as -1.
         void selectStatement(QueryCTX& ctx, int parent_idx);
-
         void createTableStatement(QueryCTX& ctx, int parent_idx);
-
-
-        void insertStatement(QueryCTX& ctx, int parent_idx){
-            if((bool)ctx.error_status_) return; 
-            if(!ctx.matchMultiTokenType({TokenType::INSERT , TokenType::INTO})){
-                ctx.error_status_ = Error::EXPECTED_INSERT_INTO; 
-                return;
-            }
-            ctx += 2;
-            InsertStatementData* statement = new InsertStatementData(parent_idx);
-            statement->idx_ = ctx.queries_call_stack_.size();
-            ctx.queries_call_stack_.push_back(statement);
-
-            if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
-                ctx.error_status_ = Error::EXPECTED_IDENTIFIER; 
-                return;
-            }
-            statement->table_name_ = ctx.getCurrentToken().val_; ++ctx;
-
-            // field list is optional.
-            if(ctx.matchTokenType(TokenType::LP)){
-                ++ctx;
-                fieldList(ctx, statement->idx_);
-                if(!statement->fields_.size()){
-                    ctx.error_status_ = Error::EXPECTED_FIELDS;
-                    return;
-                }
-                if(!ctx.matchTokenType(TokenType::RP)){
-                    ctx.error_status_ = Error::EXPECTED_RIGHT_PARANTH; 
-                    return;
-                }
-                ++ctx;
-            }
-
-            if(!ctx.matchTokenType(TokenType::VALUES)){
-                ctx.error_status_ = Error::EXPECTED_VALUES; 
-                return;
-            }
-            ++ctx;
-
-            if(!ctx.matchTokenType(TokenType::LP)){
-                ctx.error_status_ = Error::EXPECTED_LEFT_PARANTH; 
-                return;
-            }
-            ++ctx;
-
-            expressionList(ctx,statement->idx_);
-
-            if(!statement->values_.size()){
-                ctx.error_status_ = Error::EXPECTED_VALUES;
-                return;
-            }
-
-            if(!ctx.matchTokenType(TokenType::RP)){
-                ctx.error_status_ = Error::EXPECTED_RIGHT_PARANTH; 
-                return;
-            }
-            ++ctx;
-        }
+        void insertStatement(QueryCTX& ctx, int parent_idx);
 
         // query : input.
         // ctx   : output.
@@ -1175,19 +1127,52 @@ ASTNode* Parser::equality(QueryCTX& ctx, ExpressionNode* expression_ctx){
     return cur;
 }
 
-ASTNode* Parser::between(QueryCTX& ctx,ExpressionNode* expression_ctx){
+ASTNode* Parser::in(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if((bool)ctx.error_status_) return nullptr;
     ASTNode* val = equality(ctx, expression_ctx);
+    if(!val) return nullptr;
+    if(ctx.matchTokenType(TokenType::IN) || ctx.matchMultiTokenType({TokenType::NOT, TokenType::IN})) { 
+        bool negated = (ctx.getCurrentToken().type_ == TokenType::NOT);
+        if(negated) ++ctx;
+        ++ctx;
+        if(!ctx.matchTokenType(TokenType::LP)) 
+          return nullptr;
+        ++ctx;
+        std::vector<ASTNode*> args;
+        while(1){
+          ASTNode* eq = equality(ctx, expression_ctx);
+          if(!eq){
+            ctx.error_status_ = Error::EXPECTED_EXPRESSION;
+            return nullptr;
+          }
+          args.push_back(eq);
+          if(ctx.matchTokenType(TokenType::COMMA)){
+            ++ctx;
+            continue;
+          }
+          break;
+        }
+        if(!args.size() && !ctx.matchTokenType(TokenType::RP)) 
+          return nullptr;
+        ++ctx;
+        return new InNode(val, args, negated);
+    }
+    return val;
+}
+
+ASTNode* Parser::between(QueryCTX& ctx, ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    ASTNode* val = in(ctx, expression_ctx);
     if(!val) return nullptr;
     if(ctx.matchTokenType(TokenType::BETWEEN) || ctx.matchMultiTokenType({TokenType::NOT, TokenType::BETWEEN})) { 
         bool negated = (ctx.getCurrentToken().type_ == TokenType::NOT);
         if(negated) ++ctx;
         ++ctx;
-        ASTNode* lhs = equality(ctx, expression_ctx);
+        ASTNode* lhs = in(ctx, expression_ctx);
         if(!lhs || !ctx.matchTokenType(TokenType::AND))
             return nullptr;
         ++ctx;
-        ASTNode* rhs = equality(ctx, expression_ctx);
+        ASTNode* rhs = in(ctx, expression_ctx);
         if(!rhs) {
             return nullptr;
         }
@@ -1357,4 +1342,62 @@ void Parser::createTableStatement(QueryCTX& ctx, int parent_idx){
     }
     ++ctx;
     ctx.direct_execution_ = 1;
+}
+
+void Parser::insertStatement(QueryCTX& ctx, int parent_idx){
+  if((bool)ctx.error_status_) return; 
+  if(!ctx.matchMultiTokenType({TokenType::INSERT , TokenType::INTO})){
+    ctx.error_status_ = Error::EXPECTED_INSERT_INTO; 
+    return;
+  }
+  ctx += 2;
+  InsertStatementData* statement = new InsertStatementData(parent_idx);
+  statement->idx_ = ctx.queries_call_stack_.size();
+  ctx.queries_call_stack_.push_back(statement);
+
+  if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
+    ctx.error_status_ = Error::EXPECTED_IDENTIFIER; 
+    return;
+  }
+  statement->table_name_ = ctx.getCurrentToken().val_; ++ctx;
+
+  // field list is optional.
+  if(ctx.matchTokenType(TokenType::LP)){
+    ++ctx;
+    fieldList(ctx, statement->idx_);
+    if(!statement->fields_.size()){
+      ctx.error_status_ = Error::EXPECTED_FIELDS;
+      return;
+    }
+    if(!ctx.matchTokenType(TokenType::RP)){
+      ctx.error_status_ = Error::EXPECTED_RIGHT_PARANTH; 
+      return;
+    }
+    ++ctx;
+  }
+
+  if(!ctx.matchTokenType(TokenType::VALUES)){
+    ctx.error_status_ = Error::EXPECTED_VALUES; 
+    return;
+  }
+  ++ctx;
+
+  if(!ctx.matchTokenType(TokenType::LP)){
+    ctx.error_status_ = Error::EXPECTED_LEFT_PARANTH; 
+    return;
+  }
+  ++ctx;
+
+  expressionList(ctx,statement->idx_);
+
+  if(!statement->values_.size()){
+    ctx.error_status_ = Error::EXPECTED_VALUES;
+    return;
+  }
+
+  if(!ctx.matchTokenType(TokenType::RP)){
+    ctx.error_status_ = Error::EXPECTED_RIGHT_PARANTH; 
+    return;
+  }
+  ++ctx;
 }

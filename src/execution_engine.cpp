@@ -26,7 +26,7 @@ typedef std::vector<std::vector<Value>> QueryResult;
 
 
 enum ExecutorType {
-    SEQUENTIAL_SCAN_EXECUTOR,
+    SEQUENTIAL_SCAN_EXECUTOR = 0,
     INSERTION_EXECUTOR,
     FILTER_EXECUTOR,
     AGGREGATION_EXECUTOR,
@@ -349,7 +349,7 @@ class FilterExecutor : public Executor {
                     }
                     Executor* cur_exec = ctx_.executors_call_stack_[cur_query_idx];
 
-                    while(cur_exec && cur_exec->type_ != SEQUENTIAL_SCAN_EXECUTOR){
+                    while(cur_exec && cur_exec->type_ != SEQUENTIAL_SCAN_EXECUTOR && cur_exec->type_ != PRODUCT_EXECUTOR){
                         cur_exec = cur_exec->child_executor_;
                     }
                     if(!cur_exec){
@@ -558,6 +558,7 @@ class AggregationExecutor : public Executor {
             if(child_executor_){
                 child_executor_->init();
             }
+            aggregated_values_["PREFIX_"] = std::vector<Value> (output_schema_->getCols().size() + 1, Value(0));
 
             while(true){
                 // we always maintain rows count even if the user did not ask for it, that's why the size is | colmuns | + 1
@@ -574,10 +575,6 @@ class AggregationExecutor : public Executor {
                     }
                 } 
 
-                for(int i = 0; i < child_output.size(); i++){
-                    output_[i] = child_output[i];
-                }
-
                 // build the search key for the hash table.
                 std::string hash_key = "PREFIX_"; // prefix to ensure we have at least one entry in the hash table.
                 for(int i = 0; i < group_by_.size(); i++){
@@ -585,10 +582,16 @@ class AggregationExecutor : public Executor {
                     hash_key += cur.toString();
                 }
 
+
                 // if the hash key exists we need to load it first.
                 if(aggregated_values_.count(hash_key)){
                     output_ = aggregated_values_[hash_key];
                 }
+
+                for(int i = 0; i < child_output.size(); i++){
+                    output_[i] = child_output[i];
+                }
+
 
                 // update the extra counter.
                 output_[output_.size() - 1] += 1; 

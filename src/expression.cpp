@@ -15,6 +15,15 @@ Value abs_func(std::vector<Value> vals){
   return vals[0];
 }
 
+Value nullif_func(std::vector<Value> vals){
+  if(vals.size() != 2){
+    std::cout << "[ERROR] Incorrect number of arguments\n";
+    return Value();
+  }
+  if(vals[0] == vals[1]) return Value(NULL_TYPE);
+  return vals[0];
+}
+
 Value coalesce_func(std::vector<Value> vals){
   if(!vals.size()){
     std::cout << "[ERROR] Incorrect number of arguments\n";
@@ -29,7 +38,7 @@ Value coalesce_func(std::vector<Value> vals){
 
 //TODO: should be moved the the catalog class.
 std::unordered_map<std::string, std::function<Value(std::vector<Value>)>> reserved_functions = 
-{{"ABS", abs_func}, {"COALESCE", coalesce_func}};
+{{"ABS", abs_func}, {"COALESCE", coalesce_func}, {"NULLIF", nullif_func}};
 
 Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>evaluator, bool only_one = true) {
     switch(expression->category_){
@@ -55,6 +64,21 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                 }
                 if(case_ex->else_) return evaluate_expression(case_ex->else_, evaluator);
                 return Value(NULL_TYPE);
+            }
+        case IN  : 
+            {
+                InNode* in = reinterpret_cast<InNode*>(expression);
+                Value val = evaluate_expression(in->val_, evaluator, false);
+                bool answer = false;
+                for(int i = 0; i < in->list_.size(); ++i){
+                  Value tmp = evaluate_expression(in->list_[i], evaluator, false);
+                  if(val == tmp){
+                    answer = true;
+                    break;
+                  }
+                }
+                if(in->negated_) answer = !answer;
+                return Value(answer);
             }
         case BETWEEN  : 
             {

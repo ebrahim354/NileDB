@@ -42,6 +42,7 @@ enum class TokenType {
     CAST,
     CASE,
     NOT,
+    IN,
     IS,
     ISNOT,
     WHEN,
@@ -135,6 +136,7 @@ Tokenizer::Tokenizer(){
     keywords_.insert({"BETWEEN" , TokenType::BETWEEN });
     keywords_.insert({"NOT"     , TokenType::NOT     });
     keywords_.insert({"IS"      , TokenType::IS     });
+    keywords_.insert({"IN"      , TokenType::IN     });
     keywords_.insert({"AND"     , TokenType::AND     });
     keywords_.insert({"OR"      , TokenType::OR      });
     keywords_.insert({"INTO"    , TokenType::INTO    });
