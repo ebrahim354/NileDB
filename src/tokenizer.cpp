@@ -251,7 +251,7 @@ bool Tokenizer::isEqOP(std::string& op){
 }
 
 bool Tokenizer::isStrConst(std::string& t){
-    return t.size() >= 2 && t[0] == '"' && t[t.size()-1] == '"';
+    return t.size() >= 2 && t[0] == '\'' && t[t.size()-1] == '\'';
 }
 
 bool Tokenizer::isNumberConst (std::string& t){
@@ -281,8 +281,8 @@ void Tokenizer::tokenize(std::string& input, std::vector<Token>& output){
         while(pos < input.size() && isWhitespace(input[pos]) && !inside_string_literal){
             pos++;
         }
-        while(pos < input.size() && !isWhitespace(input[pos])){
-            if(input[pos] == '"'){
+        while(pos < input.size() && (!isWhitespace(input[pos]) || inside_string_literal)){
+            if(input[pos] == '\''){
                 inside_string_literal = !inside_string_literal;
                 cur_token += input[pos++];
                 continue;

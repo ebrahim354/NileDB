@@ -976,21 +976,14 @@ class ExecutionEngine {
             std::deque<std::string> col_names;
             std::deque<Type> col_types;
             for(int i = 0; i < fields.size(); ++i){
-                // a little too much nesting (fix that later).
                 std::string name = fields[i].field_name_;
                 Type type = catalog_->tokenTypeToColType(fields[i].type_);
                 if(type == INVALID) {
                     std::cout << "[ERROR] Invalid type\n";
                     return false;
                 }
-                // variable columns first;
-                if(type == VARCHAR) {
-                    col_names.push_front(name);
-                    col_types.push_front(type);
-                } else {
-                    col_names.push_back(name);
-                    col_types.push_back(type);
-                }
+                col_names.push_back(name);
+                col_types.push_back(type);
             }
             std::vector<Column> columns;
             uint8_t offset_ptr = 0;

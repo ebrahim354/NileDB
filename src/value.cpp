@@ -40,8 +40,8 @@ class Value {
         Value(std::string str){
             size_ = str.size(); 
             content_ = new char[size_];
-            str.copy(content_, size_);
-//            memcpy(content_, str.c_str(), size_);
+            //str.copy(content_, size_);
+            memcpy(content_, str.c_str(), size_);
             type_ = VARCHAR;
         }
         Value(bool val){

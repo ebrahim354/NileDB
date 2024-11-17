@@ -221,14 +221,13 @@ class TableSchema {
         // translate a vector of values using the schema to a Record. 
         // return null in case of an error.
         // the user of the class should handle deleting the record after using it.
+        // we assume that the variable length columns are represented first.
         Record* translateToRecord(std::vector<Value>& values){
             if(values.size() != columns_.size()) return nullptr;
             uint32_t fixed_part_size = size_;
             uint32_t var_part_size = 0;
-            // we assume that the variable length columns are represented first.
             for(size_t i = 0; i < columns_.size(); ++i){
                 if(columns_[i].isVarLength()) var_part_size += values[i].size_;
-                else break;
             }
             // The bitmap bytes.
             fixed_part_size += (columns_.size() / 8) + (columns_.size() % 8);

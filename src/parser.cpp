@@ -759,6 +759,14 @@ void Parser::fieldDefList(QueryCTX& ctx, int query_idx){
         }
         token = ctx.getCurrentToken(); ++ctx;
         field_def.type_ = token.type_;
+        // TODO: fix that.
+        // temporary handle different varchar sizes as an unknown size.
+        if(field_def.type_ == TokenType::VARCHAR && ctx.matchTokenType(TokenType::LP)){
+          ctx += 3; // three tokens: "("" + n + ")" 
+          // TODO: use the max char size passed in by the user.
+          // TODO: support other different  character types:
+          // https://www.postgresql.org/docs/current/datatype-character.html
+        }
 
         query->field_defs_.push_back(field_def);
 
