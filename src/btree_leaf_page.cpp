@@ -4,7 +4,6 @@
 
 #include "btree_page.cpp"
 #include "record.cpp"
-#include "value.cpp"
 
 #define LEAF_PAGE_HEADER_SIZE 28
 #define LEAF_PAGE_SIZE ((PAGE_SIZE - LEAF_PAGE_HEADER_SIZE) / sizeof(RecordID))
@@ -33,28 +32,28 @@ class BTreeLeafPage : public BTreePage {
   // method to set default values
   void Init(PageID page_id, PageID parent_id = INVALID_PAGE_ID, int max_size = LEAF_PAGE_SIZE);
   // helper methods
-  auto GetNextPageId() const -> PageID;
+  PageID GetNextPageId();
   void SetNextPageId(PageID next_page_id);
 
-  auto KeyAt(int index) const -> Value;
-  RecordID ValAt(int index) const;
-  void SetKeyAt(int index, Value k);
+  IndexKey KeyAt(int index);
+  RecordID ValAt(int index);
+  void SetKeyAt(int index, IndexKey k);
   void SetValAt(int index, RecordID v);
-  auto GetValue(Value k, std::vector<RecordID> *result) const -> bool;
-  auto GetPos(Value k) const -> int;
+  bool GetValue(IndexKey k, std::vector<RecordID> *result);
+  int GetPos(IndexKey k);
   void Draw();
 
-  auto IsFull() const -> bool;
-  auto Insert(Value k, RecordID v) -> bool;
-  auto TooShort() const -> bool;
-  auto TooShortBefore() const -> bool;
-  auto Remove(Value k) -> bool;
-  auto GetPointer(int pos) -> std::pair<Value, RecordID> &;
+  bool IsFull();
+  bool Insert(IndexKey k, RecordID v);
+  bool TooShort();
+  bool TooShortBefore();
+  bool Remove(IndexKey k);
+  std::pair<IndexKey, RecordID> & GetPointer(int pos);
 
  private:
   PageID next_page_id_;
   // Flexible array member for page data.
-  std::pair<Value, RecordID> array_[1];
+  std::pair<IndexKey, RecordID> array_[1];
 };
 /*****************************************************************************
  * HELPER METHODS AND UTILITIES
@@ -77,7 +76,7 @@ void BTreeLeafPage::Init(PageID page_id, PageID parent_id, int max_size) {
 /**
  * Helper methods to set/get next page id
  */
-PageID BTreeLeafPage::GetNextPageId() const { return next_page_id_; }
+PageID BTreeLeafPage::GetNextPageId() { return next_page_id_; }
 
 void BTreeLeafPage::SetNextPageId(PageID next_page_id) { next_page_id_ = next_page_id; }
 
@@ -85,15 +84,15 @@ void BTreeLeafPage::SetNextPageId(PageID next_page_id) { next_page_id_ = next_pa
  * Helper method to find and return the key associated with input "index"(a.k.a
  * array offset)
  */
-auto BTreeLeafPage::KeyAt(int index) const -> Value {
+IndexKey BTreeLeafPage::KeyAt(int index) {
   return array_[index].first;
 }
 
-void BTreeLeafPage::SetKeyAt(int index, Value k) {
+void BTreeLeafPage::SetKeyAt(int index, IndexKey k) {
   array_[index].first = k;
 }
 
-RecordID BTreeLeafPage::ValAt(int index) const {
+RecordID BTreeLeafPage::ValAt(int index){
   return array_[index].second;
 }
 
@@ -101,9 +100,9 @@ void BTreeLeafPage::SetValAt(int index, RecordID v) {
   array_[index].second = v;
 }
 
-bool BTreeLeafPage::IsFull() const { return GetSize() + 1 == GetMaxSize(); }
+bool BTreeLeafPage::IsFull() { return GetSize() + 1 == GetMaxSize(); }
 
-bool BTreeLeafPage::TooShort() const {
+bool BTreeLeafPage::TooShort() {
   if (IsRootPage()) {
     return GetSize() <= 1;
   }
@@ -113,14 +112,14 @@ bool BTreeLeafPage::TooShort() const {
   return GetSize() < tmp;
 }
 
-bool BTreeLeafPage::TooShortBefore() const {
+bool BTreeLeafPage::TooShortBefore() {
   if (IsRootPage()) {
     return GetSize() - 1 <= 1;
   }
   return (GetSize() - 1) < std::ceil(static_cast<float>(GetMaxSize() - 1) / 2);
 }
 
-bool BTreeLeafPage::GetValue(Value k, std::vector<RecordID> *result) const {
+bool BTreeLeafPage::GetValue(IndexKey k, std::vector<RecordID> *result) {
   int size = GetSize();
   int mid;
   int low = 0;
@@ -147,7 +146,7 @@ bool BTreeLeafPage::GetValue(Value k, std::vector<RecordID> *result) const {
   return false;
 }
 
-int BTreeLeafPage::GetPos(Value k) const  {
+int BTreeLeafPage::GetPos(IndexKey k) {
   int size = GetSize();
   int mid;
   int low = 0;
@@ -167,7 +166,7 @@ int BTreeLeafPage::GetPos(Value k) const  {
   return low;
 }
 
-bool BTreeLeafPage::Insert(Value k, RecordID v){
+bool BTreeLeafPage::Insert(IndexKey k, RecordID v){
   int size = GetSize();
   int mid;
   int low = 0;
@@ -201,7 +200,7 @@ bool BTreeLeafPage::Insert(Value k, RecordID v){
   return true;
 }
 
-auto BTreeLeafPage::Remove(Value k) -> bool {
+bool BTreeLeafPage::Remove(IndexKey k){
   int size = GetSize();
   if (size == 0) {
     return false;
@@ -242,7 +241,7 @@ void BTreeLeafPage::Draw() {
   }*/
 }
 
-auto BTreeLeafPage::GetPointer(int pos) -> std::pair<Value, RecordID> & {
+auto BTreeLeafPage::GetPointer(int pos) -> std::pair<IndexKey, RecordID> & {
   auto ptr = &array_[pos];
   return *ptr;
 }

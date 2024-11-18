@@ -2,10 +2,11 @@
 #include "./btree_page.cpp"
 #include "math.h"
 #include "page.cpp"
-#include "value.cpp"
+
+struct IndexKey;
 
 #define INTERNAL_PAGE_HEADER_SIZE 24
-#define INTERNAL_PAGE_SIZE ((PAGE_SIZE - INTERNAL_PAGE_HEADER_SIZE) / (sizeof(std::pair<Value, PageID>)))
+#define INTERNAL_PAGE_SIZE ((PAGE_SIZE - INTERNAL_PAGE_HEADER_SIZE) / (sizeof(std::pair<IndexKey, PageID>)))
 /**
  * Store n indexed keys and n+1 child pointers (page_id) within internal page.
  * Pointer PAGE_ID(i) points to a subtree in which all keys K satisfy:
@@ -23,26 +24,26 @@ class BTreeInternalPage : public BTreePage {
  public:
   void Init(PageID page_id, PageID parent_id = INVALID_PAGE_ID, int max_size = INTERNAL_PAGE_SIZE);
 
-  Value KeyAt(int index) const;
-  void SetKeyAt(int index, const Value &key);
+  IndexKey KeyAt(int index);
+  void SetKeyAt(int index, IndexKey key);
   void SetValAt(int index, const PageID &v);
   PageID ValueAt(int index) const;
-  PageID NextPage(Value key) const;
+  PageID NextPage(IndexKey key);
 
   bool IsFull() const;
-  bool Insert(Value k, PageID v);
+  bool Insert(IndexKey k, PageID v);
 
-  int InsertionPosition(Value k);
-  int NextPageOffset(Value k);
-  int PrevPageOffset(Value k);
+  int InsertionPosition(IndexKey k);
+  int NextPageOffset(IndexKey k);
+  int PrevPageOffset(IndexKey k);
 
   bool TooShort() const;
   bool TooShortBefore() const;
-  void InsertKeyAtStart(Value k, PageID start_val);
+  void InsertKeyAtStart(IndexKey k, PageID start_val);
   void RemoveFromStart();
 
  private:
-  std::pair<Value, PageID> array_[1];
+  std::pair<IndexKey, PageID> array_[1];
 };
 
 void BTreeInternalPage::Init(PageID page_id, PageID parent_id, int max_size) {
@@ -53,12 +54,12 @@ void BTreeInternalPage::Init(PageID page_id, PageID parent_id, int max_size) {
   SetMaxSize(max_size);
 }
 
-Value BTreeInternalPage::KeyAt(int index) const {
+IndexKey BTreeInternalPage::KeyAt(int index) {
   return array_[index].first;
 }
 
 
-void BTreeInternalPage::SetKeyAt(int index, const Value &key) { array_[index].first = key; }
+void BTreeInternalPage::SetKeyAt(int index, IndexKey key) { array_[index].first = key; }
 
 
 auto BTreeInternalPage::IsFull() const -> bool { return GetSize() == GetMaxSize(); }
@@ -86,7 +87,7 @@ void BTreeInternalPage::SetValAt(int index, const PageID &v) { array_[index].sec
 PageID BTreeInternalPage::ValueAt(int index) const  { return array_[index].second; }
 
 
-PageID BTreeInternalPage::NextPage(const Value key) const  {
+PageID BTreeInternalPage::NextPage(IndexKey key){
   int size = GetSize();
   int mid;
   int low = 1;
@@ -112,7 +113,7 @@ PageID BTreeInternalPage::NextPage(const Value key) const  {
 }
 
 
-int BTreeInternalPage::InsertionPosition(Value k) {
+int BTreeInternalPage::InsertionPosition(IndexKey k) {
   int size = GetSize();
   int mid;
   int low = 1;
@@ -133,7 +134,7 @@ int BTreeInternalPage::InsertionPosition(Value k) {
 }
 
 
-int BTreeInternalPage::NextPageOffset(Value k) {
+int BTreeInternalPage::NextPageOffset(IndexKey k) {
   int size = GetSize();
   int mid;
   int low = 1;
@@ -158,7 +159,7 @@ int BTreeInternalPage::NextPageOffset(Value k) {
 }
 
 
-int BTreeInternalPage::PrevPageOffset(Value k) {
+int BTreeInternalPage::PrevPageOffset(IndexKey k) {
   int size = GetSize();
   int mid;
   int low = 1;
@@ -183,7 +184,7 @@ int BTreeInternalPage::PrevPageOffset(Value k) {
 }
 
 
-void BTreeInternalPage::InsertKeyAtStart(Value k, PageID start_val) {
+void BTreeInternalPage::InsertKeyAtStart(IndexKey k, PageID start_val) {
   int sz = GetSize();
   for (int i = sz; i > 0; i--) {
     SetKeyAt(i, KeyAt(i - 1));
@@ -203,7 +204,7 @@ void BTreeInternalPage::RemoveFromStart() {
 }
 
 
-bool BTreeInternalPage::Insert(Value k, PageID v){
+bool BTreeInternalPage::Insert(IndexKey k, PageID v){
   int size = GetSize();
   int mid;
   int low = 1;

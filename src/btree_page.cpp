@@ -1,8 +1,68 @@
 #pragma once
 #include "page.cpp"
+#include "value.cpp"
 
 
 enum class BTreePageType { INVALID_PAGE = 0, LEAF_PAGE, INTERNAL_PAGE };
+
+// this structure is used to group multiple columns into one key to support multi column indexes for example: 
+// create index tmp_index on tmp_table(a,b,c);
+struct IndexKey {
+    std::vector<Value> keys_;
+
+    IndexKey& operator=(const IndexKey& rhs){
+        keys_.clear();
+        for(int i = 0; i < rhs.keys_.size(); ++i){
+            keys_[i] = rhs.keys_[i]; 
+        }
+        return *this;
+    } 
+    bool operator==(const IndexKey &rhs) const { 
+        if(keys_.size() != rhs.keys_.size()) return false;
+        for(int i = 0; i < keys_.size(); ++i)
+            if(keys_[i].type_ != rhs.keys_[i].type_ || keys_[i] != rhs.keys_[i]) return false;
+        return true;
+    }
+
+    bool operator!=(const IndexKey &rhs) const {
+        if(keys_.size() != rhs.keys_.size()) return true;
+        for(int i = 0; i < keys_.size(); ++i)
+            if(keys_[i].type_ != rhs.keys_[i].type_ || keys_[i] != rhs.keys_[i]) return true;
+        return false;
+    }
+
+    // TODO: review this.
+    bool operator<(const IndexKey &rhs) const {
+        int sz = std::min(keys_.size(), rhs.keys_.size());
+        for(int i = 0; i < sz; ++i)
+            if( keys_[i] < rhs.keys_[i]) return true;
+        return false;
+    }
+
+    // TODO: review this.
+    bool operator<=(const IndexKey &rhs) const {
+        int sz = std::min(keys_.size(), rhs.keys_.size());
+        for(int i = 0; i < sz; ++i)
+            if( keys_[i] <= rhs.keys_[i]) return true;
+        return false;
+    }
+
+    // TODO: review this.
+    bool operator>(const IndexKey &rhs) const {
+        int sz = std::min(keys_.size(), rhs.keys_.size());
+        for(int i = 0; i < sz; ++i)
+            if( keys_[i] > rhs.keys_[i]) return true;
+        return false;
+    }
+
+    // TODO: review this.
+    bool operator>=(const IndexKey &rhs) const {
+        int sz = std::min(keys_.size(), rhs.keys_.size());
+        for(int i = 0; i < sz; ++i)
+            if( keys_[i] >= rhs.keys_[i]) return true;
+        return false;
+    }
+};
 
 /**
  * Both internal and leaf page are inherited from this page.

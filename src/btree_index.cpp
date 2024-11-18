@@ -4,11 +4,11 @@
 #include "cache_manager.cpp"
 #include "page.cpp"
 #include "record.cpp"
-#include "column.cpp"
 #include "free_space_map.cpp"
 #include "btree_page.cpp"
 #include "btree_leaf_page.cpp"
 #include "btree_internal_page.cpp"
+
 
 
 
@@ -31,7 +31,7 @@ class BTreeIndex {
         }
 
         // true means value is returned.
-        bool GetValue(const Value &key, std::vector<RecordID> *result) {
+        bool GetValue(IndexKey &key, std::vector<RecordID> *result) {
             // read lock on the root_page_id_
             // std::cerr << "GET VALUE CALL\n";
             std::shared_lock locker(root_page_id_lock_);
@@ -69,7 +69,7 @@ class BTreeIndex {
 
 
         // return true if inserted successfully.
-        bool Insert(const Value &key, const RecordID &value) {
+        bool Insert(const IndexKey &key, const RecordID &value) {
             std::unique_lock locker(root_page_id_lock_);
             // std::cerr << "inserting: " << key << std::endl;
             std::deque<Page *> page_deque;
@@ -176,7 +176,7 @@ class BTreeIndex {
                         new_page->IncreaseSize(1);
                     }
                     cur->SetSize(md + 1);
-                    Value middle_key = cur->KeyAt(md);
+                    IndexKey middle_key = cur->KeyAt(md);
 
                     current_key = middle_key;
                     current_internal_value = new_page_id;
@@ -273,7 +273,7 @@ class BTreeIndex {
                         cache_manager_->unpinPage(tmp->GetPageId(), true);
                     }
                     cur->SetSize(md);
-                    Value middle_key = current_key;
+                    IndexKey middle_key = current_key;
                     if (inserted_on_new != 0) {
                         middle_key = cur->KeyAt(md);
                     }
@@ -349,7 +349,7 @@ class BTreeIndex {
         }
 
 
-        void Remove(const Value &key) {
+        void Remove(const IndexKey &key) {
             std::unique_lock locker(root_page_id_lock_);
             //  std::cerr << "removing " << key << std::endl;
             if (root_page_id_ == INVALID_PAGE_ID) {
@@ -841,9 +841,5 @@ class BTreeIndex {
         int leaf_max_size_ = 0;
         int internal_max_size_ = 0;
 
-        // one index supports only one key type,
-        // this is not always true of we are going to use multiple keys index.
-        // TODO: support indexing for more than one key.
-        Type key_type_ = INVALID; 
         std::shared_mutex root_page_id_lock_;
 };
