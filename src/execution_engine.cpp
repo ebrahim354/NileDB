@@ -997,73 +997,14 @@ class ExecutionEngine {
             return false;
         }
 
-        /*
-        bool insert_handler(ASTNode* statement_root){
-            InsertStatementNode* insert = reinterpret_cast<InsertStatementNode*>(statement_root);
-            // We are going to assume that there are no default values for now.
-            // We also assume that the order of fields matches the schema.
-
-            std::string table_name = insert->table_->token_.val_;
-            TableSchema* schema = catalog_->getTableSchema(table_name);
-            auto field_ptr = insert->fields_;
-            auto value_ptr = insert->values_;
-            std::vector<std::string> fields;
-            std::vector<Value> vals(schema->numOfCols());
-            // loop through fields first
-            // if there are no fields use the default schema.
-            if(!field_ptr){
-                fields = schema->getCols();
-            }
-            while(field_ptr != nullptr){
-                std::string field_name = field_ptr->field_->token_.val_;
-                // check valid column.
-                if(!schema->isValidCol(field_name)) 
-                    return false;
-                int idx = schema->colExist(field_name);
-                if(idx  < 0) return false;
-                fields.push_back(field_name);
-                field_ptr = field_ptr->next_;
-            }
-
-            int fields_index = 0;
-            // loop through vals.
-            while(value_ptr != nullptr){
-                std::string val = value_ptr->token_.val_;
-                // we consider int and string types for now.
-                Type val_type = INVALID;
-                if(value_ptr->category_ == STRING_CONSTANT) val_type = VARCHAR;
-                else if(value_ptr->category_ == INTEGER_CONSTANT) val_type = INT;
-                // invalid or not supported type;
-                if( val_type == INVALID ) return false;
-
-                if(fields_index > fields.size()){
-                    std::cout << "[ERROR] Size of values does not match size of fields" << std::endl;
-                    return false;
-                }
-                int idx = schema->colExist(fields[fields_index++]);
-                if(idx  < 0) {
-                    std::cout << "[ERROR] field does not exist: " << fields[fields_index] << std::endl;
-                    return false;
-                }
-                if(val_type == INT) vals[idx] = (Value(stoi(val)));
-                else if(val_type == VARCHAR) vals[idx] = (Value(val));
-
-                value_ptr = value_ptr->next_;
-            }
-
-            // invalid field list or val list.
-            if(!schema->checkValidValues(fields, vals)) {
-                std::cout << "[ERROR] Invalid field list or val list" << std::endl;
-                return false;
-            }
-
-            Record* record = schema->translateToRecord(vals);
-            // rid is not used for now.
-            RecordID* rid = new RecordID();
-            int err = schema->getTable()->insertRecord(rid, *record);
-            if(!err) return true;
-            return false;
-        }*/
+        bool create_index_handler(QueryCTX& ctx) {
+            CreateIndexStatementData* create_index = reinterpret_cast<CreateIndexStatementData*>(ctx.queries_call_stack_[0]);
+            std::string index_name = create_index->index_name_;
+            std::string table_name = create_index->table_name_;
+            std::vector<std::string> fields = create_index->fields_;
+            bool err = catalog_->createIndex(table_name, index_name, fields);
+            return err;
+        }
 
         /*
         bool delete_handler(ASTNode* statement_root){
@@ -1141,6 +1082,8 @@ class ExecutionEngine {
             switch (type) {
                 case CREATE_TABLE_DATA:
                     return create_table_handler(ctx);
+                case CREATE_INDEX_DATA:
+                    return create_index_handler(ctx);
                 default:
                     return false;
             }

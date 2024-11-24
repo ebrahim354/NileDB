@@ -1,3 +1,4 @@
+#pragma once
 #include "cache_manager.cpp"
 #include "page.cpp"
 #include <math.h>

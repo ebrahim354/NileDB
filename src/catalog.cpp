@@ -4,6 +4,7 @@
 #include "column.cpp"
 #include "value.cpp"
 #include "tokenizer.cpp"
+#include "btree_index.cpp"
 #include <sstream>
 #include <algorithm>
 #include <cstdint>
@@ -385,6 +386,21 @@ class Catalog {
                 return schema;
         }
 
+        bool createIndex(const std::string &table_name, const std::string& index_name, std::vector<std::string> &fields) {
+                if (!tables_.count(table_name) || indexes_.count(index_name))
+                    return 1;
+                TableSchema* table = tables_[table_name];
+                for(int i = 0; i < fields.size(); ++i){
+                  if(!table->isValidCol(fields[i])) return 1;
+                }
+                // initialize the index
+                PageID first_page = {.file_name_ = index_name+"INDEX.ndb", .page_num_ = 1};
+                BTreeIndex* index = new BTreeIndex(cache_manager_, first_page);
+                indexes_.insert({index_name, index});
+                // TODO: persist the index in the meta data table.
+                return true;
+        }
+
         TableSchema* getTableSchema(const std::string &table_name) {
             if (!tables_.count(table_name))
                 return nullptr;
@@ -441,6 +457,7 @@ class Catalog {
     private:
         CacheManager* cache_manager_;
         std::unordered_map<std::string, TableSchema*> tables_;
+        std::unordered_map<std::string, BTreeIndex*> indexes_;
         FreeSpaceMap* free_space_map_;
 
         // hard coded data:

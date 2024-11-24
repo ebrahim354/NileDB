@@ -9,12 +9,17 @@
 #include "btree_leaf_page.cpp"
 #include "btree_internal_page.cpp"
 
-
-
+// better for testing, real values should be estimated before usage.
+#define INTERNAL_MAX_SIZE 1 
+#define LEAF_MAX_SIZE 1 
 
 class BTreeIndex {
     public:
-        BTreeIndex(CacheManager* cm, PageID root_page_id, int leaf_max_size, int internal_max_size):
+        BTreeIndex(CacheManager* cm, 
+            PageID root_page_id, 
+            int leaf_max_size = INTERNAL_MAX_SIZE, 
+            int internal_max_size = LEAF_MAX_SIZE):
+
             cache_manager_(cm),
             root_page_id_(root_page_id),
             leaf_max_size_(leaf_max_size),

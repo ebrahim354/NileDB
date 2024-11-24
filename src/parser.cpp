@@ -77,6 +77,7 @@ AggregateFuncType getAggFuncType(std::string& func){
 enum QueryType {
     SELECT_DATA,
     CREATE_TABLE_DATA,
+    CREATE_INDEX_DATA,
     INSERT_DATA,
     DELETE_DATA,
     UPDATE_DATA,
@@ -331,6 +332,17 @@ struct CreateTableStatementData : QueryData {
     std::string table_name_ = {};
 };
 
+struct CreateIndexStatementData : QueryData {
+
+    CreateIndexStatementData(int parent_idx): QueryData(CREATE_INDEX_DATA, parent_idx){}
+    ~CreateIndexStatementData() {}
+
+
+    std::vector<std::string> fields_ = {};
+    std::string index_name_ = {};
+    std::string table_name_ = {};
+};
+
 struct InsertStatementData : QueryData {
 
     InsertStatementData(int parent_idx): QueryData(INSERT_DATA, parent_idx){}
@@ -526,8 +538,11 @@ class Parser {
 
         // top level statement is called with parent_idx  as -1.
         void selectStatement(QueryCTX& ctx, int parent_idx);
-        void createTableStatement(QueryCTX& ctx, int parent_idx);
         void insertStatement(QueryCTX& ctx, int parent_idx);
+
+        // DDL
+        void createTableStatement(QueryCTX& ctx, int parent_idx);
+        void createIndexStatement(QueryCTX& ctx, int parent_idx);
 
         // query : input.
         // ctx   : output.
@@ -573,9 +588,13 @@ void Parser::parse(std::string& query, QueryCTX& ctx){
         case TokenType::INSERT:
             insertStatement(ctx,-1);
             break;
-        // TODO: separate create table and create index.
         case TokenType::CREATE:
-            createTableStatement(ctx,-1);
+            {
+              if(ctx.tokens_.size() >= 2 && ctx.tokens_[1].type_ == TokenType::TABLE)
+                createTableStatement(ctx,-1);
+              else
+                createIndexStatement(ctx,-1);
+            }
             break;
         default:
             ctx.error_status_ = Error::QUERY_NOT_SUPPORTED;
@@ -1343,6 +1362,55 @@ void Parser::createTableStatement(QueryCTX& ctx, int parent_idx){
     if(!statement->field_defs_.size()){
         ctx.error_status_ = Error::EXPECTED_FIELD_DEFS;
         return;
+    }
+    if(!ctx.matchTokenType(TokenType::RP)){
+        ctx.error_status_ = Error::EXPECTED_RIGHT_PARANTH; 
+        return;
+    }
+    ++ctx;
+    ctx.direct_execution_ = 1;
+}
+
+void Parser::createIndexStatement(QueryCTX& ctx, int parent_idx){
+    if((bool)ctx.error_status_) return; 
+    if(!ctx.matchMultiTokenType({TokenType::CREATE , TokenType::INDEX}))
+        return;
+    ctx += 2;
+    CreateIndexStatementData* statement = new CreateIndexStatementData(parent_idx);
+    statement->idx_ = ctx.queries_call_stack_.size();
+    ctx.queries_call_stack_.push_back(statement);
+
+    if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
+        ctx.error_status_ = Error::EXPECTED_IDENTIFIER; 
+        return;
+    }
+    statement->index_name_ = ctx.getCurrentToken().val_; ++ctx;
+    if(!ctx.matchMultiTokenType({TokenType::ON, TokenType::IDENTIFIER})){
+        ctx.error_status_ = Error::EXPECTED_ON_TABLE_NAME; 
+        return;
+    }
+    ++ctx;
+    statement->table_name_ = ctx.getCurrentToken().val_; ++ctx;
+    if(!ctx.matchTokenType(TokenType::LP)){
+        ctx.error_status_ = Error::EXPECTED_LEFT_PARANTH; 
+        return;
+    }
+    ++ctx;
+    while(1){
+        if(!ctx.matchTokenType(TokenType::IDENTIFIER)) {
+            ctx.error_status_ = Error::EXPECTED_IDENTIFIER;
+            return;
+        }
+        Token token = ctx.getCurrentToken(); ++ctx;
+        statement->fields_.push_back(token.val_);
+        // TODO: handle desc and asc orders.
+        // opptional ASC or DESC
+        if(ctx.matchAnyTokenType({TokenType::ASC, TokenType::DESC})) {
+            ++ctx;
+        }
+        if(!ctx.matchTokenType(TokenType::COMMA)) 
+            break;
+        ++ctx;
     }
     if(!ctx.matchTokenType(TokenType::RP)){
         ctx.error_status_ = Error::EXPECTED_RIGHT_PARANTH; 

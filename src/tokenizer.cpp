@@ -38,6 +38,8 @@ enum class TokenType {
     CROSS,
     JOIN,
     INDEX,
+    ASC,
+    DESC,
     EXISTS,
     CAST,
     CASE,
@@ -135,8 +137,8 @@ Tokenizer::Tokenizer(){
     keywords_.insert({"WHERE"   , TokenType::WHERE   });
     keywords_.insert({"BETWEEN" , TokenType::BETWEEN });
     keywords_.insert({"NOT"     , TokenType::NOT     });
-    keywords_.insert({"IS"      , TokenType::IS     });
-    keywords_.insert({"IN"      , TokenType::IN     });
+    keywords_.insert({"IS"      , TokenType::IS      });
+    keywords_.insert({"IN"      , TokenType::IN      });
     keywords_.insert({"AND"     , TokenType::AND     });
     keywords_.insert({"OR"      , TokenType::OR      });
     keywords_.insert({"INTO"    , TokenType::INTO    });
@@ -145,6 +147,8 @@ Tokenizer::Tokenizer(){
     keywords_.insert({"UPDATE"  , TokenType::UPDATE  });
     keywords_.insert({"SET"     , TokenType::SET     });
     keywords_.insert({"INDEX"   , TokenType::INDEX   });
+    keywords_.insert({"ASC"     , TokenType::ASC     });
+    keywords_.insert({"DESC"    , TokenType::DESC    });
     keywords_.insert({"CAST"    , TokenType::CAST    });
     keywords_.insert({"CASE"    , TokenType::CASE    });
     keywords_.insert({"EXISTS"  , TokenType::EXISTS  });
