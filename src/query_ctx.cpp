@@ -56,6 +56,7 @@ struct QueryCTX {
 
     std::vector<Token> tokens_;
     std::vector<QueryData*> queries_call_stack_ = {};
+    std::vector<QueryData*> set_operations_ = {};
     std::vector<AlgebraOperation*> operators_call_stack_ = {};
     std::vector<Executor*> executors_call_stack_ = {};
     uint32_t cursor_ = 0;

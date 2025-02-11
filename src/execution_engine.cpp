@@ -34,6 +34,10 @@ enum ExecutorType {
     SORT_EXECUTOR,
     DISTINCT_EXECUTOR,
     PRODUCT_EXECUTOR,
+
+    UNION_EXECUTOR,
+    EXCEPT_EXECUTOR,
+    INTERSECT_EXECUTOR,
 };
 
 struct Executor {
@@ -111,6 +115,146 @@ class ProductExecutor : public Executor {
         Executor* left_child_ = nullptr;
         Executor* right_child_ = nullptr;
 };
+
+class UnionExecutor : public Executor {
+    public:
+        UnionExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs)
+            : Executor(UNION_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs)
+        {}
+        ~UnionExecutor()
+        {}
+
+        void init() {
+            error_status_ = 0;
+            finished_ = 0;
+            if(!left_child_ || !right_child_){
+                error_status_ = true;
+                return;
+            }
+            left_child_->init();
+            right_child_->init();
+            error_status_ = left_child_->error_status_ || right_child_->error_status_;
+            finished_ = left_child_->finished_ && right_child_->finished_;
+        }
+
+        std::vector<Value> next() {
+            if(error_status_ || finished_)  return {};
+
+            if(!left_child_->finished_){
+                output_ = left_child_->next();
+                error_status_ = left_child_->error_status_;
+                if(left_child_->finished_ && output_.size() == 0) {
+                    return next();
+                }
+            }
+            else if(!right_child_->finished_){
+                output_ = right_child_->next();
+                error_status_ = right_child_->error_status_;
+            }
+
+            finished_ = left_child_->finished_ && right_child_->finished_;
+            return output_;
+        }
+    private:
+        Executor* left_child_ = nullptr;
+        Executor* right_child_ = nullptr;
+};
+
+class ExceptExecutor : public Executor {
+    public:
+        ExceptExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs)
+            : Executor(EXCEPT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs)
+        {}
+        ~ExceptExecutor()
+        {}
+
+        void init() {
+            error_status_ = 0;
+            finished_ = 0;
+            if(!left_child_ || !right_child_){
+                error_status_ = true;
+                return;
+            }
+            left_child_->init();
+            right_child_->init();
+            error_status_ = left_child_->error_status_ || right_child_->error_status_;
+            finished_ = left_child_->finished_;
+            while(!right_child_->finished_ && !error_status_){
+                std::vector<Value> tuple = right_child_->next();
+                error_status_ = error_status_ && right_child_->error_status_;
+                std::string stringified_tuple = "";
+                for(size_t i = 0; i < tuple.size(); i++) stringified_tuple += tuple[i].toString();
+                hashed_tuples_[stringified_tuple] =  1;
+            } 
+            left_child_->init();
+        }
+
+        std::vector<Value> next() {
+            if(error_status_ || finished_)  return {};
+            while(true){
+                std::vector<Value> tuple = left_child_->next();
+                if(finished_ || error_status_ || tuple.size() == 0) return {};
+                std::string stringified_tuple = "";
+                for(size_t i = 0; i < tuple.size(); i++) stringified_tuple += tuple[i].toString();
+                if(hashed_tuples_.count(stringified_tuple)) 
+                    continue; // tuple exists on both relations => skip it.
+                output_ = tuple;
+                return output_;
+            }
+        }
+    private:
+        Executor* left_child_ = nullptr;
+        Executor* right_child_ = nullptr;
+        std::unordered_map<std::string, int> hashed_tuples_;
+};
+
+class IntersectExecutor : public Executor {
+    public:
+        IntersectExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs)
+            : Executor(INTERSECT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs)
+        {}
+        ~IntersectExecutor()
+        {}
+
+        void init() {
+            error_status_ = 0;
+            finished_ = 0;
+            if(!left_child_ || !right_child_){
+                error_status_ = true;
+                return;
+            }
+            left_child_->init();
+            right_child_->init();
+            error_status_ = left_child_->error_status_ || right_child_->error_status_;
+            finished_ = left_child_->finished_;
+            while(!right_child_->finished_ && !error_status_){
+                std::vector<Value> tuple = right_child_->next();
+                error_status_ = error_status_ && right_child_->error_status_;
+                std::string stringified_tuple = "";
+                for(size_t i = 0; i < tuple.size(); i++) stringified_tuple += tuple[i].toString();
+                hashed_tuples_[stringified_tuple] =  1;
+            } 
+        }
+
+        std::vector<Value> next() {
+            if(error_status_ || finished_)  return {};
+            while(true){
+                std::vector<Value> tuple = left_child_->next();
+                if(finished_ || error_status_ || tuple.size() == 0) return {};
+                std::string stringified_tuple = "";
+                for(size_t i = 0; i < tuple.size(); i++) stringified_tuple += tuple[i].toString();
+                if(!hashed_tuples_.count(stringified_tuple)) 
+                    continue; // tuple does not exists on both relations => skip it.
+                output_ = tuple;
+                return output_;
+            }
+        }
+    private:
+        Executor* left_child_ = nullptr;
+        Executor* right_child_ = nullptr;
+        std::unordered_map<std::string, int> hashed_tuples_;
+};
+
 
 class SeqScanExecutor : public Executor {
     public:
@@ -420,7 +564,7 @@ class FilterExecutor : public Executor {
                     }
                     Executor* cur_exec = ctx_.executors_call_stack_[cur_query_idx];
 
-                    while(cur_exec && cur_exec->type_ != FILTER_EXECUTOR){
+                    while(cur_exec != nullptr && cur_exec->type_ != FILTER_EXECUTOR){
                         cur_exec = cur_exec->child_executor_;
                     }
                     if(!cur_exec){
@@ -816,7 +960,8 @@ class ProjectionExecutor : public Executor {
                         continue;
                     }
                     std::vector<Value> cur_output;
-                    if(query_idx_ == 0)
+                    // if(query_idx_ == 0)
+                    if(cur_query_parent == -1)
                         cur_output = output_;
                     else
                         cur_output = ctx_.executors_call_stack_[cur_query_idx]->output_; 
@@ -1201,6 +1346,89 @@ class ExecutionEngine {
                         ProductExecutor* product = new ProductExecutor(product_output_schema, ctx, query_idx, parent_query_idx, lhs, rhs);
                         return product;
                     } break;
+                case AL_UNION: 
+                case AL_EXCEPT: 
+                case AL_INTERSECT: 
+                    {
+                        // TODO: condense all set operators into one operator.
+                        if(logical_plan->type_ == AL_UNION){
+                            UnionOperation* op = reinterpret_cast<UnionOperation*>(logical_plan);
+                            if(!op->lhs_ || !op->rhs_) return nullptr;
+                            // TODO: don't rebuild queries.
+                            // Executor* lhs = buildExecutionPlan(ctx, op->lhs_, op->lhs_->query_idx_, op->lhs_->query_parent_idx_);
+                            // Executor* rhs = buildExecutionPlan(ctx, op->rhs_, op->rhs_->query_idx_, op->rhs_->query_parent_idx_);
+                            Executor* lhs = nullptr; 
+                            Executor* rhs = nullptr; 
+
+                            if(op->lhs_->query_idx_ == -1)
+                                lhs = buildExecutionPlan(ctx, op->lhs_, op->lhs_->query_idx_, op->lhs_->query_parent_idx_);
+                            else
+                                lhs = ctx.executors_call_stack_[op->lhs_->query_idx_];
+
+                            if(op->rhs_->query_idx_ == -1)
+                                rhs = buildExecutionPlan(ctx, op->rhs_, op->rhs_->query_idx_, op->rhs_->query_parent_idx_);
+                            else
+                                rhs = ctx.executors_call_stack_[op->rhs_->query_idx_];
+                            // TODO: check that lhs and rhs have the same schema.
+                            UnionExecutor* un = new UnionExecutor(lhs->output_schema_, ctx, query_idx, parent_query_idx, lhs, rhs);
+
+                            // TODO: don't use an extra distinct executor for the all = false case, 
+                            // Use a built-in hashtable inside of the set-operation executor instead.
+                            if(op->all_ == false) 
+                                return new DistinctExecutor(un , un->output_schema_, ctx, query_idx, parent_query_idx);
+                            return un;
+                        } else if(logical_plan->type_ == AL_EXCEPT) {
+                            ExceptOperation* op = reinterpret_cast<ExceptOperation*>(logical_plan);
+                            if(!op->lhs_ || !op->rhs_) return nullptr;
+                            //Executor* lhs = buildExecutionPlan(ctx, op->lhs_, op->lhs_->query_idx_, op->lhs_->query_parent_idx_);
+                            //Executor* rhs = buildExecutionPlan(ctx, op->rhs_, op->rhs_->query_idx_, op->rhs_->query_parent_idx_);
+                            Executor* lhs = nullptr; 
+                            Executor* rhs = nullptr; 
+
+                            if(op->lhs_->query_idx_ == -1)
+                                lhs = buildExecutionPlan(ctx, op->lhs_, op->lhs_->query_idx_, op->lhs_->query_parent_idx_);
+                            else
+                                lhs = ctx.executors_call_stack_[op->lhs_->query_idx_];
+
+                            if(op->rhs_->query_idx_ == -1)
+                                rhs = buildExecutionPlan(ctx, op->rhs_, op->rhs_->query_idx_, op->rhs_->query_parent_idx_);
+                            else
+                                rhs = ctx.executors_call_stack_[op->rhs_->query_idx_];
+                            // TODO: check that lhs and rhs have the same schema.
+                            ExceptExecutor* ex = new ExceptExecutor(lhs->output_schema_, ctx, query_idx, parent_query_idx, lhs, rhs);
+
+                            // TODO: don't use an extra distinct executor for the all = false case, 
+                            // Use a built-in hashtable inside of the set-operation executor instead.
+                            if(op->all_ == false) 
+                                return new DistinctExecutor(ex , ex->output_schema_, ctx, query_idx, parent_query_idx);
+                            return ex;
+                        } else {
+                            IntersectOperation* op = reinterpret_cast<IntersectOperation*>(logical_plan);
+                            if(!op->lhs_ || !op->rhs_) return nullptr;
+                            //Executor* lhs = buildExecutionPlan(ctx, op->lhs_, op->lhs_->query_idx_, op->lhs_->query_parent_idx_);
+                            //Executor* rhs = buildExecutionPlan(ctx, op->rhs_, op->rhs_->query_idx_, op->rhs_->query_parent_idx_);
+                            Executor* lhs = nullptr; 
+                            Executor* rhs = nullptr; 
+
+                            if(op->lhs_->query_idx_ == -1)
+                                lhs = buildExecutionPlan(ctx, op->lhs_, op->lhs_->query_idx_, op->lhs_->query_parent_idx_);
+                            else
+                                lhs = ctx.executors_call_stack_[op->lhs_->query_idx_];
+
+                            if(op->rhs_->query_idx_ == -1)
+                                rhs = buildExecutionPlan(ctx, op->rhs_, op->rhs_->query_idx_, op->rhs_->query_parent_idx_);
+                            else
+                                rhs = ctx.executors_call_stack_[op->rhs_->query_idx_];
+                            // TODO: check that lhs and rhs have the same schema.
+                            IntersectExecutor* intersect = new IntersectExecutor(lhs->output_schema_, ctx, query_idx, parent_query_idx, lhs, rhs);
+
+                            // TODO: don't use an extra distinct executor for the all = false case, 
+                            // Use a built-in hashtable inside of the set-operation executor instead.
+                            if(op->all_ == false) 
+                                return new DistinctExecutor(intersect , intersect->output_schema_, ctx, query_idx, parent_query_idx);
+                            return intersect;
+                        }
+                    } break;
                 case INSERTION: 
                     {
                         auto statement = reinterpret_cast<InsertStatementData*>(ctx.queries_call_stack_[query_idx]);
@@ -1216,7 +1444,18 @@ class ExecutionEngine {
         }
         bool runExecutor(QueryCTX& ctx, QueryResult* result){
             if(ctx.executors_call_stack_.size() < 1 || (bool) ctx.error_status_ ) return false;
-            auto physical_plan = ctx.executors_call_stack_[0];
+            Executor* physical_plan = nullptr;
+
+            // this case means we have set operations: union, except or intersect
+            if(ctx.executors_call_stack_.size() > ctx.queries_call_stack_.size()) {
+                // first set operation.
+                physical_plan = ctx.executors_call_stack_[ctx.queries_call_stack_.size()]; 
+                std::cout << "Set operation\n";
+            }
+            else{
+                physical_plan = ctx.executors_call_stack_[0];
+            }
+
             physical_plan->init();
             while(!physical_plan->error_status_ && !physical_plan->finished_){
                 std::vector<Value> tmp = physical_plan->next();

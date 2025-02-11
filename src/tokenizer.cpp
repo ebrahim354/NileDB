@@ -38,6 +38,10 @@ enum class TokenType {
     CROSS,
     JOIN,
     INDEX,
+    UNION,
+    EXCEPT,
+    INTERSECT,
+    ALL,
     ASC,
     DESC,
     EXISTS,
@@ -59,7 +63,6 @@ enum class TokenType {
     ON,
     HAVING,
     DISTINCT,
-    ALL,
     INSERT,
     FROM,
     WHERE,
@@ -147,6 +150,10 @@ Tokenizer::Tokenizer(){
     keywords_.insert({"UPDATE"  , TokenType::UPDATE  });
     keywords_.insert({"SET"     , TokenType::SET     });
     keywords_.insert({"INDEX"   , TokenType::INDEX   });
+    keywords_.insert({"UNION"   , TokenType::UNION   });
+    keywords_.insert({"EXCEPT"  , TokenType::EXCEPT  });
+    keywords_.insert({"INTERSECT",TokenType::INTERSECT});
+    keywords_.insert({"ALL"     , TokenType::ALL     });
     keywords_.insert({"ASC"     , TokenType::ASC     });
     keywords_.insert({"DESC"    , TokenType::DESC    });
     keywords_.insert({"CAST"    , TokenType::CAST    });
@@ -194,12 +201,13 @@ Tokenizer::Tokenizer(){
     symbols_.insert({"," , TokenType::COMMA    });
 }
 
+
 bool Tokenizer::isKeyword(std::string& t){
-    return keywords_.count(t);
+    return keywords_.count(str_toupper(t));
 }
 
 bool Tokenizer::isDataType(std::string& t){
-    return data_types_.count(t);
+    return data_types_.count(str_toupper(t));
 }
 
 bool Tokenizer::isSymbol(std::string& t){
@@ -234,7 +242,8 @@ bool Tokenizer::isAggFunc(TokenType func){
     }
 }
 
-bool Tokenizer::isAggFunc(std::string& func){
+bool Tokenizer::isAggFunc(std::string& f){
+    std::string func = str_toupper(f);
     if(func == "SUM" || func == "COUNT" || func == "MIN" || func == "MAX" || func == "AVG") return true;
     return false;
 }
@@ -263,8 +272,8 @@ bool Tokenizer::isNumberConst (std::string& t){
 }
 
 TokenType Tokenizer::getTokenType(std::string& t) {
-    if(isKeyword(t))     return keywords_[t];
-    if(isDataType(t))    return data_types_[t];
+    if(isKeyword(t))     return keywords_[str_toupper(t)];
+    if(isDataType(t))    return data_types_[str_toupper(t)];
     if(isSymbol(t))      return symbols_[t];
     if(isStrConst(t))    return TokenType::STR_CONSTANT;
     if(isNumberConst(t)) return TokenType::NUMBER_CONSTANT;

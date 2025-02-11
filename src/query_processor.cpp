@@ -29,7 +29,7 @@ class QueryProcessor{
             }
             std::cout << "[INFO] Creating logical plan" << std::endl;
             algebra_->createAlgebraExpression(query_ctx);
-            if(query_ctx.operators_call_stack_.size() != query_ctx.queries_call_stack_.size() || 
+            if(query_ctx.operators_call_stack_.size() < query_ctx.queries_call_stack_.size() || 
                     query_ctx.error_status_ != Error::NO_ERROR){
                 std::cout << "[ERROR] Invalid logical algebra plan" << std::endl;
                 return false;

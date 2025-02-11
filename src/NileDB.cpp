@@ -36,6 +36,7 @@ class NileDB {
         }
         bool SQL(std::string query, QueryResult* result){
             std::cout << "[INFO] runing the following query: " << query << std::endl;
+            /*
             int diff = 'A' - 'a';
             bool inside_string_literal = false;
             for(int i = 0; i < query.size(); i++){
@@ -43,7 +44,7 @@ class NileDB {
                 if(query[i] >= 'a' && query[i] <= 'z' && !inside_string_literal){
                     query[i] += diff;
                 }
-            }
+            }*/
             return query_processor_->handleQuery(query, result);
         }
         bool CMD(std::string command){

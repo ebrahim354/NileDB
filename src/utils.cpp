@@ -5,6 +5,14 @@
 #include <vector>
 
 
+std::string str_toupper(std::string s){
+    int diff = 'A' - 'a';
+    std::string tmp = s;
+    for(int i = 0; i < s.size(); ++i)
+        if(tmp[i] >= 'a' && tmp[i] <= 'z') tmp[i] += diff;
+    return tmp;
+}
+
 
 
 std::vector<std::string> strSplit(const std::string& str, char delimiter) {

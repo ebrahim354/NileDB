@@ -75,12 +75,16 @@ AggregateFuncType getAggFuncType(std::string& func){
 
 
 enum QueryType {
-    SELECT_DATA,
+    SELECT_DATA = 0,
     CREATE_TABLE_DATA,
     CREATE_INDEX_DATA,
     INSERT_DATA,
     DELETE_DATA,
     UPDATE_DATA,
+    // set operations.
+    UNION,
+    INTERSECT,
+    EXCEPT
 };
 
 enum CategoryType {
@@ -316,6 +320,29 @@ struct SelectStatementData : QueryData {
     bool distinct_ = false;
 };
 
+struct Intersect : QueryData {
+    Intersect(int parent_idx, int lhs, Intersect* rhs, bool all): 
+        QueryData(INTERSECT, parent_idx), cur_(lhs), next_(rhs), all_(all)
+    {}
+    ~Intersect() {}
+    int cur_ = -1;  // query idx in the stack.
+    QueryData* next_ = nullptr;
+    bool all_ = false;
+};
+
+struct UnionOrExcept : QueryData {
+
+    UnionOrExcept(QueryType type, int parent_idx, QueryData* lhs, UnionOrExcept* rhs, bool all): 
+        QueryData(type, parent_idx), cur_(lhs), next_(rhs), all_(all)
+    {}
+    ~UnionOrExcept() {}
+    QueryData* cur_ = nullptr;
+    QueryData* next_ = nullptr; 
+    bool all_ = false;
+};
+
+
+
 // more data will be added
 struct FieldDef {
     std::string field_name_;
@@ -537,6 +564,10 @@ class Parser {
         void fieldList(QueryCTX& ctx, int query_idx);
 
         // top level statement is called with parent_idx  as -1.
+        QueryData* intersect(QueryCTX& ctx, int parent_idx);
+        QueryData* union_or_except(QueryCTX& ctx, int parent_idx);
+
+        void set_operation(QueryCTX& ctx, int parent_idx);
         void selectStatement(QueryCTX& ctx, int parent_idx);
         void insertStatement(QueryCTX& ctx, int parent_idx);
 
@@ -583,7 +614,8 @@ void Parser::parse(std::string& query, QueryCTX& ctx){
 
     switch(ctx.tokens_[0].type_){
         case TokenType::SELECT:
-            selectStatement(ctx,-1);
+        case TokenType::LP:
+            set_operation(ctx,-1);
             break;
         case TokenType::INSERT:
             insertStatement(ctx,-1);
@@ -1267,6 +1299,62 @@ ExpressionNode* Parser::expression(QueryCTX& ctx, int query_idx, int id){
     if(!cur) return nullptr;
     ex->cur_ = cur;
     return ex;
+}
+
+void Parser::set_operation(QueryCTX& ctx, int parent_idx){
+    if((bool)ctx.error_status_) return;
+    QueryData* operation = union_or_except(ctx, parent_idx);
+    if(!operation) return;
+    std::cout << "operation type: \n";
+    std::cout << operation->type_ << std::endl;
+    if(operation->type_ >= UNION)
+        ctx.set_operations_.push_back(operation);
+}
+
+QueryData* Parser::intersect(QueryCTX& ctx, int parent_idx){
+    if((bool)ctx.error_status_) return nullptr;
+    int idx = ctx.queries_call_stack_.size();
+    selectStatement(ctx, -1);
+    if(idx >= ctx.queries_call_stack_.size()) return nullptr;
+    if(ctx.matchTokenType(TokenType::INTERSECT)) { 
+        ++ctx;
+        Intersect* i  = new Intersect(parent_idx, idx, nullptr, false);
+        QueryData* next = nullptr;
+        if(ctx.matchTokenType(TokenType::ALL)){
+            i->all_ = true;
+            ++ctx;
+        }
+        next = intersect(ctx, parent_idx);
+        if(!next) {
+            return nullptr;
+        }
+        i->next_ = next;
+        return i;
+    }
+    return ctx.queries_call_stack_[idx]; 
+}
+
+QueryData* Parser::union_or_except(QueryCTX& ctx, int parent_idx){
+    if((bool)ctx.error_status_) return nullptr;
+    QueryData* cur = intersect(ctx, parent_idx);
+    if(!cur) return nullptr;
+    if(ctx.matchAnyTokenType({TokenType::UNION, TokenType::EXCEPT})) { 
+        auto t = QueryType::UNION;
+        if(ctx.getCurrentToken().type_ == TokenType::EXCEPT) t = EXCEPT;
+        ++ctx;
+        UnionOrExcept* uoe = new UnionOrExcept(t, parent_idx, cur, nullptr, false);
+        if(ctx.matchTokenType(TokenType::ALL)){
+            uoe->all_ = true;
+            ++ctx;
+        }
+        QueryData* next = union_or_except(ctx, parent_idx);
+        if(!next) {
+            return nullptr;
+        }
+        uoe->next_ = next;
+        return uoe;
+    }
+    return cur;
 }
 
 void Parser::selectStatement(QueryCTX& ctx, int parent_idx){

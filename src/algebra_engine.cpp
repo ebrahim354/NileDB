@@ -3,7 +3,7 @@
 #include <vector>
 
 
-enum AlgebraOperationType {
+ enum AlgebraOperationType {
     // single table operations.
     SCAN,
     FILTER, 
@@ -17,6 +17,11 @@ enum AlgebraOperationType {
     // two table operations.
     PRODUCT,
     JOIN,
+    // set operations
+    // AL => algebra.
+    AL_UNION, 
+    AL_EXCEPT,
+    AL_INTERSECT,
 };
 
 
@@ -43,6 +48,45 @@ struct ScanOperation: AlgebraOperation {
         {}
         std::string table_name_{};
         std::string table_rename_{};
+};
+
+struct UnionOperation: AlgebraOperation {
+    public:
+        UnionOperation(QueryCTX& ctx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all): 
+            AlgebraOperation(AL_UNION, ctx), lhs_(lhs), rhs_(rhs), all_(all)
+        {}
+        ~UnionOperation()
+        {}
+
+        AlgebraOperation* lhs_ = nullptr;
+        AlgebraOperation* rhs_ = nullptr;
+        bool all_ = false;
+};
+
+struct ExceptOperation: AlgebraOperation {
+    public:
+        ExceptOperation(QueryCTX& ctx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all): 
+            AlgebraOperation(AL_EXCEPT, ctx), lhs_(lhs), rhs_(rhs), all_(all)
+        {}
+        ~ExceptOperation()
+        {}
+
+        AlgebraOperation* lhs_ = nullptr;
+        AlgebraOperation* rhs_ = nullptr;
+        bool all_ = false;
+};
+
+struct IntersectOperation: AlgebraOperation {
+    public:
+        IntersectOperation(QueryCTX& ctx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all): 
+            AlgebraOperation(AL_INTERSECT, ctx), lhs_(lhs), rhs_(rhs), all_(all)
+        {}
+        ~IntersectOperation()
+        {}
+
+        AlgebraOperation* lhs_ = nullptr;
+        AlgebraOperation* rhs_ = nullptr;
+        bool all_ = false;
 };
 
 struct ProductOperation: AlgebraOperation {
@@ -163,6 +207,15 @@ class AlgebraEngine {
                         return;
                 }
             }
+
+            for(auto data : ctx.set_operations_){
+                AlgebraOperation* set_operation = createSetOperationExpression(ctx, data);
+                if(!set_operation){
+                    ctx.error_status_ = Error::LOGICAL_PLAN_ERROR;
+                    return;
+                }
+                ctx.operators_call_stack_.push_back(set_operation);
+            }
         }
     private:
 
@@ -201,6 +254,71 @@ class AlgebraEngine {
             result->query_idx_ = data->idx_;
             result->query_parent_idx_ = data->parent_idx_;
             return result;
+        }
+
+        AlgebraOperation* createSetOperationExpression(QueryCTX& ctx, QueryData* data, bool once = false){
+            switch(data->type_){
+                    case UNION:
+                    case EXCEPT:
+                        {
+                            auto ex_or_un = reinterpret_cast<UnionOrExcept*>(data);
+                            AlgebraOperation* lhs = createSetOperationExpression(ctx, ex_or_un->cur_);
+                            if(once) return lhs;
+                            bool all = ex_or_un->all_;
+                            auto op = ex_or_un->type_;
+                            auto ptr = ex_or_un->next_;
+                            while(ptr){
+                                AlgebraOperation* rhs = createSetOperationExpression(
+                                        ctx, ex_or_un->next_,
+                                        (ptr->type_ == UNION || ptr->type_ == EXCEPT)
+                                    );
+                                if(op == EXCEPT){
+                                    lhs = new ExceptOperation(ctx, lhs, rhs, all);
+                                } else if(op == UNION){
+                                    lhs = new UnionOperation(ctx, lhs, rhs, all);
+                                }
+                                std::cout << "Query idx: " << rhs->query_idx_ << "\n";
+                                std::cout << "parent Query idx: " << rhs->query_parent_idx_ << "\n";
+                                if(ptr->type_ == EXCEPT || ptr->type_ == UNION){
+                                    auto tmp = reinterpret_cast<UnionOrExcept*>(ptr);
+                                    op = ptr->type_;
+                                    all = tmp->all_;
+                                    ptr = tmp->next_;
+                                } else break;
+                            }
+                            return lhs;
+                        }
+                    case INTERSECT:
+                        {
+                            auto intersect = reinterpret_cast<Intersect*>(data);
+                            if(intersect->cur_ < 0 || intersect->cur_ >= ctx.operators_call_stack_.size()) 
+                                return nullptr;
+                            AlgebraOperation* lhs = ctx.operators_call_stack_[intersect->cur_];
+                            bool all = intersect->all_;
+                            auto ptr = intersect->next_;
+                            while(ptr){
+                                if(ptr->type_ != INTERSECT) 
+                                    return nullptr;
+                                auto nxt = reinterpret_cast<Intersect*>(ptr);
+                                if(nxt->cur_ < 0 || nxt->cur_ >= ctx.operators_call_stack_.size()) 
+                                    return nullptr;
+                                AlgebraOperation* rhs = ctx.operators_call_stack_[nxt->cur_];
+                                lhs = new IntersectOperation(ctx, lhs, rhs, all);
+
+                                if(ptr->type_ == INTERSECT){
+                                    auto tmp = reinterpret_cast<Intersect*>(ptr);
+                                    all = tmp->all_;
+                                    ptr = tmp->next_;
+                                } else break;
+                            }
+                            return lhs;
+                        }
+                    case SELECT_DATA:
+                        return createSelectStatementExpression(ctx, reinterpret_cast<SelectStatementData*>(data));
+                    default:
+                        return nullptr;
+                
+            }
         }
 
         AlgebraOperation* createSelectStatementExpression(QueryCTX& ctx, SelectStatementData* data){

@@ -1,6 +1,6 @@
 #pragma once
-
 #include "parser.cpp"
+#include "utils.cpp"
 #include <string>
 #include <unordered_map>
 
@@ -257,7 +257,8 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
         case SCALAR_FUNC: 
                       {
                           ScalarFuncNode* sfn = reinterpret_cast<ScalarFuncNode*>(expression);
-                          if(!reserved_functions.count(sfn->name_)){
+                          std::string name = str_toupper(sfn->name_);
+                          if(!reserved_functions.count(name)){
                               // TODO: this check should be in the query validation phase.
                               std::cout << "[ERROR] undefined function call " << sfn->name_ << "\n";
                               return Value();
@@ -266,7 +267,7 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                           for(int i = 0; i < sfn->args_.size(); ++i){
                             vals.emplace_back(evaluate_expression(sfn->args_[i], evaluator));
                           }
-                          return reserved_functions[sfn->name_](vals);
+                          return reserved_functions[name](vals);
                       } 
         case TYPE_CAST: 
                       {
