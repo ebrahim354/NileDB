@@ -269,7 +269,7 @@ class AlgebraEngine {
                             auto ptr = ex_or_un->next_;
                             while(ptr){
                                 AlgebraOperation* rhs = createSetOperationExpression(
-                                        ctx, ex_or_un->next_,
+                                        ctx, ptr,
                                         (ptr->type_ == UNION || ptr->type_ == EXCEPT)
                                     );
                                 if(op == EXCEPT){
@@ -277,8 +277,6 @@ class AlgebraEngine {
                                 } else if(op == UNION){
                                     lhs = new UnionOperation(ctx, lhs, rhs, all);
                                 }
-                                std::cout << "Query idx: " << rhs->query_idx_ << "\n";
-                                std::cout << "parent Query idx: " << rhs->query_parent_idx_ << "\n";
                                 if(ptr->type_ == EXCEPT || ptr->type_ == UNION){
                                     auto tmp = reinterpret_cast<UnionOrExcept*>(ptr);
                                     op = ptr->type_;
@@ -291,18 +289,17 @@ class AlgebraEngine {
                     case INTERSECT:
                         {
                             auto intersect = reinterpret_cast<Intersect*>(data);
-                            if(intersect->cur_ < 0 || intersect->cur_ >= ctx.operators_call_stack_.size()) 
-                                return nullptr;
-                            AlgebraOperation* lhs = ctx.operators_call_stack_[intersect->cur_];
+                            AlgebraOperation* lhs = createSetOperationExpression(ctx, intersect->cur_);
+                            //AlgebraOperation* lhs = ctx.operators_call_stack_[intersect->cur_];
+                            if(once) return lhs;
                             bool all = intersect->all_;
                             auto ptr = intersect->next_;
                             while(ptr){
-                                if(ptr->type_ != INTERSECT) 
-                                    return nullptr;
-                                auto nxt = reinterpret_cast<Intersect*>(ptr);
-                                if(nxt->cur_ < 0 || nxt->cur_ >= ctx.operators_call_stack_.size()) 
-                                    return nullptr;
-                                AlgebraOperation* rhs = ctx.operators_call_stack_[nxt->cur_];
+                                //auto nxt = reinterpret_cast<Intersect*>(ptr);
+                                AlgebraOperation* rhs = createSetOperationExpression(
+                                        ctx, ptr,
+                                        (ptr->type_ == INTERSECT)
+                                    );
                                 lhs = new IntersectOperation(ctx, lhs, rhs, all);
 
                                 if(ptr->type_ == INTERSECT){

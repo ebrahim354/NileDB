@@ -186,7 +186,6 @@ class ExceptExecutor : public Executor {
                 for(size_t i = 0; i < tuple.size(); i++) stringified_tuple += tuple[i].toString();
                 hashed_tuples_[stringified_tuple] =  1;
             } 
-            left_child_->init();
         }
 
         std::vector<Value> next() {
@@ -1088,10 +1087,14 @@ class DistinctExecutor : public Executor {
         std::vector<Value> next() {
             if(error_status_ || finished_)  return {};
             while(true){
+                if(finished_ || error_status_) return {};
                 std::vector<Value> tuple = child_executor_->next();
-                //finished_ = child_executor_->finished_;
-                //error_status_ = child_executor_->error_status_;
-                if(finished_ || error_status_ || tuple.size() == 0) return {};
+                if(tuple.size() == 0) {
+                    finished_ = true;
+                    return {};
+                }
+                error_status_ = child_executor_->error_status_;
+                finished_ = child_executor_->finished_;
                 std::string stringified_tuple = "";
                 for(size_t i = 0; i < tuple.size(); i++) stringified_tuple += tuple[i].toString();
                 if(hashed_tuples_.count(stringified_tuple)) continue; // duplicated tuple => skip it.

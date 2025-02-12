@@ -321,11 +321,11 @@ struct SelectStatementData : QueryData {
 };
 
 struct Intersect : QueryData {
-    Intersect(int parent_idx, int lhs, Intersect* rhs, bool all): 
+    Intersect(int parent_idx, QueryData* lhs, Intersect* rhs, bool all): 
         QueryData(INTERSECT, parent_idx), cur_(lhs), next_(rhs), all_(all)
     {}
     ~Intersect() {}
-    int cur_ = -1;  // query idx in the stack.
+    QueryData* cur_ = nullptr;
     QueryData* next_ = nullptr;
     bool all_ = false;
 };
@@ -1318,7 +1318,7 @@ QueryData* Parser::intersect(QueryCTX& ctx, int parent_idx){
     if(idx >= ctx.queries_call_stack_.size()) return nullptr;
     if(ctx.matchTokenType(TokenType::INTERSECT)) { 
         ++ctx;
-        Intersect* i  = new Intersect(parent_idx, idx, nullptr, false);
+        Intersect* i  = new Intersect(parent_idx, ctx.queries_call_stack_[idx], nullptr, false);
         QueryData* next = nullptr;
         if(ctx.matchTokenType(TokenType::ALL)){
             i->all_ = true;
