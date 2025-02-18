@@ -30,6 +30,7 @@ class NileDB {
             delete query_processor_;
             delete engine_;
             delete parser_;
+            delete algebra_engine_;
             delete catalog_;
             delete cache_manager_;
             delete disk_manager_;
@@ -54,6 +55,9 @@ class NileDB {
                     std::cout << tables[i] << std::endl;
                     catalog_->getTableSchema(tables[i])->printSchema();
                 }
+                return true;
+            } else if(command == "\\cache"){
+                cache_manager_->show();
                 return true;
             }
             return false;

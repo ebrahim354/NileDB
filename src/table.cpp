@@ -34,7 +34,9 @@ class Table {
             first_page_id_(first_page_id),
             free_space_map_(fsm)
         {}
-        ~Table(){}
+        ~Table(){
+            delete free_space_map_;
+        }
 
         // should use the free space map to find the closest free space inside of the file
         // or just append it to the end of the file.

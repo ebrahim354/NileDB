@@ -21,23 +21,28 @@ class QueryProcessor{
                 }
                 std::cout << "\n";
                 std::cout << "[ERROR] Invalid query data, status: " << (int) query_ctx.error_status_ << std::endl;
+                query_ctx.clean();
                 return false;
             }
             if(query_ctx.direct_execution_){
                 // DDL commands that operate directly on the system catalog such as create table, create index etc...
-                return engine_->directExecute(query_ctx);
+                bool status =  engine_->directExecute(query_ctx);
+                query_ctx.clean();
+                return status;
             }
             std::cout << "[INFO] Creating logical plan" << std::endl;
             algebra_->createAlgebraExpression(query_ctx);
             if(query_ctx.operators_call_stack_.size() < query_ctx.queries_call_stack_.size() || 
                     query_ctx.error_status_ != Error::NO_ERROR){
                 std::cout << "[ERROR] Invalid logical algebra plan" << std::endl;
+                query_ctx.clean();
                 return false;
             }
 
             bool status = engine_->executePlan(query_ctx, result);
             if(!status)
                 std::cout << "[ERROR] Query can't be executed" << std::endl;
+            query_ctx.clean();
             return status;
         }
 

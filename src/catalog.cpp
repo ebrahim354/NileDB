@@ -37,10 +37,11 @@
 
 class TableSchema {
     public:
-        TableSchema(std::string name, Table* table,const std::vector<Column> columns)
+        TableSchema(std::string name, Table* table,const std::vector<Column> columns,bool tmp_schema = false)
             : table_name_(name),
               table_(table),
-              columns_(columns)
+              columns_(columns),
+              tmp_schema_(tmp_schema) 
         {
             size_ = 0;
             for(auto c : columns){
@@ -48,7 +49,8 @@ class TableSchema {
             }
         }
         ~TableSchema() {
-            delete table_; 
+            if(!tmp_schema_)
+                delete table_; 
         }
 
         std::string getTableName(){
@@ -212,7 +214,8 @@ class TableSchema {
                 char* content = getValue(c.getName(), r, &val.size_);
                 if(!content)
                   return 1;
-                val.content_ = content;
+                val.value_from_size(val.size_);
+                memcpy(val.content_, content, val.size_);
                 val.type_ = c.getType();
                 values.push_back(val);
             }
@@ -262,6 +265,7 @@ class TableSchema {
             return table_;
         }
     private:
+        bool tmp_schema_ = false;
         std::string table_name_;
         Table* table_;
         std::vector<Column> columns_;
@@ -316,6 +320,7 @@ class Catalog {
                 if(!tables_.count(table_name)){
                     PageID first_page = {.file_name_ = table_name+".ndb", .page_num_ = 1};
                     PageID first_fsm_page = {.file_name_ = table_name+"_fsm.ndb", .page_num_ = 1};
+                    // the table owns its free space map pointer and is responsible for deleting it.
                     FreeSpaceMap* free_space = new FreeSpaceMap(cm, first_fsm_page);
                     Table* table = new Table(cm, first_page, free_space);
                     TableSchema* schema = new TableSchema(table_name, table, {});
@@ -336,7 +341,8 @@ class Catalog {
         }
         ~Catalog() {
             delete meta_table_schema_;
-            delete free_space_map_;
+            // don't delete it twice, the meta table will delete it.
+            // delete free_space_map_;
             for(auto table : tables_){
                 delete tables_[table.first];
             }

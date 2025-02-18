@@ -1,5 +1,6 @@
 #pragma once
 #include "catalog.cpp"
+#include "executor.cpp"
 #include "parser.cpp"
 #include "expression.cpp"
 #include "algebra_engine.cpp"
@@ -25,49 +26,17 @@ typedef std::vector<std::vector<Value>> QueryResult;
 
 
 
-enum ExecutorType {
-    SEQUENTIAL_SCAN_EXECUTOR = 0,
-    INSERTION_EXECUTOR,
-    FILTER_EXECUTOR,
-    AGGREGATION_EXECUTOR,
-    PROJECTION_EXECUTOR,
-    SORT_EXECUTOR,
-    DISTINCT_EXECUTOR,
-    PRODUCT_EXECUTOR,
-
-    UNION_EXECUTOR,
-    EXCEPT_EXECUTOR,
-    INTERSECT_EXECUTOR,
-};
-
-struct Executor {
-    public:
-        Executor(ExecutorType type, TableSchema* output_schema, QueryCTX& ctx,int query_idx, int parent_query_idx, Executor* child): 
-            type_(type), output_schema_(output_schema), ctx_(ctx), 
-            query_idx_(query_idx), parent_query_idx_(parent_query_idx), child_executor_(child)
-        {}
-        ~Executor() {}
-        virtual void init() = 0;
-        virtual std::vector<Value> next() = 0;
-
-        ExecutorType type_;
-        Executor* child_executor_ = nullptr;
-        TableSchema* output_schema_ = nullptr;
-        std::vector<Value> output_ = {};
-        bool error_status_ = 0;
-        bool finished_ = 0;
-        int query_idx_ = -1;
-        int parent_query_idx_ = -1;
-        QueryCTX& ctx_;
-};
-
 class ProductExecutor : public Executor {
     public:
         ProductExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs)
             : Executor(PRODUCT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs)
         {}
         ~ProductExecutor()
-        {}
+        {
+            delete left_child_;  
+            delete right_child_;
+            delete output_schema_;
+        }
 
         void init() {
             error_status_ = 0;
@@ -261,11 +230,15 @@ class SeqScanExecutor : public Executor {
             : Executor(SEQUENTIAL_SCAN_EXECUTOR, table, ctx, query_idx, parent_query_idx, nullptr), table_(table)
         {}
         ~SeqScanExecutor()
-        {}
+        {
+            delete it_;
+            delete table_;
+        }
 
         void init() {
             error_status_ = 0;
             finished_ = 0;
+            delete it_;
             it_ = table_->getTable()->begin();
         }
 
@@ -390,6 +363,7 @@ class InsertionExecutor : public Executor {
             RecordID* rid = new RecordID();
             Record* record = table_->translateToRecord(vals_);
             int err = table_->getTable()->insertRecord(rid, *record);
+            delete record;//??
             if(err) {
                 error_status_ = 1;
                 return {};
@@ -635,7 +609,9 @@ class AggregationExecutor : public Executor {
             Executor(AGGREGATION_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child_executor), aggregates_(aggregates), group_by_(group_by)
         {}
         ~AggregationExecutor()
-        {}
+        {
+            delete output_schema_;
+        }
 
         Value evaluate(ASTNode* item){
             if(item->category_ != FIELD && item->category_ != SCOPED_FIELD){
@@ -828,7 +804,10 @@ class ProjectionExecutor : public Executor {
             Executor(PROJECTION_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child_executor), fields_(fields)
         {}
         ~ProjectionExecutor()
-        {}
+        {
+            std::cout << "Projection Executor\n";
+            delete child_executor_;
+        }
 
         Value evaluate(ASTNode* item){
             if(item->category_ == SUB_QUERY){
@@ -1301,7 +1280,7 @@ class ExecutionEngine {
                             new_cols.push_back(Column(col_name, INT, offset_ptr));
                             offset_ptr += Column::getSizeFromType(INT);
                         }
-                        TableSchema* new_output_schema = new TableSchema("agg_tmp_schema", nullptr, new_cols);
+                        TableSchema* new_output_schema = new TableSchema("agg_tmp_schema", nullptr, new_cols, true);
 
                         return new AggregationExecutor(child, new_output_schema, op->aggregates_, op->group_by_, ctx, query_idx, parent_query_idx);
                     } break;
@@ -1331,7 +1310,7 @@ class ExecutionEngine {
                             columns[i].setName(col_name);
                         }
 
-                        TableSchema* new_output_schema = new TableSchema(tname, schema->getTable(), columns);
+                        TableSchema* new_output_schema = new TableSchema(tname, schema->getTable(), columns, true);
                         SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
                         return scan;
                     } break;
@@ -1345,7 +1324,7 @@ class ExecutionEngine {
                         for(int i = 0; i < rhs_columns.size(); i++)
                             lhs_columns.push_back(rhs_columns[i]);
 
-                        TableSchema* product_output_schema = new TableSchema("TMP_PRODUCT_TABLE", nullptr, lhs_columns);
+                        TableSchema* product_output_schema = new TableSchema("TMP_PRODUCT_TABLE", nullptr, lhs_columns, true);
                         ProductExecutor* product = new ProductExecutor(product_output_schema, ctx, query_idx, parent_query_idx, lhs, rhs);
                         return product;
                     } break;

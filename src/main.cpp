@@ -23,6 +23,7 @@ int main() {
         query += tmp;
         outer_query = "";
         QueryResult result =  QueryResult();
+        if(query == "quit") break;
         if(query[0] == '\\')
             std::cout << (ndb->CMD(query) ? "SUCCESS" : "FAIL") << std::endl;
         else{
@@ -41,6 +42,7 @@ int main() {
             }
             std::cout << "SUCCESS" << std::endl;
         }
+        result = QueryResult();
     }
     delete ndb;
     return 0;

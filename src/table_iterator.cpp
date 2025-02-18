@@ -30,9 +30,10 @@ class TableIterator {
             if(!cur_page_) return false;
             char* tmp = nullptr;
             int32_t next_slot = cur_slot_idx_+1;
-            uint32_t* rsize =  new uint32_t(0);
+            uint32_t rsize =  0;
+            //uint32_t* rsize =  new uint32_t(0);
             // iterate through records of the current page.
-            while(next_slot < cur_num_of_slots_ && cur_page_->getRecord(&tmp, rsize, next_slot)){
+            while(next_slot < cur_num_of_slots_ && cur_page_->getRecord(&tmp, &rsize, next_slot)){
                 cur_slot_idx_ = next_slot;
                 next_slot++;
             }
@@ -68,10 +69,11 @@ class TableIterator {
 
         Record getCurRecordCpy(){
             char* cur_data = nullptr;
-            uint32_t* rsize = new uint32_t(0);
-            int err = cur_page_->getRecord(&cur_data, rsize, cur_slot_idx_);
+            //uint32_t* rsize = new uint32_t(0);
+            uint32_t rsize = 0;
+            int err = cur_page_->getRecord(&cur_data, &rsize, cur_slot_idx_);
             if(err) return Record(nullptr, 0);
-            return  Record(cur_data, *rsize);
+            return  Record(cur_data, rsize);
         }
 
         RecordID getCurRecordID(){

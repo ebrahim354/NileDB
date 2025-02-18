@@ -1,41 +1,9 @@
 #pragma once
 #include "parser.cpp"
+#include "algebra_operation.cpp"
 #include <vector>
 
 
- enum AlgebraOperationType {
-    // single table operations.
-    SCAN,
-    FILTER, 
-    AGGREGATION,
-    PROJECTION,
-    SORT,
-    LIMIT,
-    RENAME,
-    INSERTION,
-
-    // two table operations.
-    PRODUCT,
-    JOIN,
-    // set operations
-    // AL => algebra.
-    AL_UNION, 
-    AL_EXCEPT,
-    AL_INTERSECT,
-};
-
-
-struct AlgebraOperation {
-    public:
-        AlgebraOperation (AlgebraOperationType type, QueryCTX& ctx) : 
-            type_(type), ctx_(ctx)
-        {}
-        QueryCTX& ctx_;
-        AlgebraOperationType type_;
-        int query_idx_ = -1;
-        int query_parent_idx_ = -1;
-        bool distinct_ = false;
-};
 
 struct ScanOperation: AlgebraOperation {
     public:
@@ -56,7 +24,10 @@ struct UnionOperation: AlgebraOperation {
             AlgebraOperation(AL_UNION, ctx), lhs_(lhs), rhs_(rhs), all_(all)
         {}
         ~UnionOperation()
-        {}
+        {
+            delete lhs_;
+            delete rhs_;
+        }
 
         AlgebraOperation* lhs_ = nullptr;
         AlgebraOperation* rhs_ = nullptr;
@@ -69,7 +40,10 @@ struct ExceptOperation: AlgebraOperation {
             AlgebraOperation(AL_EXCEPT, ctx), lhs_(lhs), rhs_(rhs), all_(all)
         {}
         ~ExceptOperation()
-        {}
+        {
+            delete lhs_;
+            delete rhs_;
+        }
 
         AlgebraOperation* lhs_ = nullptr;
         AlgebraOperation* rhs_ = nullptr;
@@ -82,7 +56,10 @@ struct IntersectOperation: AlgebraOperation {
             AlgebraOperation(AL_INTERSECT, ctx), lhs_(lhs), rhs_(rhs), all_(all)
         {}
         ~IntersectOperation()
-        {}
+        {
+            delete lhs_;
+            delete rhs_;
+        }
 
         AlgebraOperation* lhs_ = nullptr;
         AlgebraOperation* rhs_ = nullptr;
@@ -95,7 +72,10 @@ struct ProductOperation: AlgebraOperation {
             AlgebraOperation(PRODUCT, ctx), lhs_(lhs), rhs_(rhs)
         {}
         ~ProductOperation()
-        {}
+        {
+            delete lhs_;
+            delete rhs_;
+        }
 
         AlgebraOperation* lhs_ = nullptr;
         AlgebraOperation* rhs_ = nullptr;
@@ -122,7 +102,9 @@ struct FilterOperation: AlgebraOperation {
             field_names_(field_names)
         {}
         ~FilterOperation()
-        {}
+        {
+            delete child_;
+        }
         ExpressionNode* filter_;
         std::vector<ExpressionNode*> fields_;
         std::vector<std::string> field_names_;
@@ -138,7 +120,9 @@ struct AggregationOperation: AlgebraOperation {
             group_by_(group_by)
         {}
         ~AggregationOperation()
-        {}
+        {
+            delete child_;
+        }
         AlgebraOperation* child_ = nullptr;
         std::vector<AggregateFuncNode*> aggregates_;
         std::vector<ASTNode*> group_by_;
@@ -153,7 +137,9 @@ struct ProjectionOperation: AlgebraOperation {
             fields_(fields)
         {}
         ~ProjectionOperation()
-        {}
+        {
+            delete child_;
+        }
         AlgebraOperation* child_ = nullptr;
         std::vector<ExpressionNode*> fields_;
 };
@@ -166,7 +152,9 @@ struct SortOperation: AlgebraOperation {
             order_by_list_(order_by_list)
         {}
         ~SortOperation()
-        {}
+        {
+            delete child_;
+        }
         AlgebraOperation* child_ = nullptr;
         std::vector<int> order_by_list_;
 

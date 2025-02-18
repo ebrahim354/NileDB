@@ -4,10 +4,10 @@
 #include "catalog.cpp"
 #include "utils.cpp"
 #include "query_ctx.cpp"
+#include "query_data.cpp"
 #include <cmath>
 
 struct ExpressionNode;
-struct QueryData;
 
 
 // The grammer rules are defined as structures, each struct is following the name convention: CategoryNameNode,
@@ -74,18 +74,6 @@ AggregateFuncType getAggFuncType(std::string& func){
 
 
 
-enum QueryType {
-    SELECT_DATA = 0,
-    CREATE_TABLE_DATA,
-    CREATE_INDEX_DATA,
-    INSERT_DATA,
-    DELETE_DATA,
-    UPDATE_DATA,
-    // set operations.
-    UNION,
-    INTERSECT,
-    EXCEPT
-};
 
 enum CategoryType {
     FIELD,       
@@ -146,14 +134,53 @@ enum CategoryType {
 struct ASTNode {
     ASTNode(CategoryType ct, Token val = {}): category_(ct), token_(val)
     {}
+    virtual ~ASTNode(){};
     CategoryType category_;
     Token token_; 
 };
+
+struct AggregateFuncNode : ASTNode {
+    AggregateFuncNode(ExpressionNode* exp, AggregateFuncType type, int parent_id = 0): 
+        ASTNode(AGG_FUNC), exp_(exp), type_(type), parent_id_(parent_id)
+    {}
+    ~AggregateFuncNode();
+    int parent_id_ = 0;
+    ExpressionNode* exp_ = nullptr;
+    AggregateFuncType type_;
+};
+
+struct ExpressionNode : ASTNode {
+    ExpressionNode(QueryData* top_level_statement, int query_idx, ASTNode* val = nullptr): 
+        ASTNode(EXPRESSION), cur_(val), query_idx_(query_idx), top_level_statement_(top_level_statement)
+    {}
+    ~ExpressionNode(){
+        delete cur_;
+        // belongs to statement can't delete.
+        // delete aggregate_func_;
+    }
+    int id_ = 0; // 0 means it's a single expression => usually used in a where clause and can't have aggregations.
+    int query_idx_ = -1; // the index of the query that this expression belongs to, -1 means top level query
+    QueryData* top_level_statement_ = nullptr;
+    ASTNode* cur_ = nullptr;
+    AggregateFuncNode* aggregate_func_ = nullptr; // each expression can hold at most 1 aggregate function inside of it.
+                                                  // meaning that expressions with aggregate functions can't be nested.
+};
+
+AggregateFuncNode::~AggregateFuncNode(){
+    delete exp_;
+}
 
 struct CaseExpressionNode : ASTNode {
     CaseExpressionNode(std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs, ExpressionNode* else_exp, ExpressionNode* initial_value):
         ASTNode(CASE_EXPRESSION), when_then_pairs_(when_then_pairs), else_(else_exp), initial_value_(initial_value)
     {}
+    ~CaseExpressionNode(){
+       delete initial_value_; 
+       for(int i = 0; i < when_then_pairs_.size(); ++i){
+           delete when_then_pairs_[i].first;
+           delete when_then_pairs_[i].second;
+       }
+    }
     ExpressionNode* initial_value_ = nullptr;
     std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs_; // should be evaluated in order.
     ExpressionNode* else_ = nullptr;
@@ -164,6 +191,9 @@ struct CaseExpressionNode : ASTNode {
 struct ScopedFieldNode : ASTNode {
     ScopedFieldNode(Token f, ASTNode* table): ASTNode(SCOPED_FIELD, f), table_(table)
     {}
+    ~ScopedFieldNode(){
+        delete table_;
+    }
     ASTNode* table_ = nullptr;
 };
 
@@ -181,6 +211,9 @@ struct TypeCastNode : ASTNode {
     TypeCastNode(ExpressionNode* exp, Type new_type): 
         ASTNode(TYPE_CAST), exp_(exp), type_(new_type)
     {}
+    ~TypeCastNode(){
+        delete exp_;
+    }
     Type type_ = INVALID;
     ExpressionNode* exp_ = nullptr;
 };
@@ -189,29 +222,32 @@ struct ScalarFuncNode : ASTNode {
     ScalarFuncNode(std::vector<ExpressionNode*> arguments, std::string name, int parent_id = 0): 
         ASTNode(SCALAR_FUNC), args_(arguments), name_(name), parent_id_(parent_id)
     {}
+    ~ScalarFuncNode(){
+        for(int i = 0; i < args_.size(); ++i)
+            delete args_[i];
+    }
     std::string name_;
     int parent_id_ = 0;
     std::vector<ExpressionNode*> args_ = {};
 };
 
-struct AggregateFuncNode : ASTNode {
-    AggregateFuncNode(ExpressionNode* exp, AggregateFuncType type, int parent_id = 0): 
-        ASTNode(AGG_FUNC), exp_(exp), type_(type), parent_id_(parent_id)
-    {}
-    int parent_id_ = 0;
-    ExpressionNode* exp_ = nullptr;
-    AggregateFuncType type_;
-};
 
 struct UnaryNode : ASTNode {
     UnaryNode(ASTNode* val, Token op={}): ASTNode(UNARY, op), cur_(val)
     {}
+    ~UnaryNode(){
+        delete cur_;
+    }
     ASTNode* cur_ = nullptr;
 };
 
 struct FactorNode : ASTNode {
     FactorNode(UnaryNode* lhs, FactorNode* rhs = nullptr, Token op={}): ASTNode(FACTOR, op), cur_(lhs), next_(rhs)
     {}
+    ~FactorNode(){
+        delete cur_;
+        delete next_;
+    }
     UnaryNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
@@ -219,6 +255,10 @@ struct FactorNode : ASTNode {
 struct TermNode : ASTNode {
     TermNode(FactorNode* lhs, TermNode* rhs = nullptr, Token op={}): ASTNode(TERM, op), cur_(lhs), next_(rhs)
     {}
+    ~TermNode(){
+        delete cur_;
+        delete next_;
+    }
     FactorNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
@@ -226,6 +266,10 @@ struct TermNode : ASTNode {
 struct ComparisonNode : ASTNode {
     ComparisonNode(TermNode* lhs, ComparisonNode* rhs = nullptr, Token op={}): ASTNode(COMPARISON, op), cur_(lhs), next_(rhs)
     {}
+    ~ComparisonNode(){
+        delete cur_;
+        delete next_;
+    }
     TermNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
@@ -233,6 +277,10 @@ struct ComparisonNode : ASTNode {
 struct EqualityNode : ASTNode {
     EqualityNode(ComparisonNode* lhs, EqualityNode* rhs = nullptr, Token op={}): ASTNode(EQUALITY, op), cur_(lhs), next_(rhs)
     {}
+    ~EqualityNode(){
+        delete cur_;
+        delete next_;
+    }
     ComparisonNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
@@ -241,6 +289,12 @@ struct InNode : ASTNode {
     InNode(ASTNode* val, std::vector<ASTNode*> list, bool negated): 
         ASTNode(IN), val_(val), list_(list), negated_(negated) 
     {}
+    ~InNode(){
+        delete val_;
+        for(int i = 0; i < list_.size(); ++i){
+            delete list_[i];
+        }
+    }
     ASTNode* val_ = nullptr;
     std::vector<ASTNode*> list_;
     bool negated_ = false;
@@ -250,6 +304,11 @@ struct BetweenNode : ASTNode {
     BetweenNode(ASTNode* val, ASTNode* lhs, ASTNode* rhs, bool negated): 
         ASTNode(BETWEEN), lhs_(lhs), rhs_(rhs), val_(val), negated_(negated)
     {}
+    ~BetweenNode(){
+        delete val_;
+        delete lhs_;
+        delete rhs_;
+    }
     ASTNode* val_ = nullptr;
     ASTNode* lhs_ = nullptr;
     ASTNode* rhs_ = nullptr;
@@ -259,6 +318,9 @@ struct BetweenNode : ASTNode {
 struct NotNode : ASTNode {
     NotNode(BetweenNode* cur=nullptr, Token op={}): ASTNode(NOT, op), cur_(cur)
     {}
+    ~NotNode(){
+        delete cur_;
+    }
     BetweenNode* cur_ = nullptr;
     // only works if an odd number of NOT operators are listed: NOT 1, NOT NOT NOT 1 = false, but NOT NOT 1 = true,
     // the effective_ variable captures if it works or not.
@@ -269,6 +331,10 @@ struct NotNode : ASTNode {
 struct AndNode : ASTNode {
     AndNode(NotNode* lhs, AndNode* rhs = nullptr, Token op={}): ASTNode(AND, op), cur_(lhs), next_(rhs)
     {}
+    ~AndNode(){
+        delete cur_;
+        delete next_;
+    }
     NotNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
@@ -276,36 +342,31 @@ struct AndNode : ASTNode {
 struct OrNode : ASTNode {
     OrNode(AndNode* lhs, OrNode* rhs = nullptr, Token op={}): ASTNode(OR, op), cur_(lhs), next_(rhs)
     {}
+    ~OrNode(){
+        delete cur_;
+        delete next_;
+    }
     AndNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
 
-struct ExpressionNode : ASTNode {
-    ExpressionNode(QueryData* top_level_statement, int query_idx, ASTNode* val = nullptr): 
-        ASTNode(EXPRESSION), cur_(val), query_idx_(query_idx), top_level_statement_(top_level_statement)
-    {}
-    int id_ = 0; // 0 means it's a single expression => usually used in a where clause and can't have aggregations.
-    int query_idx_ = -1; // the index of the query that this expression belongs to, -1 means top level query
-    QueryData* top_level_statement_ = nullptr;
-    ASTNode* cur_ = nullptr;
-    AggregateFuncNode* aggregate_func_ = nullptr; // each expression can hold at most 1 aggregate function inside of it.
-                                                  // meaning that expressions with aggregate functions can't be nested.
-};
 
 // SQL statement data wrappers.
-struct QueryData {
-    QueryData(QueryType type, int parent_idx): type_(type), parent_idx_(parent_idx)
-    {}
-    QueryType type_;
-    int idx_ = -1;          // every query must have an id starting from 0 even the top level query.
-    int parent_idx_ = -1;   // -1 means this query is the top level query.
-};
 
 struct SelectStatementData : QueryData {
 
     SelectStatementData(int parent_idx): QueryData(SELECT_DATA, parent_idx)
     {}
-    ~SelectStatementData() {}
+    ~SelectStatementData() {
+        for(int i = 0; i < fields_.size(); ++i)
+            delete fields_[i];
+        for(int i = 0; i < aggregates_.size(); ++i)
+            delete aggregates_[i];
+        delete where_;
+        delete having_;
+        for(int i = 0; i < group_by_.size(); ++i)
+            delete group_by_[i];
+    }
 
     std::vector<ExpressionNode*> fields_ = {};
     std::vector<std::string> field_names_ = {};
@@ -324,7 +385,12 @@ struct Intersect : QueryData {
     Intersect(int parent_idx, QueryData* lhs, Intersect* rhs, bool all): 
         QueryData(INTERSECT, parent_idx), cur_(lhs), next_(rhs), all_(all)
     {}
-    ~Intersect() {}
+    ~Intersect() {
+        // set operations don't own the queries so we can't do this:
+        // the ownership of queries belongs to the query ctx.
+        // delete cur_;
+        // delete next_;
+    }
     QueryData* cur_ = nullptr;
     QueryData* next_ = nullptr;
     bool all_ = false;
@@ -373,7 +439,10 @@ struct CreateIndexStatementData : QueryData {
 struct InsertStatementData : QueryData {
 
     InsertStatementData(int parent_idx): QueryData(INSERT_DATA, parent_idx){}
-    ~InsertStatementData() {}
+    ~InsertStatementData() {
+        for(int i = 0; i < values_.size();++i)
+            delete values_[i];
+    }
 
 
     std::string table_name_ = {};
@@ -384,7 +453,9 @@ struct InsertStatementData : QueryData {
 struct DeleteStatementData : QueryData {
 
     DeleteStatementData(int parent_idx): QueryData(DELETE_DATA, parent_idx){}
-    ~DeleteStatementData() {}
+    ~DeleteStatementData() {
+        delete where_;
+    }
 
 
     std::string table_name_ = {};
@@ -394,7 +465,10 @@ struct DeleteStatementData : QueryData {
 struct UpdateStatementData : QueryData {
 
     UpdateStatementData(int parent_idx): QueryData(UPDATE_DATA, parent_idx){}
-    ~UpdateStatementData() {}
+    ~UpdateStatementData() {
+        delete value_;
+        delete where_;
+    }
 
 
     std::string table_name_ = {};
@@ -408,129 +482,6 @@ class Parser {
         Parser(Catalog* c): catalog_(c)
         {}
         ~Parser(){}
-        /*
-        // the user of this method is the one who should check to see if it's ok to use, this table name or not
-        // using the catalog.
-        // for example: a create statement should check if this table name is used before or not to avoid duplication,
-        // however a select statement should check if this table name exists to search inside of it.
-        // this usage is applied for all premitive Categories.
-        
-
-        PredicateNode* predicate(){
-            ASTNode* t = term();
-            if(!t) return nullptr;
-            PredicateNode* nw_p = new PredicateNode();
-            nw_p->term_ = reinterpret_cast<TermNode*>(t);
-            // add support for different predicates later.
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "AND"){
-                nw_p->token_ = tokens_[cur_pos_++];
-                nw_p->next_ = predicate();
-            }
-            return nw_p;
-        }
-
-
-
-
-        FieldListNode* fieldList(){
-            ASTNode* f = field();
-            if(!f) return nullptr;
-            
-
-            FieldListNode* nw_fl = new FieldListNode();
-            nw_fl->field_ = f;
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == ","){
-                cur_pos_++;
-                nw_fl->next_ = fieldList();
-            }
-            return nw_fl;
-        }
-
-
-        DeleteStatementNode* deleteStatement(){
-            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "FROM")
-                return nullptr;
-            cur_pos_++;
-
-            // if there is no filter predicate it is just going to be null.
-            DeleteStatementNode* statement = new DeleteStatementNode();
-
-            statement->table_ = table(); 
-            if(!statement->table_)
-                return nullptr;
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
-                cur_pos_++;
-                statement->predicate_ = predicate();
-            }
-            return statement; 
-        }
-
-        UpdateStatementNode* updateStatement(){
-            // if there is no filter predicate it is just going to be null.
-            UpdateStatementNode* statement = new UpdateStatementNode();
-
-            statement->table_ = this->table(); 
-            if(!statement->table_) return nullptr;
-
-            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "SET"){
-                statement->clean();
-                return nullptr;
-            }
-            cur_pos_++;
-
-            statement->field_ = field();
-            if(!statement->field_) {
-                statement->clean();
-                return nullptr;
-            }
-
-            if(cur_pos_ >= cur_size_ || tokens_[cur_pos_].val_ != "="){
-                statement->clean();
-                return nullptr;
-            }
-            cur_pos_++;
-
-            statement->expression_ = expression(nullptr, -1, 0);
-            if(!statement->expression_) {
-                statement->clean();
-                return nullptr;
-            }
-
-
-            if(cur_pos_ < cur_size_ && tokens_[cur_pos_].val_ == "WHERE"){
-                cur_pos_++;
-                statement->predicate_ = predicate();
-            }
-            return statement; 
-        }
-*/
-
-        /*
-        // legacy parse command will be replaced in the future.
-        ASTNode* parse(std::string& query){
-            tokens_ = tokenizer_.tokenize(query);
-            cur_size_ = tokens_.size();
-            if(cur_size_ == 0 || tokens_[0].type_ != KEYWORD) return nullptr;
-            std::string v = tokens_[0].val_;
-            cur_pos_ = 1;
-            ASTNode* ret = nullptr;
-
-            if(v == "INSERT")
-                ret = insertStatement();
-            else if(v == "DELETE")
-                ret =  deleteStatement();
-            else if(v == "UPDATE")
-                ret = updateStatement();
-            else if(v == "CREATE")
-                ret = createTableStatement();
-
-            // invalid query even if it produces a valid AST.
-            if(cur_pos_ != cur_size_) return nullptr;
-
-            // current statement is not supported yet.
-            return ret;
-        }
-        */
         ASTNode* constant(QueryCTX& ctx);
         ASTNode* table(QueryCTX& ctx);
         ASTNode* field(QueryCTX& ctx);

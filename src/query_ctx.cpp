@@ -1,11 +1,11 @@
 #pragma once
 #include "tokenizer.cpp"
 #include "error.cpp"
+#include "executor.cpp"
+#include "algebra_operation.cpp"
+#include "query_data.cpp"
 
 struct ExpressionNode;
-struct QueryData;
-struct AlgebraOperation;
-struct Executor;
 
 // assuming average token size is 4.
 #define AVG_TOKEN_SIZE 4
@@ -52,6 +52,20 @@ struct QueryCTX {
     // might give out of bounds.
     inline Token getCurrentToken(){
         return tokens_[cursor_];
+    }
+
+    void clean(){
+        if(executors_call_stack_.size() > 0)
+            delete executors_call_stack_[0];
+        if(operators_call_stack_.size() > 0)
+            delete operators_call_stack_[0];
+        for(int i = 0; i < set_operations_.size(); ++i)
+            delete set_operations_[i];
+        for(int i = 0; i < queries_call_stack_.size(); ++i)
+            delete queries_call_stack_[i];
+
+        // TODO: clean the rest of the context.
+        // TODO: clean specific pointers when dealing with set operations.
     }
 
     std::vector<Token> tokens_;

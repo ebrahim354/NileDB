@@ -11,7 +11,14 @@ class Value {
         uint16_t size_ = 0;
         Type type_ = INVALID;
         //Value(){} 
-        ~Value(){}
+        void value_from_size(int sz){
+            size_ = sz;
+            delete [] content_;
+            content_ = new char[size_];
+        }
+        ~Value(){
+            delete [] content_;
+        }
 
         Value(Type type = NULL_TYPE){
             type_ = type;
@@ -21,6 +28,7 @@ class Value {
         Value(const Value& rhs){
             this->size_ = rhs.size_;
             if(!rhs.isNull()){
+                delete[] this->content_;
                 this->content_ = new char[size_];
                 memcpy(this->content_, rhs.content_, size_);
             }
@@ -30,6 +38,7 @@ class Value {
         Value& operator=(const Value& rhs){
             this->size_ = rhs.size_;
             if(!rhs.isNull()){
+                delete[] this->content_;
                 this->content_ = new char[size_];
                 memcpy(this->content_, rhs.content_, size_);
             }
