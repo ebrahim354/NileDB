@@ -90,6 +90,7 @@ class UnionExecutor : public Executor {
         UnionExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs)
             : Executor(UNION_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs)
         {}
+        // doesn't own its children, so no cleaning needed.
         ~UnionExecutor()
         {}
 
@@ -134,6 +135,7 @@ class ExceptExecutor : public Executor {
         ExceptExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs)
             : Executor(EXCEPT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs)
         {}
+        // doesn't own its children, so no cleaning needed.
         ~ExceptExecutor()
         {}
 
@@ -181,6 +183,7 @@ class IntersectExecutor : public Executor {
         IntersectExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs)
             : Executor(INTERSECT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs)
         {}
+        // doesn't own its children, so no cleaning needed.
         ~IntersectExecutor()
         {}
 
@@ -363,7 +366,8 @@ class InsertionExecutor : public Executor {
             RecordID* rid = new RecordID();
             Record* record = table_->translateToRecord(vals_);
             int err = table_->getTable()->insertRecord(rid, *record);
-            delete record;//??
+            delete record;
+            delete rid;
             if(err) {
                 error_status_ = 1;
                 return {};
@@ -393,7 +397,9 @@ class FilterExecutor : public Executor {
               fields_(fields), field_names_(field_names)
         {}
         ~FilterExecutor()
-        {}
+        {
+            delete child_executor_;
+        }
 
         Value evaluate(ASTNode* item){
 
@@ -611,6 +617,7 @@ class AggregationExecutor : public Executor {
         ~AggregationExecutor()
         {
             delete output_schema_;
+            delete child_executor_;
         }
 
         Value evaluate(ASTNode* item){
@@ -805,7 +812,6 @@ class ProjectionExecutor : public Executor {
         {}
         ~ProjectionExecutor()
         {
-            std::cout << "Projection Executor\n";
             delete child_executor_;
         }
 
@@ -1003,7 +1009,9 @@ class SortExecutor : public Executor {
             Executor(SORT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child_executor), order_by_list_(order_by_list)
         {}
         ~SortExecutor()
-        {}
+        {
+            delete child_executor_;
+        }
 
         void init() {
             if(idx_ != 0) {
@@ -1055,7 +1063,9 @@ class DistinctExecutor : public Executor {
             Executor(DISTINCT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child_executor)
         {}
         ~DistinctExecutor()
-        {}
+        {
+            delete child_executor_;
+        }
 
         void init() {
             finished_ = 0;

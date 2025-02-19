@@ -55,17 +55,15 @@ struct QueryCTX {
     }
 
     void clean(){
-        if(executors_call_stack_.size() > 0)
-            delete executors_call_stack_[0];
-        if(operators_call_stack_.size() > 0)
-            delete operators_call_stack_[0];
+        for(int i = 0; i < executors_call_stack_.size(); ++i)
+            delete executors_call_stack_[i];
+        for(int i = 0; i < operators_call_stack_.size(); ++i)
+            delete operators_call_stack_[i];
         for(int i = 0; i < set_operations_.size(); ++i)
             delete set_operations_[i];
         for(int i = 0; i < queries_call_stack_.size(); ++i)
             delete queries_call_stack_[i];
-
-        // TODO: clean the rest of the context.
-        // TODO: clean specific pointers when dealing with set operations.
+        // TODO: clean specific pointers when dealing with set operations?
     }
 
     std::vector<Token> tokens_;

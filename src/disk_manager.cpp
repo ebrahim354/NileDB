@@ -51,14 +51,13 @@ DiskManager::~DiskManager(){
     for(auto &file : cached_files_){
         // need to write the changes of free list pointer and number of pages before closing.
         // will be changed by adding fault handling.
-        char* bytes = new char[8];
+        char bytes[8];
         memcpy(bytes, &file.second.freelist_ptr_, sizeof(int));
         memcpy(bytes+sizeof(int), &file.second.num_of_pages_, sizeof(int));
         file.second.fs_.seekp(0);
         file.second.fs_.write(bytes, sizeof(int) * 2);
         file.second.fs_.flush();
         file.second.fs_.close();
-        delete[] bytes;
     }
 }
 
@@ -114,21 +113,21 @@ int DiskManager::allocateNewPage(std::string file_name, char* buffer , PageID *p
         // (adding fault and log handling might change this).
 
         cached_files_[file_name].num_of_pages_++;
-        char* bytes = new char[8];
+        char bytes[8];
         memcpy(bytes, &cached_files_[file_name].freelist_ptr_, sizeof(int));
         memcpy(bytes+sizeof(int), &cached_files_[file_name].num_of_pages_, sizeof(int));
         file_stream->seekp(0);
         file_stream->write(bytes, sizeof(int) * 2);
         file_stream->flush();
     } else {
-        char* bytes = new char[sizeof(int)]; 
+        char bytes[4];
         int next;
         // seek to start of page -> read first 4 bytes
         // -> seek back to the start -> write the buffer (slow for now but should work 
         // maybe replaced with a freelist array at the meta page instead).
         int next_free_offset = next_free_page * PAGE_SIZE;
         file_stream->seekp(next_free_offset);
-        file_stream->read(bytes, sizeof(int));
+        file_stream->read(bytes, 4);
 
         uint32_t read_count = file_stream->gcount();
         if (read_count < sizeof(bytes)) {
@@ -241,11 +240,12 @@ int DiskManager::openFile(std::string file_name){
         cached_files_[file_name].fs_ = std::fstream(file_name, std::ios::binary | std::ios::out | std::ios::in);
         cached_files_[file_name].freelist_ptr_ = 0;
         cached_files_[file_name].num_of_pages_ = 1;
+        delete [] first_page;
         return 0;
     }
     // at this point we need to get the next free page of this file.
     // read the first and secocnd 4 bytes (sizeof int) then put them into the cache.
-    char* bytes =  new char[sizeof(int) * 2]; 
+    char bytes[8]; 
     // seek to the begining of the file.
     cached_files_[file_name].fs_.seekp(0);
     cached_files_[file_name].fs_.read(bytes, 8);
@@ -255,7 +255,6 @@ int DiskManager::openFile(std::string file_name){
     int num_of_pages = -1;
     memcpy(&next_free_page, bytes, sizeof(int));
     memcpy(&num_of_pages, bytes+sizeof(int), sizeof(int));
-    delete[] bytes;
     if (read_count < 8) {
         //std::cout << "open file error: invalid read count : " << read_count << " " << next_free_page << " " <<
         //   num_of_pages << std::endl;

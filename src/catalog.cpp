@@ -258,7 +258,7 @@ class TableSchema {
                 }
             }
 
-            auto r = new Record(data, fixed_part_size + var_part_size);
+            auto r = new Record(data, fixed_part_size + var_part_size, false); // false => record owns the data ptr now.
             return r;
         }
         Table* getTable(){
@@ -387,6 +387,8 @@ class Catalog {
                     // rid is not used for now.
                     RecordID* rid = new RecordID();
                     int err = meta_table_schema_->getTable()->insertRecord(rid, *record);
+                    delete rid;
+                    delete record;
                     if(err) return nullptr;
                 }
                 return schema;

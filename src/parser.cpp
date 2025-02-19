@@ -175,11 +175,12 @@ struct CaseExpressionNode : ASTNode {
         ASTNode(CASE_EXPRESSION), when_then_pairs_(when_then_pairs), else_(else_exp), initial_value_(initial_value)
     {}
     ~CaseExpressionNode(){
-       delete initial_value_; 
-       for(int i = 0; i < when_then_pairs_.size(); ++i){
-           delete when_then_pairs_[i].first;
-           delete when_then_pairs_[i].second;
-       }
+        delete initial_value_; 
+        delete else_;
+        for(int i = 0; i < when_then_pairs_.size(); ++i){
+            delete when_then_pairs_[i].first;
+            delete when_then_pairs_[i].second;
+        }
     }
     ExpressionNode* initial_value_ = nullptr;
     std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs_; // should be evaluated in order.
@@ -645,6 +646,7 @@ void Parser::selectList(QueryCTX& ctx, int query_idx){
             ++ctx;
             rename = true;
             if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
+                delete f;
                 ctx.error_status_ = Error::EXPECTED_IDENTIFIER;
                 return;
             } else {
@@ -880,12 +882,22 @@ ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
             break;
         ++ctx;
         auto when = expression(ctx, query_idx, id);
-        if(!when) return nullptr;
-        if(!ctx.matchTokenType(TokenType::THEN)) 
+        if(!when) {
+            delete initial_value;
             return nullptr;
+        }
+        if(!ctx.matchTokenType(TokenType::THEN)) {
+            delete initial_value;
+            delete when;
+            return nullptr;
+        }
         ++ctx;
         auto then = expression(ctx, query_idx, id);
-        if(!then) return nullptr;
+        if(!then) {
+            delete initial_value;
+            delete when;
+            return nullptr;
+        }
 
         when_then_pairs.push_back({when, then});
     }
@@ -893,16 +905,24 @@ ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if(ctx.matchTokenType(TokenType::ELSE)) {
         ++ctx;
         else_exp = expression(ctx, query_idx, id);
-        if(!else_exp) return nullptr;
+        if(!else_exp) {
+            delete initial_value;
+            return nullptr;
+        }
     }
     // must have END
-    if(!ctx.matchTokenType(TokenType::END)) 
+    if(!ctx.matchTokenType(TokenType::END)) {
+        delete initial_value;
+        delete else_exp;
         return nullptr;
+    }
     ++ctx;
     if(when_then_pairs.size() == 0){
         ctx.error_status_ = Error::INCORRECT_CASE_EXPRESSION; 
         // TODO: use logger.
         std::cout << "[ERROR] incorrect case expression" << std::endl;
+        delete else_exp;
+        delete initial_value;
         return nullptr;
     }
 
@@ -1247,7 +1267,10 @@ ExpressionNode* Parser::expression(QueryCTX& ctx, int query_idx, int id){
     ExpressionNode* ex = new ExpressionNode(ctx.queries_call_stack_[0], query_idx);
     ex->id_ = id;
     ASTNode* cur = logic_or(ctx, ex);
-    if(!cur) return nullptr;
+    if(!cur) {
+        delete ex;
+        return nullptr;
+    }
     ex->cur_ = cur;
     return ex;
 }

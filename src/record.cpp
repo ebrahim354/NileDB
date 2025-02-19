@@ -31,12 +31,16 @@ struct RecordID {
  //  it's supposed to be dump, just provides pointers to certain elements by providing the offset. 
 class Record {
     public:
-        Record(char* data, uint32_t r_size): 
+        Record(char* data, uint32_t r_size, bool read_only = true): 
             data_(data),
-            record_size_(r_size)
+            record_size_(r_size),
+            read_only_(read_only)
         {}
-        ~Record(){}
-
+        ~Record(){
+            // read only ptr can't be deleted.
+            if(!read_only_)
+                delete data_;
+        }
 
         uint32_t getRecordSize(){
             return record_size_;
@@ -47,12 +51,12 @@ class Record {
         }
 
         void print(){
-          auto sz = getRecordSize();
-          std::cout << " record with size: " << sz << std::endl;
-          for(int i = 0; i < sz; i++){
-            std::cout << +(char)(*getFixedPtr(i)) << (i != sz-1 ? "," : "");
-          }
-          std::cout << std::endl;
+            auto sz = getRecordSize();
+            std::cout << " record with size: " << sz << std::endl;
+            for(int i = 0; i < sz; i++){
+                std::cout << +(char)(*getFixedPtr(i)) << (i != sz-1 ? "," : "");
+            }
+            std::cout << std::endl;
         }
 
 
@@ -76,4 +80,5 @@ class Record {
     private:
         char* data_;
         uint32_t record_size_;
+        bool read_only_ = true;// is the data_ read only (can't deallocate it?) or not.
 };
