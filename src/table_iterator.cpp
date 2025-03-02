@@ -75,6 +75,13 @@ class TableIterator {
             if(err) return Record(nullptr, 0);
             return  Record(cur_data, rsize);
         }
+        Record* getCurRecordCpyPtr(){
+            char* cur_data = nullptr;
+            uint32_t rsize = 0;
+            int err = cur_page_->getRecord(&cur_data, &rsize, cur_slot_idx_);
+            if(err) return nullptr;
+            return  new Record(cur_data, rsize);
+        }
 
         RecordID getCurRecordID(){
             return RecordID(cur_page_id_, cur_slot_idx_);

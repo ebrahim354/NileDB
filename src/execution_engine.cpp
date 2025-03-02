@@ -241,6 +241,7 @@ class SeqScanExecutor : public Executor {
         void init() {
             error_status_ = 0;
             finished_ = 0;
+            output_.resize(output_schema_->numOfCols());
             delete it_;
             it_ = table_->getTable()->begin();
         }
@@ -251,9 +252,9 @@ class SeqScanExecutor : public Executor {
                 finished_ = 1;
                 return {};
             };
-            output_.clear();
-            Record r = it_->getCurRecordCpy();
-            int err = table_->translateToValues(r, output_);
+            Record* r = it_->getCurRecordCpyPtr();
+            int err = table_->translateToValuesOffset(*r, output_, 0);
+            delete r;
             if(err) {
                 error_status_ = 1;
                 return {};

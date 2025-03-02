@@ -206,18 +206,38 @@ class TableSchema {
                 char * bitmap_ptr = r.getFixedPtr(size_)+(i/8);  
                 int is_null = *bitmap_ptr & (1 << (i%8));
                 if(is_null) {
-                  values.push_back(Value(NULL_TYPE));
+                  values.emplace_back(Value(NULL_TYPE));
                   continue;
                 }
-                auto c = columns_[i];
                 Value val{};
-                char* content = getValue(c.getName(), r, &val.size_);
+                char* content = getValue(columns_[i].getName(), r, &val.size_);
                 if(!content)
                   return 1;
                 val.value_from_size(val.size_);
                 memcpy(val.content_, content, val.size_);
-                val.type_ = c.getType();
-                values.push_back(val);
+                val.type_ = columns_[i].getType();
+                values.emplace_back(val);
+            }
+            return 0;
+        }
+
+        int translateToValuesOffset(Record& r, std::vector<Value>& values, int offset){
+            if(offset < 0 || offset + columns_.size() > values.size()) return 1;
+            for(int i = 0; i < columns_.size(); ++i){
+                // check the bitmap if this value is null.
+                char * bitmap_ptr = r.getFixedPtr(size_)+(i/8);  
+                int is_null = *bitmap_ptr & (1 << (i%8));
+                if(is_null) {
+                  values[offset+i] = Value(NULL_TYPE);
+                  continue;
+                }
+                Value* val = &values[offset+i];
+                char* content = getValue(columns_[i].getName(), r, &val->size_);
+                if(!content)
+                  return 1;
+                val->value_from_size(val->size_);
+                memcpy(val->content_, content, val->size_);
+                val->type_ = columns_[i].getType();
             }
             return 0;
         }
