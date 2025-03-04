@@ -38,6 +38,9 @@ enum class TokenType {
     CROSS,
     JOIN,
     INDEX,
+    PRIMARY,
+    KEY,
+    UNIQUE,
     UNION,
     EXCEPT,
     INTERSECT,
@@ -150,6 +153,9 @@ Tokenizer::Tokenizer(){
     keywords_.insert({"UPDATE"  , TokenType::UPDATE  });
     keywords_.insert({"SET"     , TokenType::SET     });
     keywords_.insert({"INDEX"   , TokenType::INDEX   });
+    keywords_.insert({"PRIMARY" , TokenType::PRIMARY });
+    keywords_.insert({"KEY"     , TokenType::KEY     });
+    keywords_.insert({"UNIQUE"  , TokenType::UNIQUE  });
     keywords_.insert({"UNION"   , TokenType::UNION   });
     keywords_.insert({"EXCEPT"  , TokenType::EXCEPT  });
     keywords_.insert({"INTERSECT",TokenType::INTERSECT});
@@ -178,7 +184,7 @@ Tokenizer::Tokenizer(){
     data_types_.insert({"INTEGER"  , TokenType::INTEGER  });
     data_types_.insert({"BIGINT"   , TokenType::BIGINT   });
     data_types_.insert({"FLOAT"    , TokenType::FLOAT    });
-    data_types_.insert({"REAL"     , TokenType::REAL   });
+    data_types_.insert({"REAL"     , TokenType::REAL     });
     data_types_.insert({"TIMESTAMP", TokenType::TIMESTAMP});
     data_types_.insert({"BOOLEAN"  , TokenType::BOOLEAN  });
     // reserved symbols 

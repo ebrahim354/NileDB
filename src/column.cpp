@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <vector>
 #include <string>
-#include <iostream>
 // char_n  => fixed length string (less than page size).
 // varchar => variable length string (less than page size).
 
@@ -16,7 +15,7 @@ bool checkSameType(Type lhs, Type rhs) {
     return lhs == rhs;
 }
 
-enum Constraint { NULLABLE = 0, PRIMARY_KEY, FOREIGN_KEY, UNIQUE };
+enum Constraint { NOT_NULL = 0, PRIMARY_KEY, FOREIGN_KEY, UNIQUE };
 
 
 class Column {
@@ -40,8 +39,8 @@ class Column {
         bool                           isVarLength()    { return type_ == VARCHAR ; }
         bool isNullable() { 
             for (auto con : constraints_) 
-                if(con == NULLABLE) return true; 
-            return false;
+                if(con == NOT_NULL) return false; 
+            return true;
         }
         bool isPrimaryKey() { 
             for (auto con : constraints_) 

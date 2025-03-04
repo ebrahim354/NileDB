@@ -331,7 +331,7 @@ class Catalog {
                 std::string col_name = values[1].getStringVal();
                 Type col_type = static_cast<Type>(values[2].getIntVal());
                 int col_offset = values[3].getIntVal();
-                int nullable = values[4].getBoolVal();
+                int not_null = values[4].getBoolVal();
                 int primary_key = values[5].getBoolVal();
                 int foreign_key = values[6].getBoolVal();
                 int unique = values[7].getBoolVal();
@@ -350,7 +350,7 @@ class Catalog {
                 // add the column to the table's meta data.
                 std::vector<Column> cols;
                 std::vector<Constraint> cons;
-                if(nullable) cons.push_back(NULLABLE); 
+                if(not_null) cons.push_back(NOT_NULL); 
                 if(primary_key) cons.push_back(PRIMARY_KEY); 
                 if(foreign_key) cons.push_back(FOREIGN_KEY); 
                 if(unique) cons.push_back(UNIQUE); 

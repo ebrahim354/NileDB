@@ -1113,6 +1113,7 @@ class ExecutionEngine {
             std::vector<FieldDef> fields = create_table->field_defs_;
             std::deque<std::string> col_names;
             std::deque<Type> col_types;
+            std::deque<std::vector<Constraint>> col_constraints;
             for(int i = 0; i < fields.size(); ++i){
                 std::string name = fields[i].field_name_;
                 Type type = catalog_->tokenTypeToColType(fields[i].type_);
@@ -1122,12 +1123,12 @@ class ExecutionEngine {
                 }
                 col_names.push_back(name);
                 col_types.push_back(type);
+                col_constraints.push_back(fields[i].constraints_);
             }
             std::vector<Column> columns;
             uint8_t offset_ptr = 0;
             for(size_t i = 0; i < col_names.size(); ++i){
-                // assume no constraints for now.
-                columns.push_back(Column(col_names[i], col_types[i], offset_ptr));
+                columns.push_back(Column(col_names[i], col_types[i], offset_ptr, col_constraints[i]));
                 offset_ptr += Column::getSizeFromType(col_types[i]);
             }
             TableSchema* sch = catalog_->createTable(table_name, columns);

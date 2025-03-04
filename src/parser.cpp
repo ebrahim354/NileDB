@@ -414,6 +414,7 @@ struct UnionOrExcept : QueryData {
 struct FieldDef {
     std::string field_name_;
     TokenType type_; 
+    std::vector<Constraint> constraints_;
 };
 
 struct CreateTableStatementData : QueryData {
@@ -771,6 +772,27 @@ void Parser::fieldDefList(QueryCTX& ctx, int query_idx){
           // TODO: support other different  character types:
           // https://www.postgresql.org/docs/current/datatype-character.html
         }
+        // constraints.
+        while(ctx.matchAnyTokenType({ TokenType::PRIMARY, TokenType::NOT, TokenType::UNIQUE })){
+            if(ctx.matchMultiTokenType({ TokenType::PRIMARY, TokenType::KEY })){
+                field_def.constraints_.push_back(PRIMARY_KEY);
+                ctx += 2;
+                continue;
+            } else if(ctx.matchMultiTokenType({ TokenType::NOT, TokenType::NULL_CONST })){
+                field_def.constraints_.push_back(NOT_NULL);
+                ctx += 2;
+                continue;
+            } else if(ctx.matchTokenType(TokenType::UNIQUE)){
+                field_def.constraints_.push_back(UNIQUE);
+                ++ctx;
+                continue;
+            }
+            // TODO: add foreign key constraints.
+            // reaching this points is an error.
+            ctx.error_status_ = Error::EXPECTED_FIELD_CONSTRAINTS;
+            return;
+        }
+
 
         query->field_defs_.push_back(field_def);
 
