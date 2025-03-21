@@ -301,3 +301,212 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
 }
 
 
+
+// assumes top level ands only.
+// returns a "read only" vector of expressions.
+std::vector<ExpressionNode*> split_by_and(ExpressionNode* expression) {
+  ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(expression);
+  if(!ex) return {};
+
+  ASTNode* ptr = ex->cur_;
+  std::vector<ExpressionNode*> ret;
+  while(ptr){
+    // TODO: disgusting and should be changed.
+    ExpressionNode* ex_copy = new ExpressionNode(ex->top_level_statement_, ex->query_idx_);
+    ex_copy->cur_ = ptr;
+    ret.push_back(ex_copy);
+    if(ptr->category_ != AND){
+      break;
+    } 
+    auto cur = reinterpret_cast<AndNode*>(ptr);
+    ptr = cur->next_;
+    cur->next_ = nullptr;
+  }
+  return ret;
+}
+
+
+void accessed_tables(ASTNode* expression ,std::vector<std::string>& tables, Catalog* catalog, bool only_one = true) {
+  switch(expression->category_){
+    case EXPRESSION  : 
+      {
+        ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(expression);
+        return accessed_tables(ex->cur_, tables, catalog, false);
+      }
+    case CASE_EXPRESSION  : 
+      {
+        CaseExpressionNode* case_ex = reinterpret_cast<CaseExpressionNode*>(expression);
+        if(case_ex->initial_value_){
+          accessed_tables(case_ex->initial_value_, tables, catalog);
+        }
+        for(auto& [when, then] : case_ex->when_then_pairs_){
+          accessed_tables(when, tables, catalog);
+          accessed_tables(then, tables, catalog);
+        }
+        if(case_ex->else_)  
+          accessed_tables(case_ex->else_, tables, catalog);
+        return;
+      }
+    case IN  : 
+      {
+        InNode* in = reinterpret_cast<InNode*>(expression);
+        accessed_tables(in->val_, tables, catalog, false);
+        for(int i = 0; i < in->list_.size(); ++i){
+          accessed_tables(in->list_[i], tables, catalog, false);
+        }
+        return;
+      }
+    case BETWEEN  : 
+      {
+        BetweenNode* between = reinterpret_cast<BetweenNode*>(expression);
+        accessed_tables(between->val_, tables, catalog, false);
+        accessed_tables(between->lhs_, tables, catalog, false);
+        accessed_tables(between->rhs_, tables, catalog, false);
+        return;
+      }
+    case NOT  : 
+      {
+        NotNode* lnot = reinterpret_cast<NotNode*>(expression);
+        accessed_tables(lnot->cur_, tables, catalog);
+        return;
+      }
+    case OR  : 
+      {
+        OrNode* lor = reinterpret_cast<OrNode*>(expression);
+        ASTNode* ptr = lor;
+        while(ptr){
+          accessed_tables(lor->cur_, tables, catalog);
+          ptr = lor->next_;
+          if(!ptr) break;
+          if(ptr->category_ == OR){
+            lor = reinterpret_cast<OrNode*>(ptr);
+          } else {
+            accessed_tables(ptr, tables, catalog);
+            break;
+          };
+        }
+        return;
+      }
+    case AND : 
+      {
+        AndNode* land = reinterpret_cast<AndNode*>(expression);
+        ASTNode* ptr = land;
+        while(ptr){
+          accessed_tables(land->cur_, tables, catalog);
+          ptr = land->next_;
+          if(!ptr) break;
+          if(ptr->category_ == AND){
+            land = reinterpret_cast<AndNode*>(land->next_);
+          } else {
+            accessed_tables(ptr, tables, catalog);
+            break;
+          }
+        }
+        return;
+      } 
+    case EQUALITY : 
+      {
+        EqualityNode* eq = reinterpret_cast<EqualityNode*>(expression);
+        TokenType op = eq->token_.type_;
+        accessed_tables(eq->cur_, tables, catalog);
+        ASTNode* ptr = eq->next_;
+        while(ptr){
+          accessed_tables(ptr, tables, catalog);
+          if(ptr->category_ == EQUALITY) {
+            EqualityNode* tmp = reinterpret_cast<EqualityNode*>(ptr);
+            op = ptr->token_.type_;
+            ptr = tmp->next_;
+          } else break;
+        }
+        return;
+      } 
+    case COMPARISON : 
+      {
+        ComparisonNode* comp = reinterpret_cast<ComparisonNode*>(expression);
+        TokenType op = comp->token_.type_;
+        accessed_tables(comp->cur_, tables, catalog, comp->cur_->category_ == COMPARISON);
+        ASTNode* ptr = comp->next_;
+        while(ptr){
+          accessed_tables(ptr, tables, catalog, comp->cur_->category_ == COMPARISON);
+
+          if(ptr->category_ == COMPARISON){
+            ComparisonNode* tmp = reinterpret_cast<ComparisonNode*>(ptr);
+            op = ptr->token_.type_;
+            ptr = tmp->next_;
+          } else break;
+        }
+        return;
+      } 
+    case TERM : 
+      {
+        TermNode* t = reinterpret_cast<TermNode*>(expression);
+        accessed_tables(t->cur_, tables, catalog, t->cur_->category_ == TERM);
+        if(only_one) return;
+        TokenType op = t->token_.type_;
+        ASTNode* ptr = t->next_;
+        while(ptr){
+          accessed_tables(ptr, tables, catalog, ptr->category_ == TERM);
+          if(ptr->category_ == TERM){
+            TermNode* tmp = reinterpret_cast<TermNode*>(ptr);
+            op = ptr->token_.type_;
+            ptr = tmp->next_;
+          } else break;
+        }
+        return;
+      } 
+    case FACTOR : {
+                    FactorNode* f = reinterpret_cast<FactorNode*>(expression);
+                    accessed_tables(f->cur_, tables, catalog, f->cur_->category_ == FACTOR);
+                    if(only_one) return;
+                    TokenType op = f->token_.type_;
+                    ASTNode* ptr = f->next_;
+                    while(ptr){
+                      accessed_tables(ptr, tables, catalog, ptr->category_ == FACTOR);
+                      if(ptr->category_ == FACTOR){
+                        FactorNode* tmp = reinterpret_cast<FactorNode*>(ptr);
+                        op = ptr->token_.type_;
+                        ptr = tmp->next_;
+                      } else break;
+                    }
+        return;
+                  } 
+    case UNARY : 
+                  {
+                    UnaryNode* u = reinterpret_cast<UnaryNode*>(expression);
+                    accessed_tables(u->cur_, tables, catalog);
+        return;
+                  } 
+    case SCALAR_FUNC: 
+                  {
+                    ScalarFuncNode* sfn = reinterpret_cast<ScalarFuncNode*>(expression);
+                    for(int i = 0; i < sfn->args_.size(); ++i){
+                      accessed_tables(sfn->args_[i], tables, catalog);
+                    }
+                    return;
+                  } 
+    case TYPE_CAST: 
+                  {
+                    TypeCastNode* cast = reinterpret_cast<TypeCastNode*>(expression);
+                    accessed_tables(cast->exp_, tables, catalog);
+        return;
+                  } 
+    case SCOPED_FIELD:{
+                        std::string table = reinterpret_cast<ScopedFieldNode*>(expression)->table_->token_.val_;
+                        tables.push_back(table);
+        return;
+                      }
+    case FIELD:{
+                        std::string field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
+                        std::vector<std::string> valid_tables = catalog->getTablesByField(field);
+                        for(int i = 0; i < valid_tables.size(); ++i)
+                          tables.push_back(valid_tables[i]);
+        return;
+                      }
+
+    case STRING_CONSTANT: 
+    case INTEGER_CONSTANT: 
+    case NULL_CONSTANT: 
+    default:
+      return;
+  }
+}
