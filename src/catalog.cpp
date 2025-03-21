@@ -481,6 +481,15 @@ class Catalog {
             return output;
         }
 
+        std::vector<std::string> getTablesByField(std::string field){
+            std::vector<std::string> output;
+            for(auto& t : tables_){
+                if(t.second->isValidCol(field))
+                  output.push_back(t.first);
+            }
+            return output;
+        }
+
         // provide delete and alter table later.
     private:
         CacheManager* cache_manager_;

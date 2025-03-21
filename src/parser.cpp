@@ -132,7 +132,8 @@ enum CategoryType {
 };
 
 struct ASTNode {
-    ASTNode(CategoryType ct, Token val = {}): category_(ct), token_(val)
+    ASTNode(CategoryType ct, Token val = {}): 
+        category_(ct), token_(val)
     {}
     virtual ~ASTNode(){};
     CategoryType category_;
@@ -154,7 +155,8 @@ struct ExpressionNode : ASTNode {
         ASTNode(EXPRESSION), cur_(val), query_idx_(query_idx), top_level_statement_(top_level_statement)
     {}
     ~ExpressionNode(){
-        delete cur_;
+      // TODO: commented for now should not be a comment.
+        //delete cur_;
         // belongs to statement can't delete.
         // delete aggregate_func_;
     }
@@ -1301,8 +1303,6 @@ void Parser::set_operation(QueryCTX& ctx, int parent_idx){
     if((bool)ctx.error_status_) return;
     QueryData* operation = union_or_except(ctx, parent_idx);
     if(!operation) return;
-    std::cout << "operation type: \n";
-    std::cout << operation->type_ << std::endl;
     if(operation->type_ >= UNION)
         ctx.set_operations_.push_back(operation);
 }

@@ -471,10 +471,15 @@ class FilterExecutor : public Executor {
                         cur_query_parent = ctx_.executors_call_stack_[cur_query_idx]->parent_query_idx_;
                         continue;
                     }
-                    Executor* cur_exec = ctx_.executors_call_stack_[cur_query_idx];
+                    Executor* cur_exec = nullptr;
+                    if(cur_query_idx == query_idx_){
+                      cur_exec = this;
+                    } else {
+                      cur_exec = ctx_.executors_call_stack_[cur_query_idx];
 
-                    while(cur_exec && cur_exec->type_ != SEQUENTIAL_SCAN_EXECUTOR && cur_exec->type_ != PRODUCT_EXECUTOR){
+                      while(cur_exec && cur_exec->type_ != SEQUENTIAL_SCAN_EXECUTOR && cur_exec->type_ != PRODUCT_EXECUTOR){
                         cur_exec = cur_exec->child_executor_;
+                      }
                     }
                     if(!cur_exec){
                         std::cout << "[ERROR] Invalid scoped filter operation"<< std::endl;
@@ -542,10 +547,15 @@ class FilterExecutor : public Executor {
                         cur_query_parent = ctx_.executors_call_stack_[cur_query_idx]->parent_query_idx_;
                         continue;
                     }
-                    Executor* cur_exec = ctx_.executors_call_stack_[cur_query_idx];
+                    Executor* cur_exec = nullptr;
+                    if(cur_query_idx == query_idx_){
+                      cur_exec  = this;
+                    } else {
+                      Executor* cur_exec = ctx_.executors_call_stack_[cur_query_idx];
 
-                    while(cur_exec != nullptr && cur_exec->type_ != FILTER_EXECUTOR){
-                        cur_exec = cur_exec->child_executor_;
+                      while(cur_exec != nullptr && cur_exec->type_ != FILTER_EXECUTOR){
+                          cur_exec = cur_exec->child_executor_;
+                      }
                     }
                     if(!cur_exec){
                         std::cout << "[ERROR] Invalid filter operation"<< std::endl;
@@ -594,8 +604,9 @@ class FilterExecutor : public Executor {
 
                 Value exp = evaluate_expression(filter_, eval).getBoolVal();
                 if(exp != false && !exp.isNull()){
-                    if(child_executor_)
+                    if(child_executor_){
                         return output_;
+                    }
                     return {exp};
                 }
             }

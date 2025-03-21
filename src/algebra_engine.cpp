@@ -309,18 +309,111 @@ class AlgebraEngine {
         AlgebraOperation* createSelectStatementExpression(QueryCTX& ctx, SelectStatementData* data){
             if(!isValidSelectStatementData(data))
                 return nullptr;
+            std::vector<ExpressionNode*> splitted_where;
+            if(data->where_){
+              // split conjunctive predicates.
+              splitted_where = split_by_and(data->where_);
+            }
+            std::vector<std::pair<std::vector<std::string>, ExpressionNode*>> tables_per_filter;
 
+            for(int i = 0; i < splitted_where.size(); ++i){
+              std::vector<std::string> table_access;
+              std::unordered_map<std::string, bool> f;
+              accessed_tables(splitted_where[i], table_access, catalog_);
+              std::vector<std::string> ta;
+              for(auto &s: table_access){
+                if(!f.count(s)){
+                  ta.push_back(s);
+                  f[s] = 1;
+                }
+              }
+              tables_per_filter.push_back({ta, splitted_where[i]});
+            }
+            sort(
+              tables_per_filter.begin(), tables_per_filter.end(),
+              [](std::pair<std::vector<std::string>, ExpressionNode*> lhs,
+                 std::pair<std::vector<std::string>, ExpressionNode*> rhs){ 
+                return lhs.first.size() < rhs.first.size();
+              });
+            for(auto x : tables_per_filter){
+              std::cout << x.first.size() << std::endl;
+            }
+            std::unordered_map<std::string, AlgebraOperation*> table_scanner;
+            for(int i = 0; i < data->tables_.size(); ++i){
+              AlgebraOperation* scan = new ScanOperation(ctx, data->tables_[i], data->table_names_[i]);
+              // TODO: fix the case of products of the same table for example: select * from t1, t1
+              table_scanner[data->tables_[i]] = scan;
+            }
+
+            for(int i = 0; i < splitted_where.size(); ++i){
+              if(tables_per_filter[i].first.size() == 0) continue;
+              
+              for(int j = 1; j < tables_per_filter[i].first.size(); ++j){
+                auto left = table_scanner[tables_per_filter[i].first[j-1]];
+                auto right = table_scanner[tables_per_filter[i].first[j]];
+                auto nw =  new ProductOperation(ctx, table_scanner[tables_per_filter[i].first[j-1]], table_scanner[tables_per_filter[i].first[j]]); 
+                for(auto &t:table_scanner){
+                  if(t.second == left || t.second == right){
+                    table_scanner[t.first] = nw;
+                  }
+                }
+              }
+
+              auto new_filter = new FilterOperation(ctx, 
+                  table_scanner[tables_per_filter[i].first[0]], 
+                  tables_per_filter[i].second, 
+                  data->fields_, data->field_names_);
+
+              for(int j = 0; j < tables_per_filter[i].first.size(); ++j){
+                  table_scanner[tables_per_filter[i].first[j]] = new_filter;
+              }
+            }
 
             AlgebraOperation* result = nullptr;
+
+            std::unordered_map<AlgebraOperation*, bool> freq;
+            for(auto &t:table_scanner){
+              if(result == nullptr){
+                result = table_scanner[t.first];
+                freq[result] = 1;
+              } else if(!freq.count(t.second)){
+                result = new ProductOperation(ctx, result, t.second); 
+                freq[t.second] = 1;
+              }
+            }
+
+            /*
             int idx = 0;
             while(idx < data->tables_.size()){
-                auto scan = new ScanOperation(ctx, data->tables_[idx], data->table_names_[idx]);
+                AlgebraOperation* scan = new ScanOperation(ctx, data->tables_[idx], data->table_names_[idx]);
+                std::map<int, bool> deleted;
+                for(int i = 0; i < splitted_where.size(); ++i){
+                  std::vector<std::string> table_access;
+                  accessed_tables(splitted_where[i], table_access, catalog_);
+                  if(table_access.size() == 1 && table_access[0] == data->tables_[idx]){
+                    scan = new FilterOperation(ctx, scan, splitted_where[i], data->fields_, data->field_names_);
+                    deleted[i] = true;
+                  }
+                }
+                std::vector<ExpressionNode*> new_splitted_where;
+                for(int i = 0; i < splitted_where.size(); ++i){
+                  if(!deleted[i]) new_splitted_where.push_back(splitted_where[i]);
+                }
+                splitted_where = new_splitted_where;
                 if(!result) result = scan;
                 else result = new ProductOperation(ctx, result, scan); 
                 idx++;
             }
-            if(data->where_)
-                result = new FilterOperation(ctx, result, data->where_, data->fields_, data->field_names_);
+
+            
+            if(splitted_where.size() > 0){
+              for(int i = 0; i < splitted_where.size(); ++i){
+                result = new FilterOperation(ctx, result, splitted_where[i], data->fields_, data->field_names_);
+              }
+            }
+            */
+
+
             if(data->aggregates_.size() || data->group_by_.size()){
                 result = new AggregationOperation(ctx, result, data->aggregates_, data->group_by_);
                 // TODO: make a specific having operator and executor.
