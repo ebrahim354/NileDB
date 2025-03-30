@@ -85,6 +85,149 @@ class ProductExecutor : public Executor {
         Executor* right_child_ = nullptr;
 };
 
+class JoinExecutor : public Executor {
+    public:
+        JoinExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs, ExpressionNode* filter)
+            : Executor(JOIN_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs), filter_(filter)
+        {}
+        ~JoinExecutor()
+        {
+            delete left_child_;  
+            delete right_child_;
+            delete output_schema_;
+        }
+
+        void init() {
+            error_status_ = 0;
+            finished_ = 0;
+            if(!left_child_ || !right_child_){
+                error_status_ = true;
+                return;
+            }
+            left_child_->init();
+            right_child_->init();
+            error_status_ = left_child_->error_status_ || right_child_->error_status_;
+            finished_ = left_child_->finished_;
+            output_.resize(left_child_->output_schema_->getColumns().size() + right_child_->output_schema_->getColumns().size()); 
+            prev_key_ = "";
+            duplicated_idx_ = -1;
+            hashed_left_child_.clear();
+            right_child_fields_.clear();
+            left_child_fields_.clear();
+            // find out which attributes to use as keys for the hash table.
+            std::vector<std::string> fields;
+            accessed_fields(filter_, fields);
+
+            for(int i = 0; i < fields.size(); ++i){
+              std::string lf = fields[i];
+              int idx = left_child_->output_schema_->colExist(lf);
+              // TODO: fix the case of same field names and different tables for example: t1.a = t2.a
+              if(idx != -1) {
+                left_child_fields_.push_back(idx);
+                continue;
+              }
+              std::string rf = fields[i];
+              idx = right_child_->output_schema_->colExist(rf);
+
+              if(idx != -1) {
+                right_child_fields_.push_back(idx);
+                continue;
+              }
+              // invalid field name.
+              error_status_ = 1;
+              return;
+            }
+            // should at least have one field on each side or the join does not make any sense.
+            if(left_child_fields_.size() == 0 || right_child_fields_.size() == 0){
+              error_status_ = 1;
+              return;
+            }
+            // build the hash table.
+            while(!left_child_->finished_ && !left_child_->error_status_){
+              std::vector<Value> left_output = left_child_->next();
+              if(left_output.size() == 0) continue;
+              // build the hash key and assume non-unique keys.
+              std::string key = "";
+              for(int i = 0; i < left_child_fields_.size(); ++i){
+                int idx = left_child_fields_[i]; 
+                if(idx >= left_output.size()){
+                  error_status_ = 1;
+                  return;
+                }
+                key += left_output[idx].toString();
+              }
+              if(hashed_left_child_.count(key)) hashed_left_child_[key].push_back(left_output);
+              else hashed_left_child_[key] = {left_output};
+            }
+        }
+
+        std::vector<Value> next() {
+            if(error_status_ || finished_)  return {};
+
+            if(duplicated_idx_ != -1){
+              duplicated_idx_++;
+              // no need to change the right output.
+              for(int i = 0; i < hashed_left_child_[prev_key_][duplicated_idx_].size(); ++i){
+                output_[i] = hashed_left_child_[prev_key_][duplicated_idx_][i];
+              }
+              if(duplicated_idx_+1 >= hashed_left_child_[prev_key_].size())
+                duplicated_idx_ = -1;
+              finished_ = right_child_->finished_ && duplicated_idx_ == -1;
+              return output_;
+            }
+
+            while(true){
+              std::vector<Value> right_output = right_child_->next();
+              if(right_output.size() == 0) {
+                finished_ = true;
+                return {};
+              }
+              // build the hash key. 
+              std::string key = "";
+              for(int i = 0; i < right_child_fields_.size(); ++i){
+                int idx = right_child_fields_[i]; 
+                if(idx >= right_output.size()){
+                  error_status_ = 1;
+                  return {};
+                }
+                key += right_output[idx].toString();
+              }
+              if(!hashed_left_child_.count(key))
+                continue;
+
+              for(int i = 0;i < right_output.size(); ++i)
+                output_[i+(output_.size() - right_output.size())] = right_output[i];
+
+              int duplications = hashed_left_child_[key].size();
+              for(int i = 0; i < hashed_left_child_[key][0].size(); ++i){
+                output_[i] = hashed_left_child_[key][0][i];
+              }
+              if(duplications > 1){
+                duplicated_idx_ = 0;
+                prev_key_ = key;
+              }
+              break;
+            }
+
+            finished_ = right_child_->finished_ && duplicated_idx_ == -1;
+            return output_;
+        }
+    private:
+        Executor* left_child_ = nullptr;
+        Executor* right_child_ = nullptr;
+        std::vector<int> left_child_fields_;
+        // duplicated_idx tracks last used hashed value in case of hashing on non unique keys.
+        // for example: the hash key is the field 'a' and this field is not unique and may have a duplicated value of 1,
+        // in that case when a join happens we store it in the hash table as 1 -> {tuple 1, tuple 2, tuple 3}.
+        // when we call next() on a a key such as the previous example we track the last tuple that has been returned.
+        // the value of -1 means that we will use the first tuple.
+        int duplicated_idx_ = -1; 
+        std::string prev_key_ = "";
+        std::vector<int> right_child_fields_;
+        ExpressionNode* filter_ = nullptr;
+        std::unordered_map<std::string, std::vector<std::vector<Value>>> hashed_left_child_;
+};
+
 class UnionExecutor : public Executor {
     public:
         UnionExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs)
@@ -1350,6 +1493,20 @@ class ExecutionEngine {
                         TableSchema* product_output_schema = new TableSchema("TMP_PRODUCT_TABLE", nullptr, lhs_columns, true);
                         ProductExecutor* product = new ProductExecutor(product_output_schema, ctx, query_idx, parent_query_idx, lhs, rhs);
                         return product;
+                    } break;
+                case JOIN: 
+                    {
+                        auto op = reinterpret_cast<JoinOperation*>(logical_plan);
+                        Executor* lhs = buildExecutionPlan(ctx, op->lhs_, query_idx, parent_query_idx);
+                        Executor* rhs = buildExecutionPlan(ctx, op->rhs_, query_idx, parent_query_idx);
+                        std::vector<Column> lhs_columns = lhs->output_schema_->getColumns();
+                        std::vector<Column> rhs_columns = rhs->output_schema_->getColumns();
+                        for(int i = 0; i < rhs_columns.size(); i++)
+                            lhs_columns.push_back(rhs_columns[i]);
+
+                        TableSchema* join_output_schema = new TableSchema("TMP_JOIN_TABLE", nullptr, lhs_columns, true);
+                        auto join = new JoinExecutor(join_output_schema, ctx, query_idx, parent_query_idx, lhs, rhs, op->filter_);
+                        return join;
                     } break;
                 case AL_UNION: 
                 case AL_EXCEPT: 

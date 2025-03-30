@@ -13,6 +13,8 @@ enum ExecutorType {
     SORT_EXECUTOR,
     DISTINCT_EXECUTOR,
     PRODUCT_EXECUTOR,
+    // TODO: implement sort joins and index based joins.
+    JOIN_EXECUTOR, // only in-memory hash joins for now. 
 
     UNION_EXECUTOR,
     EXCEPT_EXECUTOR,
@@ -37,6 +39,8 @@ std::string exec_type_to_string(ExecutorType t){
             return "DISTINCT";
         case PRODUCT_EXECUTOR: 
             return "PRODUCT";
+        case JOIN_EXECUTOR: 
+            return "JOIN";
         case UNION_EXECUTOR:
             return "UNION";
         case EXCEPT_EXECUTOR:

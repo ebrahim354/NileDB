@@ -510,3 +510,187 @@ void accessed_tables(ASTNode* expression ,std::vector<std::string>& tables, Cata
       return;
   }
 }
+
+void accessed_fields(ASTNode* expression ,std::vector<std::string>& fields, bool only_one = true) {
+  switch(expression->category_){
+    case EXPRESSION  : 
+      {
+        ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(expression);
+        return accessed_fields(ex->cur_, fields,  false);
+      }
+    case CASE_EXPRESSION  : 
+      {
+        CaseExpressionNode* case_ex = reinterpret_cast<CaseExpressionNode*>(expression);
+        if(case_ex->initial_value_){
+          accessed_fields(case_ex->initial_value_, fields);
+        }
+        for(auto& [when, then] : case_ex->when_then_pairs_){
+          accessed_fields(when, fields);
+          accessed_fields(then, fields);
+        }
+        if(case_ex->else_)  
+          accessed_fields(case_ex->else_, fields);
+        return;
+      }
+    case IN  : 
+      {
+        InNode* in = reinterpret_cast<InNode*>(expression);
+        accessed_fields(in->val_, fields, false);
+        for(int i = 0; i < in->list_.size(); ++i){
+          accessed_fields(in->list_[i], fields, false);
+        }
+        return;
+      }
+    case BETWEEN  : 
+      {
+        BetweenNode* between = reinterpret_cast<BetweenNode*>(expression);
+        accessed_fields(between->val_, fields,  false);
+        accessed_fields(between->lhs_, fields,  false);
+        accessed_fields(between->rhs_, fields,  false);
+        return;
+      }
+    case NOT  : 
+      {
+        NotNode* lnot = reinterpret_cast<NotNode*>(expression);
+        accessed_fields(lnot->cur_, fields);
+        return;
+      }
+    case OR  : 
+      {
+        OrNode* lor = reinterpret_cast<OrNode*>(expression);
+        ASTNode* ptr = lor;
+        while(ptr){
+          accessed_fields(lor->cur_, fields);
+          ptr = lor->next_;
+          if(!ptr) break;
+          if(ptr->category_ == OR){
+            lor = reinterpret_cast<OrNode*>(ptr);
+          } else {
+            accessed_fields(ptr, fields);
+            break;
+          };
+        }
+        return;
+      }
+    case AND : 
+      {
+        AndNode* land = reinterpret_cast<AndNode*>(expression);
+        ASTNode* ptr = land;
+        while(ptr){
+          accessed_fields(land->cur_, fields);
+          ptr = land->next_;
+          if(!ptr) break;
+          if(ptr->category_ == AND){
+            land = reinterpret_cast<AndNode*>(land->next_);
+          } else {
+            accessed_fields(ptr, fields);
+            break;
+          }
+        }
+        return;
+      } 
+    case EQUALITY : 
+      {
+        EqualityNode* eq = reinterpret_cast<EqualityNode*>(expression);
+        TokenType op = eq->token_.type_;
+        accessed_fields(eq->cur_, fields);
+        ASTNode* ptr = eq->next_;
+        while(ptr){
+          accessed_fields(ptr, fields);
+          if(ptr->category_ == EQUALITY) {
+            EqualityNode* tmp = reinterpret_cast<EqualityNode*>(ptr);
+            op = ptr->token_.type_;
+            ptr = tmp->next_;
+          } else break;
+        }
+        return;
+      } 
+    case COMPARISON : 
+      {
+        ComparisonNode* comp = reinterpret_cast<ComparisonNode*>(expression);
+        TokenType op = comp->token_.type_;
+        accessed_fields(comp->cur_, fields, comp->cur_->category_ == COMPARISON);
+        ASTNode* ptr = comp->next_;
+        while(ptr){
+          accessed_fields(ptr, fields, comp->cur_->category_ == COMPARISON);
+
+          if(ptr->category_ == COMPARISON){
+            ComparisonNode* tmp = reinterpret_cast<ComparisonNode*>(ptr);
+            op = ptr->token_.type_;
+            ptr = tmp->next_;
+          } else break;
+        }
+        return;
+      } 
+    case TERM : 
+      {
+        TermNode* t = reinterpret_cast<TermNode*>(expression);
+        accessed_fields(t->cur_, fields, t->cur_->category_ == TERM);
+        if(only_one) return;
+        TokenType op = t->token_.type_;
+        ASTNode* ptr = t->next_;
+        while(ptr){
+          accessed_fields(ptr, fields, ptr->category_ == TERM);
+          if(ptr->category_ == TERM){
+            TermNode* tmp = reinterpret_cast<TermNode*>(ptr);
+            op = ptr->token_.type_;
+            ptr = tmp->next_;
+          } else break;
+        }
+        return;
+      } 
+    case FACTOR : {
+                    FactorNode* f = reinterpret_cast<FactorNode*>(expression);
+                    accessed_fields(f->cur_, fields, f->cur_->category_ == FACTOR);
+                    if(only_one) return;
+                    TokenType op = f->token_.type_;
+                    ASTNode* ptr = f->next_;
+                    while(ptr){
+                      accessed_fields(ptr, fields, ptr->category_ == FACTOR);
+                      if(ptr->category_ == FACTOR){
+                        FactorNode* tmp = reinterpret_cast<FactorNode*>(ptr);
+                        op = ptr->token_.type_;
+                        ptr = tmp->next_;
+                      } else break;
+                    }
+        return;
+                  } 
+    case UNARY : 
+                  {
+                    UnaryNode* u = reinterpret_cast<UnaryNode*>(expression);
+                    accessed_fields(u->cur_, fields);
+        return;
+                  } 
+    case SCALAR_FUNC: 
+                  {
+                    ScalarFuncNode* sfn = reinterpret_cast<ScalarFuncNode*>(expression);
+                    for(int i = 0; i < sfn->args_.size(); ++i){
+                      accessed_fields(sfn->args_[i], fields);
+                    }
+                    return;
+                  } 
+    case TYPE_CAST: 
+                  {
+                    TypeCastNode* cast = reinterpret_cast<TypeCastNode*>(expression);
+                    accessed_fields(cast->exp_, fields);
+        return;
+                  } 
+    case SCOPED_FIELD:{
+                        std::string table = reinterpret_cast<ScopedFieldNode*>(expression)->table_->token_.val_;
+                        std::string field = reinterpret_cast<ScopedFieldNode*>(expression)->token_.val_;
+                        fields.push_back(table+"."+field);
+        return;
+                      }
+    case FIELD:{
+                        std::string field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
+                        fields.push_back(field);
+        return;
+              }
+
+    case STRING_CONSTANT: 
+    case INTEGER_CONSTANT: 
+    case NULL_CONSTANT: 
+    default:
+      return;
+  }
+}

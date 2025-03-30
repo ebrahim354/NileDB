@@ -863,6 +863,10 @@ ASTNode* Parser::field(QueryCTX& ctx){
     if((bool)ctx.error_status_) return nullptr;
     if(ctx.matchTokenType(TokenType::IDENTIFIER)) {
         auto token = ctx.getCurrentToken(); ++ctx;
+        std::vector<std::string> possible_tables = catalog_->getTablesByField(token.val_);
+        if(possible_tables.size() == 1) {
+          return new ScopedFieldNode(token, new ASTNode(TABLE, Token(TokenType::IDENTIFIER, possible_tables[0])));
+        }
         return new ASTNode(FIELD, token);
     }
     return nullptr;

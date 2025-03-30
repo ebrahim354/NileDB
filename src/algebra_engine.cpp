@@ -2,6 +2,7 @@
 #include "parser.cpp"
 #include "algebra_operation.cpp"
 #include <vector>
+#include <set>
 
 
 
@@ -14,6 +15,9 @@ struct ScanOperation: AlgebraOperation {
         {}
         ~ScanOperation()
         {}
+        void print() {
+          std::cout << "Scan operation, name: " << table_name_ << " rename: " << table_rename_ << std::endl;
+        }
         std::string table_name_{};
         std::string table_rename_{};
 };
@@ -27,6 +31,13 @@ struct UnionOperation: AlgebraOperation {
         {
             delete lhs_;
             delete rhs_;
+        }
+        void print() {
+          std::cout << "union operation\n"; 
+          std::cout << " lhs:\n "; 
+          lhs_->print();
+          std::cout << " rhs:\n "; 
+          rhs_->print();
         }
 
         AlgebraOperation* lhs_ = nullptr;
@@ -44,6 +55,13 @@ struct ExceptOperation: AlgebraOperation {
             delete lhs_;
             delete rhs_;
         }
+        void print() {
+          std::cout << "except operation\n"; 
+          std::cout << " lhs:\n "; 
+          lhs_->print();
+          std::cout << " rhs:\n "; 
+          rhs_->print();
+        }
 
         AlgebraOperation* lhs_ = nullptr;
         AlgebraOperation* rhs_ = nullptr;
@@ -59,6 +77,13 @@ struct IntersectOperation: AlgebraOperation {
         {
             delete lhs_;
             delete rhs_;
+        }
+        void print() {
+          std::cout << "intersect operation\n"; 
+          std::cout << " lhs:\n "; 
+          lhs_->print();
+          std::cout << " rhs:\n "; 
+          rhs_->print();
         }
 
         AlgebraOperation* lhs_ = nullptr;
@@ -76,9 +101,40 @@ struct ProductOperation: AlgebraOperation {
             delete lhs_;
             delete rhs_;
         }
+        void print() {
+          std::cout << "product operation\n"; 
+          std::cout << " lhs:\n "; 
+          lhs_->print();
+          std::cout << " rhs:\n "; 
+          rhs_->print();
+        }
 
         AlgebraOperation* lhs_ = nullptr;
         AlgebraOperation* rhs_ = nullptr;
+};
+
+struct JoinOperation: AlgebraOperation {
+    public:
+        JoinOperation(QueryCTX& ctx, AlgebraOperation* lhs, AlgebraOperation* rhs, 
+            ExpressionNode* filter): 
+            AlgebraOperation(JOIN, ctx), lhs_(lhs), rhs_(rhs), filter_(filter)
+        {}
+        ~JoinOperation()
+        {
+            delete lhs_;
+            delete rhs_;
+        }
+        void print() {
+          std::cout << "join operation\n"; 
+          std::cout << " lhs:\n "; 
+          lhs_->print();
+          std::cout << " rhs:\n "; 
+          rhs_->print();
+        }
+
+        AlgebraOperation* lhs_ = nullptr;
+        AlgebraOperation* rhs_ = nullptr;
+        ExpressionNode* filter_;
 };
 
 struct InsertionOperation: AlgebraOperation {
@@ -86,6 +142,9 @@ struct InsertionOperation: AlgebraOperation {
         InsertionOperation(QueryCTX& ctx): 
             AlgebraOperation(INSERTION, ctx)
         {}
+        void print() {
+          std::cout << "insertion operation\n"; 
+        }
         ~InsertionOperation()
         {}
 };
@@ -105,6 +164,12 @@ struct FilterOperation: AlgebraOperation {
         {
             delete child_;
         }
+
+        void print() {
+          std::cout << "filter operation\n"; 
+          std::cout << " child:\n "; 
+          child_->print();
+        }
         ExpressionNode* filter_;
         std::vector<ExpressionNode*> fields_;
         std::vector<std::string> field_names_;
@@ -123,6 +188,11 @@ struct AggregationOperation: AlgebraOperation {
         {
             delete child_;
         }
+        void print() {
+          std::cout << "agg operation\n"; 
+          std::cout << " child:\n "; 
+          child_->print();
+        }
         AlgebraOperation* child_ = nullptr;
         std::vector<AggregateFuncNode*> aggregates_;
         std::vector<ASTNode*> group_by_;
@@ -140,6 +210,11 @@ struct ProjectionOperation: AlgebraOperation {
         {
             delete child_;
         }
+        void print() {
+          std::cout << "projection operation\n"; 
+          std::cout << " child:\n "; 
+          child_->print();
+        }
         AlgebraOperation* child_ = nullptr;
         std::vector<ExpressionNode*> fields_;
 };
@@ -154,6 +229,11 @@ struct SortOperation: AlgebraOperation {
         ~SortOperation()
         {
             delete child_;
+        }
+        void print() {
+          std::cout << "sort operation\n"; 
+          std::cout << " child:\n "; 
+          child_->print();
         }
         AlgebraOperation* child_ = nullptr;
         std::vector<int> order_by_list_;
@@ -306,9 +386,77 @@ class AlgebraEngine {
             }
         }
 
+
+        void replaceFilteredProductWithJoin(AlgebraOperation** root){
+          if(!root || !(*root)) return;
+          switch((*root)->type_) {
+            case SORT: 
+              {
+                auto op = reinterpret_cast<SortOperation*>(*root);
+                if(op->child_)
+                  replaceFilteredProductWithJoin(&op->child_);
+              } break;
+            case PROJECTION: 
+              {
+                auto op = reinterpret_cast<ProjectionOperation*>(*root);
+                if(op->child_)
+                  replaceFilteredProductWithJoin(&op->child_);
+
+              } break;
+            case AGGREGATION: 
+              {
+                auto op = reinterpret_cast<AggregationOperation*>(*root);
+                if(op->child_)
+                  replaceFilteredProductWithJoin(&op->child_);
+              } break;
+            case FILTER: 
+              {
+                auto op = reinterpret_cast<FilterOperation*>(*root);
+                if(op->child_ && op->child_->type_ == PRODUCT){
+                  auto product = reinterpret_cast<ProductOperation*>(op->child_);
+                  auto join_node = new JoinOperation(product->ctx_, product->lhs_, product->rhs_, op->filter_);
+                  // TODO: fix memory leak of the filter and the product nodes.
+                  (*root) = join_node;
+                  replaceFilteredProductWithJoin(root);
+                }  else if(op->child_){
+                  replaceFilteredProductWithJoin(&op->child_);
+                }
+              } break;
+            case PRODUCT: 
+              {
+                auto op = reinterpret_cast<ProductOperation*>(*root);
+                replaceFilteredProductWithJoin(&op->lhs_);
+                replaceFilteredProductWithJoin(&op->rhs_);
+              } break;
+            case AL_UNION: 
+            case AL_EXCEPT: 
+            case AL_INTERSECT: 
+              {
+                if((*root)->type_ == AL_UNION){
+                  auto op = reinterpret_cast<UnionOperation*>(*root);
+                  replaceFilteredProductWithJoin(&op->lhs_);
+                  replaceFilteredProductWithJoin(&op->rhs_);
+                } else if((*root)->type_ == AL_EXCEPT) {
+                  auto op = reinterpret_cast<ExceptOperation*>(*root);
+                  replaceFilteredProductWithJoin(&op->lhs_);
+                  replaceFilteredProductWithJoin(&op->rhs_);
+                } else {
+                  auto op = reinterpret_cast<IntersectOperation*>(*root);
+                  replaceFilteredProductWithJoin(&op->lhs_);
+                  replaceFilteredProductWithJoin(&op->rhs_);
+                }
+              } break;
+            case SCAN: 
+            case INSERTION: 
+            default: 
+              return;
+          }
+        }
+
         AlgebraOperation* createSelectStatementExpression(QueryCTX& ctx, SelectStatementData* data){
             if(!isValidSelectStatementData(data))
                 return nullptr;
+
             std::vector<ExpressionNode*> splitted_where;
             if(data->where_){
               // split conjunctive predicates.
@@ -335,9 +483,6 @@ class AlgebraEngine {
                  std::pair<std::vector<std::string>, ExpressionNode*> rhs){ 
                 return lhs.first.size() < rhs.first.size();
               });
-            for(auto x : tables_per_filter){
-              std::cout << x.first.size() << std::endl;
-            }
             std::unordered_map<std::string, AlgebraOperation*> table_scanner;
             for(int i = 0; i < data->tables_.size(); ++i){
               AlgebraOperation* scan = new ScanOperation(ctx, data->tables_[i], data->table_names_[i]);
@@ -345,42 +490,55 @@ class AlgebraEngine {
               table_scanner[data->tables_[i]] = scan;
             }
 
+            AlgebraOperation* result = nullptr;
             for(int i = 0; i < splitted_where.size(); ++i){
-              if(tables_per_filter[i].first.size() == 0) continue;
+              if(tables_per_filter[i].first.size() == 0) continue; // 0 tables skip
+              if(tables_per_filter[i].first.size() == 1) { // 1 table access,  wrap it in a filter.
+                table_scanner[tables_per_filter[i].first[0]] = new FilterOperation(ctx, 
+                    table_scanner[tables_per_filter[i].first[0]], 
+                    tables_per_filter[i].second, 
+                    data->fields_, data->field_names_);
+                continue;
+              } 
               
-              for(int j = 1; j < tables_per_filter[i].first.size(); ++j){
-                auto left = table_scanner[tables_per_filter[i].first[j-1]];
-                auto right = table_scanner[tables_per_filter[i].first[j]];
-                auto nw =  new ProductOperation(ctx, table_scanner[tables_per_filter[i].first[j-1]], table_scanner[tables_per_filter[i].first[j]]); 
-                for(auto &t:table_scanner){
-                  if(t.second == left || t.second == right){
-                    table_scanner[t.first] = nw;
-                  }
+              for(int j = 0; j < tables_per_filter[i].first.size(); ++j){
+                auto t = tables_per_filter[i].first[j];
+                if(result == nullptr) {
+                  result = table_scanner[t];
+                } else if(table_scanner.count(t)){
+                  result =  new ProductOperation(ctx, result, table_scanner[t]); 
+                } else {
+                  continue;
                 }
+                table_scanner.erase(t);
               }
 
-              auto new_filter = new FilterOperation(ctx, 
-                  table_scanner[tables_per_filter[i].first[0]], 
+              result = new FilterOperation(ctx, 
+                  result, 
                   tables_per_filter[i].second, 
                   data->fields_, data->field_names_);
-
-              for(int j = 0; j < tables_per_filter[i].first.size(); ++j){
-                  table_scanner[tables_per_filter[i].first[j]] = new_filter;
-              }
             }
 
-            AlgebraOperation* result = nullptr;
-
-            std::unordered_map<AlgebraOperation*, bool> freq;
-            for(auto &t:table_scanner){
-              if(result == nullptr){
+            // remaining table outside of filters.
+            for(auto &t:table_scanner) {
+              if(result == nullptr)
                 result = table_scanner[t.first];
-                freq[result] = 1;
-              } else if(!freq.count(t.second)){
-                result = new ProductOperation(ctx, result, t.second); 
-                freq[t.second] = 1;
+              else
+                result =  new ProductOperation(ctx, result, table_scanner[t.first]); 
+            }
+            // handle filters with zero table access.
+
+            for(int i = 0; i < splitted_where.size(); ++i){
+              if(tables_per_filter[i].first.size() == 0){
+                result = new FilterOperation(ctx, 
+                    result, 
+                    tables_per_filter[i].second, 
+                    data->fields_, data->field_names_);
               }
             }
+
+
+            replaceFilteredProductWithJoin(&result);
 
             /*
             int idx = 0;

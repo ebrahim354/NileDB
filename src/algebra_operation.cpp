@@ -28,6 +28,7 @@ struct AlgebraOperation {
             type_(type), ctx_(ctx)
         {}
         virtual ~AlgebraOperation(){};
+        virtual void print() = 0;
         QueryCTX& ctx_;
         AlgebraOperationType type_;
         int query_idx_ = -1;
