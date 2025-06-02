@@ -48,12 +48,12 @@ class BTreeLeafPage : public BTreePage {
   bool TooShort();
   bool TooShortBefore();
   bool Remove(IndexKey k);
-  std::pair<IndexKey, RecordID> & GetPointer(int pos);
+  std::pair<IndexKey, RecordID>* getPointer(int pos);
 
- private:
   PageID next_page_id_;
   // Flexible array member for page data.
   std::pair<IndexKey, RecordID> array_[1];
+ private:
 };
 /*****************************************************************************
  * HELPER METHODS AND UTILITIES
@@ -100,7 +100,7 @@ void BTreeLeafPage::SetValAt(int index, RecordID v) {
   array_[index].second = v;
 }
 
-bool BTreeLeafPage::IsFull() { return GetSize() + 1 == GetMaxSize(); }
+bool BTreeLeafPage::IsFull() { return GetSize() + 1 >= GetMaxSize(); }
 
 bool BTreeLeafPage::TooShort() {
   if (IsRootPage()) {
@@ -241,7 +241,7 @@ void BTreeLeafPage::Draw() {
   }*/
 }
 
-auto BTreeLeafPage::GetPointer(int pos) -> std::pair<IndexKey, RecordID> & {
-  auto ptr = &array_[pos];
-  return *ptr;
+std::pair<IndexKey, RecordID>* BTreeLeafPage::getPointer(int pos) {
+    if(pos >= GetSize()) return nullptr;
+    return &array_[pos];
 }

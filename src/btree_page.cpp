@@ -12,6 +12,7 @@ struct IndexKey {
 
     IndexKey& operator=(const IndexKey& rhs){
         keys_.clear();
+        keys_.resize(rhs.keys_.size());
         for(int i = 0; i < rhs.keys_.size(); ++i){
             keys_[i] = rhs.keys_[i]; 
         }

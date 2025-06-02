@@ -9,6 +9,7 @@
 
 
 typedef std::vector<std::vector<Value>> QueryResult;
+struct IndexHeader;
 
 
 /* The execution engine that holds all execution operators that could be 
@@ -370,6 +371,7 @@ class IntersectExecutor : public Executor {
 };
 
 
+
 class SeqScanExecutor : public Executor {
     public:
         SeqScanExecutor(TableSchema* table, QueryCTX& ctx, int query_idx, int parent_query_idx)
@@ -409,10 +411,57 @@ class SeqScanExecutor : public Executor {
         TableIterator* it_ = nullptr;
 };
 
+class IndexScanExecutor : public Executor {
+    public:
+        // TODO: change BTreeIndex type to be a generic ( just Index ) that might be a btree or hash index.
+        IndexScanExecutor(BTreeIndex* index, TableSchema* table, QueryCTX& ctx, int query_idx, int parent_query_idx)
+            : Executor(INDEX_SCAN_EXECUTOR, table, ctx, query_idx, parent_query_idx, nullptr), 
+            table_(table), 
+            index_(index),
+            it_ (index_->begin())
+        {}
+        ~IndexScanExecutor()
+        {
+            delete table_;
+        }
+
+        void init() {
+            error_status_ = 0;
+            finished_ = 0;
+            output_.resize(output_schema_->numOfCols());
+            //  delete it_;
+            //  it_ = index_->begin();
+        }
+
+        std::vector<Value> next() {
+            // no more records.
+            if(!it_.advance()) {
+                finished_ = 1;
+                return {};
+            };
+            Record* r = it_.getCurRecordCpyPtr();
+            if(!r){
+                error_status_ = 1;
+                return {};
+            }
+            int err = table_->translateToValuesOffset(*r, output_, 0);
+            delete r;
+            if(err) {
+                error_status_ = 1;
+                return {};
+            }
+            return output_;
+        }
+    private:
+        TableSchema* table_ = nullptr;
+        BTreeIndex* index_ = nullptr;
+        IndexIterator it_;
+};
+
 class InsertionExecutor : public Executor {
     public:
-        InsertionExecutor(TableSchema* table, QueryCTX& ctx, int query_idx, int parent_query_idx)
-            : Executor(INSERTION_EXECUTOR, table, ctx, query_idx, parent_query_idx, nullptr), table_(table)
+        InsertionExecutor(TableSchema* table, std::vector<IndexHeader> indexes, QueryCTX& ctx, int query_idx, int parent_query_idx)
+            : Executor(INSERTION_EXECUTOR, table, ctx, query_idx, parent_query_idx, nullptr), table_(table), indexes_(indexes)
         {}
         ~InsertionExecutor()
         {}
@@ -510,6 +559,20 @@ class InsertionExecutor : public Executor {
             RecordID* rid = new RecordID();
             Record* record = table_->translateToRecord(vals_);
             int err = table_->getTable()->insertRecord(rid, *record);
+            // loop over table indexes.
+            for(int i = 0; i < indexes_.size(); ++i){
+                IndexKey k = getIndexKeyFromTuple(indexes_[i].fields_numbers_, vals_);
+                if(k.keys_.size() == 0) {
+                    error_status_ = 1;
+                    break;
+                }
+                bool err = indexes_[i].index_->Insert(k, *rid);
+                indexes_[i].index_->See();
+                if(!err){
+                    error_status_ = 1;
+                    break;
+                }
+            }
             delete record;
             delete rid;
             if(err) {
@@ -519,8 +582,19 @@ class InsertionExecutor : public Executor {
             finished_ = 1;
             return vals_;
         }
+
+        IndexKey getIndexKeyFromTuple(std::vector<int>& fields, std::vector<Value>& tuples){
+            IndexKey k = {};
+            for(int i = 0; i < fields.size(); ++i){
+                if(fields[i] >= tuples.size()) 
+                    return {};
+                k.keys_.push_back(tuples[fields[i]]);
+            }
+            return k;
+        }
     private:
         TableSchema* table_ = nullptr;
+        std::vector<IndexHeader> indexes_;
         InsertStatementData* statement = nullptr;
         std::vector<Value> vals_  {};
         std::function<Value(ASTNode*)>
@@ -1280,13 +1354,28 @@ class ExecutionEngine {
                 col_constraints.push_back(fields[i].constraints_);
             }
             std::vector<Column> columns;
+            std::vector<std::string> primary_key_cols;
             uint8_t offset_ptr = 0;
             for(size_t i = 0; i < col_names.size(); ++i){
                 columns.push_back(Column(col_names[i], col_types[i], offset_ptr, col_constraints[i]));
+                bool is_primary_key = false;
+                for(int j = 0; j < col_constraints[i].size(); ++j){
+                  if(col_constraints[i][j] == Constraint::PRIMARY_KEY){
+                    is_primary_key = true;
+                    break;
+                  }
+                }
+                if(is_primary_key) primary_key_cols.push_back(col_names[i]);
                 offset_ptr += Column::getSizeFromType(col_types[i]);
             }
             TableSchema* sch = catalog_->createTable(table_name, columns);
-            if(sch != nullptr) return true;
+            if(sch == nullptr) return true;
+            if(!primary_key_cols.empty()) {
+                std::cout << "create idx from create pkey\n";
+              int err = catalog_->createIndex(table_name, table_name+"_pkey", primary_key_cols);
+              // TODO: use CTX error status instead of this.
+              if(err) return true;
+            }
             return false;
         }
 
@@ -1477,7 +1566,9 @@ class ExecutionEngine {
                         }
 
                         TableSchema* new_output_schema = new TableSchema(tname, schema->getTable(), columns, true);
-                        SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
+                        //SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
+                        IndexScanExecutor* scan = new IndexScanExecutor(catalog_->getIndexesOfTable(tname)[0].index_
+                                ,new_output_schema, ctx, query_idx, parent_query_idx);
                         return scan;
                     } break;
                 case PRODUCT: 
@@ -1596,7 +1687,8 @@ class ExecutionEngine {
                         auto statement = reinterpret_cast<InsertStatementData*>(ctx.queries_call_stack_[query_idx]);
                         TableSchema* table = catalog_->getTableSchema(statement->table_name_);
 
-                        InsertionExecutor* insert = new InsertionExecutor(table, ctx, query_idx, parent_query_idx);
+                        InsertionExecutor* insert =  new InsertionExecutor(table,
+                                    catalog_->getIndexesOfTable(statement->table_name_), ctx, query_idx, parent_query_idx);
                         return insert;
                     } break;
                 default: 

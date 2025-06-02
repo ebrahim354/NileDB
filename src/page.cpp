@@ -6,6 +6,11 @@
 
 
 struct PageID{
+    PageID& operator=(const PageID &rhs){
+        this->file_name_ = rhs.file_name_; 
+        this->page_num_ = rhs.page_num_;
+        return *this;
+    }
     std::string file_name_{0};
     int32_t page_num_{0};
 

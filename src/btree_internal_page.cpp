@@ -62,7 +62,7 @@ IndexKey BTreeInternalPage::KeyAt(int index) {
 void BTreeInternalPage::SetKeyAt(int index, IndexKey key) { array_[index].first = key; }
 
 
-auto BTreeInternalPage::IsFull() const -> bool { return GetSize() == GetMaxSize(); }
+auto BTreeInternalPage::IsFull() const -> bool { return GetSize() >= GetMaxSize(); }
 
 
 auto BTreeInternalPage::TooShort() const -> bool {

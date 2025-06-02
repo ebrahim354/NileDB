@@ -6,6 +6,7 @@
 struct QueryCTX;
 enum ExecutorType {
     SEQUENTIAL_SCAN_EXECUTOR = 0,
+    INDEX_SCAN_EXECUTOR,
     INSERTION_EXECUTOR,
     FILTER_EXECUTOR,
     AGGREGATION_EXECUTOR,
@@ -24,6 +25,8 @@ enum ExecutorType {
 std::string exec_type_to_string(ExecutorType t){
     switch(t){
         case SEQUENTIAL_SCAN_EXECUTOR:
+            return "SEQUENTIAL SCAN";
+        case INDEX_SCAN_EXECUTOR:
             return "SEQUENTIAL SCAN";
         case INSERTION_EXECUTOR:
             return "INSERTION";

@@ -92,7 +92,7 @@ Page* CacheManager::newPage(std::string file_name){
     }
     int err = disk_manager_->allocateNewPage(file_name,new_page->data_, &new_page->page_id_);
     if(err) {
-        // std::cout << " could not allocate a new page " << std::endl;
+        std::cout << " could not allocate a new page " << file_name << std::endl;
         return nullptr;
     }
     page_table_.insert({new_page->page_id_, new_frame});

@@ -32,6 +32,11 @@
 #define META_DATA_TABLE "NILEDB_META_DATA"
 
 
+// { index ptr, field ids of the table used to form the IndexKey }
+struct IndexHeader{
+    BTreeIndex* index_;
+    std::vector<int> fields_numbers_;
+};
 
 
 
@@ -222,7 +227,7 @@ class TableSchema {
         }
 
         int translateToValuesOffset(Record& r, std::vector<Value>& values, int offset){
-            if(offset < 0 || offset + columns_.size() > values.size()) return 1;
+            if( offset < 0 || offset + columns_.size() > values.size()) return 1;
             for(int i = 0; i < columns_.size(); ++i){
                 // check the bitmap if this value is null.
                 char * bitmap_ptr = r.getFixedPtr(size_)+(i/8);  
@@ -418,13 +423,22 @@ class Catalog {
                 if (!tables_.count(table_name) || indexes_.count(index_name))
                     return 1;
                 TableSchema* table = tables_[table_name];
+                std::vector<int> cols;
                 for(int i = 0; i < fields.size(); ++i){
-                  if(!table->isValidCol(fields[i])) return 1;
+                  int col = table->colExist(fields[i]);
+                  if(col == -1) return 1;
+                  cols.push_back(col);
                 }
                 // initialize the index
-                PageID first_page = {.file_name_ = index_name+"INDEX.ndb", .page_num_ = 1};
-                BTreeIndex* index = new BTreeIndex(cache_manager_, first_page);
-                indexes_.insert({index_name, index});
+                //PageID first_page = {.file_name_ = index_name+"_INDEX.ndb", .page_num_ = -1};
+                BTreeIndex* index = new BTreeIndex(cache_manager_, index_name+"_INDEX.ndb" ,INVALID_PAGE_ID);
+                indexes_.insert({index_name, {index , cols}});
+
+                if(indexes_of_table_.count(table_name))
+                  indexes_of_table_[table_name].push_back(index_name);
+                else 
+                  indexes_of_table_[table_name] = {index_name};
+
                 // TODO: persist the index in the meta data table.
                 return true;
         }
@@ -490,15 +504,29 @@ class Catalog {
             return output;
         }
 
-        // provide delete and alter table later.
+        //TODO: change unnecessary indirection.
+        std::vector<IndexHeader> getIndexesOfTable(std::string& tname){
+          std::vector<IndexHeader> idxs;
+          if(indexes_of_table_.count(tname)){
+            for(int i = 0; i < indexes_of_table_[tname].size(); ++i){
+              std::string idx_name = indexes_of_table_[tname][i];
+              if(indexes_.count(idx_name))
+                idxs.push_back(indexes_[idx_name]);
+            }
+          }
+          return idxs;
+        }
+
+        // TODO: implement delete and alter table.
     private:
+
         CacheManager* cache_manager_;
         std::unordered_map<std::string, TableSchema*> tables_;
-        std::unordered_map<std::string, BTreeIndex*> indexes_;
+        std::unordered_map<std::string, std::vector<std::string>> indexes_of_table_;
+        std::unordered_map<std::string, IndexHeader> indexes_;
         FreeSpaceMap* free_space_map_;
 
         // hard coded data:
-
         TableSchema* meta_table_schema_;
 
 };
