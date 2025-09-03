@@ -44,13 +44,18 @@ class BTreeIndex {
         bool GetValue(IndexKey &key, std::vector<RecordID> *result) {
             // read lock on the root_page_id_
             // std::cerr << "GET VALUE CALL\n";
-            std::shared_lock locker(root_page_id_lock_);
+            // TODO: fix dead lock.
+            //std::shared_lock locker(root_page_id_lock_);
             // std::cerr << "HI searching for: " << key << std::endl;
             if (root_page_id_ == INVALID_PAGE_ID) {
                 return false;
             }
             auto *start_page = cache_manager_->fetchPage(root_page_id_);
-            start_page->mutex_.lock_shared();
+            // could not fetch page.
+            if(!start_page) return false;
+
+            // TODO: fix dead lock.
+            // start_page->mutex_.lock_shared();
             auto *start = reinterpret_cast<BTreePage *>(start_page->data_);
             while (!start->IsLeafPage()) {
                 auto *cur = reinterpret_cast<BTreeInternalPage *>(start);
@@ -59,19 +64,26 @@ class BTreeIndex {
                 auto tmp_page_id = start->GetPageId();
 
                 start_page = cache_manager_->fetchPage(page_id);
-                start_page->mutex_.lock_shared();
+                // could not fetch page.
+                if(!start_page) return false;
+
+                // TODO: fix dead lock.
+                // start_page->mutex_.lock_shared();
                 start = reinterpret_cast<BTreePage *>(start_page->data_);
 
-                tmp->mutex_.unlock_shared();
+                // TODO: fix dead lock.
+                // tmp->mutex_.unlock_shared();
                 cache_manager_->unpinPage(tmp_page_id, false);
                 if (tmp_page_id == root_page_id_) {
-                    locker.unlock();
+                    // TODO: fix dead lock.
+                    // locker.unlock();
                 }
             }
             auto *leaf = reinterpret_cast<BTreeLeafPage *>(start);
             auto status = leaf->GetValue(key, result);
 
-            start_page->mutex_.unlock_shared();
+            // TODO: fix dead lock.
+            // start_page->mutex_.unlock_shared();
             cache_manager_->unpinPage(start->GetPageId(), false);
             return status;
         }
