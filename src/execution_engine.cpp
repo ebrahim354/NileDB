@@ -1369,14 +1369,14 @@ class ExecutionEngine {
                 offset_ptr += Column::getSizeFromType(col_types[i]);
             }
             TableSchema* sch = catalog_->createTable(table_name, columns);
-            if(sch == nullptr) return true;
+            if(sch == nullptr) return false;
             if(!primary_key_cols.empty()) {
                 std::cout << "create idx from create pkey\n";
               int err = catalog_->createIndex(table_name, table_name+"_pkey", primary_key_cols);
               // TODO: use CTX error status instead of this.
-              if(err) return true;
+              if(err) return false;
             }
-            return false;
+            return true;
         }
 
         bool create_index_handler(QueryCTX& ctx) {
@@ -1385,7 +1385,8 @@ class ExecutionEngine {
             std::string table_name = create_index->table_name_;
             std::vector<std::string> fields = create_index->fields_;
             bool err = catalog_->createIndex(table_name, index_name, fields);
-            return err;
+            if(err) return false;
+            return true;
         }
 
         /*
