@@ -82,6 +82,7 @@ enum CategoryType {
     SCOPED_FIELD,
     STRING_CONSTANT,
     INTEGER_CONSTANT,
+    FLOAT_CONSTANT,
     NULL_CONSTANT,
                 // grammer of expressions is copied with some modifications from the following link :
                 // https://craftinginterpreters.com/appendix-i.html
@@ -545,7 +546,8 @@ Value Parser::constVal(QueryCTX& ctx){
     switch(token.type_){
         case TokenType::STR_CONSTANT:
             return Value(token.val_);
-        // TODO: handle floats.
+        case TokenType::FLOATING_CONSTANT:
+            return Value(str_to_float(token.val_));
         case TokenType::NUMBER_CONSTANT:
             return Value(str_to_int(token.val_));
         case TokenType::TRUE:
@@ -766,6 +768,8 @@ void Parser::fieldDefList(QueryCTX& ctx, int query_idx){
         }
         token = ctx.getCurrentToken(); ++ctx;
         field_def.type_ = token.type_;
+        // TODO: text and varchar should be different?.
+        if(field_def.type_ == TokenType::TEXT)  field_def.type_ = TokenType::VARCHAR;
         // TODO: fix that.
         // temporary handle different varchar sizes as an unknown size.
         if(field_def.type_ == TokenType::VARCHAR && ctx.matchTokenType(TokenType::LP)){
@@ -840,11 +844,25 @@ void Parser::groupByList(QueryCTX& ctx, int query_idx) {
 ASTNode* Parser::constant(QueryCTX& ctx){
     if((bool)ctx.error_status_) return nullptr;
     ASTNode* ret = nullptr;
-    if(ctx.matchTokenType(TokenType::STR_CONSTANT)){
-        ret =  new ASTNode(STRING_CONSTANT, ctx.getCurrentToken()); ++ctx;
-    } else if(ctx.matchTokenType(TokenType::NUMBER_CONSTANT)){
+
+    // TODO: fix the inconsistancy of mapping between tokens and ASTNodes: 
+    // ( change this ) number->integer, float->floating, str->string.
+    //  
+    // floats
+    if(ctx.matchMultiTokenType({TokenType::NUMBER_CONSTANT, TokenType::DOT, TokenType::NUMBER_CONSTANT})) { 
+        std::string val = ctx.getCurrentToken().val_; ++ctx;
+        val += "."; ++ctx;
+        val += ctx.getCurrentToken().val_; ++ctx;
+        auto t = Token(TokenType::FLOATING_CONSTANT, val);
+        ret = new ASTNode(FLOAT_CONSTANT, t);
+      // strings
+    } else  if(ctx.matchTokenType(TokenType::STR_CONSTANT)){ 
+        ret =  new ASTNode(STRING_CONSTANT, ctx.getCurrentToken()); ++ctx;  
+      // integers
+    } else if(ctx.matchTokenType(TokenType::NUMBER_CONSTANT)){ 
         ret = new ASTNode(INTEGER_CONSTANT, ctx.getCurrentToken()); ++ctx;
-    } else if(ctx.matchTokenType(TokenType::NULL_CONST)){
+      // null
+    } else if(ctx.matchTokenType(TokenType::NULL_CONST)){ 
         ret = new ASTNode(NULL_CONSTANT, ctx.getCurrentToken()); ++ctx;
     }
     return ret;

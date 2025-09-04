@@ -8,7 +8,7 @@ enum class TokenType {
 	STR_CONSTANT,
 	FLOATING_CONSTANT,
 	IDENTIFIER,
-    TOKENS_WITH_VAL,
+    TOKENS_WITH_VAL, // ----- placeholder to check if members have value or not.
     LT, // symbols
     LTE,
     GT,
@@ -26,6 +26,7 @@ enum class TokenType {
     DOT,
     COMMA, 
     VARCHAR,// datatypes
+    TEXT,
     INTEGER,
     BIGINT,
     FLOAT,// float4
@@ -181,6 +182,7 @@ Tokenizer::Tokenizer(){
     keywords_.insert({"MAX"  , TokenType::MAX  });
     // datatypes
     data_types_.insert({"VARCHAR"  , TokenType::VARCHAR  });
+    data_types_.insert({"TEXT"     , TokenType::TEXT     });
     data_types_.insert({"INTEGER"  , TokenType::INTEGER  });
     data_types_.insert({"BIGINT"   , TokenType::BIGINT   });
     data_types_.insert({"FLOAT"    , TokenType::FLOAT    });
@@ -223,6 +225,7 @@ bool Tokenizer::isSymbol(std::string& t){
 bool Tokenizer::isDataType(TokenType t){
     switch(t){
         case TokenType::VARCHAR:
+        case TokenType::TEXT:
         case TokenType::INTEGER:
         case TokenType::BIGINT:
         case TokenType::FLOAT:

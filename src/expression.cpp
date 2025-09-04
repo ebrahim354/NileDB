@@ -285,6 +285,10 @@ Value evaluate_expression(ASTNode* expression, std::function<Value(ASTNode*)>eva
                           }
                           return Value(val);
                       }
+        case FLOAT_CONSTANT:
+                      {
+                          return Value(str_to_float(expression->token_.val_));
+                      }
         case INTEGER_CONSTANT: 
                       {
                           return Value(str_to_int(expression->token_.val_));
@@ -504,6 +508,7 @@ void accessed_tables(ASTNode* expression ,std::vector<std::string>& tables, Cata
                       }
 
     case STRING_CONSTANT: 
+    case FLOAT_CONSTANT: 
     case INTEGER_CONSTANT: 
     case NULL_CONSTANT: 
     default:
@@ -688,6 +693,7 @@ void accessed_fields(ASTNode* expression ,std::vector<std::string>& fields, bool
               }
 
     case STRING_CONSTANT: 
+    case FLOAT_CONSTANT: 
     case INTEGER_CONSTANT: 
     case NULL_CONSTANT: 
     default:

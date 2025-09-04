@@ -28,11 +28,18 @@ std::vector<std::string> strSplit(const std::string& str, char delimiter) {
 
 
 
-bool areDigits(std::string& nums){
+// if floating_sign is not NULL check for digits and return the index of the '.' symbol, 
+// if no '.' symbol is found floating_sign will be assigned to -1.
+// if floating_sign is NULL or not provided check for digits only.
+bool areDigits(std::string& nums, int* floating_sign = nullptr){
     int start = 0;
     if(nums.size() > 0 && nums[0] == '-') start = 1;
     bool are_digits = true;
     for(size_t i = start; i < nums.size(); i++){
+        if(floating_sign != nullptr && nums[i] == '.'){
+          *floating_sign = i;
+          continue;
+        }
         if(nums[i] - '0'  > 9 || nums[i] - '0' < 0) {
             are_digits = false;
         }
@@ -48,6 +55,19 @@ int str_to_int(std::string& s){
         if (s[i] > '9' || s[i] < '0') 
             return 0;
     return (s[0] == '-' ? -stoi(s) : stoi(s));
+}
+
+float str_to_float(std::string& s){
+    int start = 0;
+    if(s.size() > 0 && s[0] == '-') start = 1;
+    int floating_sign_idx = -1;
+    if(!areDigits(s, &floating_sign_idx)) return 0;
+    for(int i = start; i < s.size(); ++i) {
+        if(s[i] == '.' && floating_sign_idx == i) continue;
+        if (s[i] > '9' || s[i] < '0') 
+            return 0;
+    }
+    return (s[0] == '-' ? -(stof(s)) : stof(s));
 }
 
 std::string compareStr(std::string& a, std::string& b, std::string& cmp){

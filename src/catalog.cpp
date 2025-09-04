@@ -440,7 +440,7 @@ class Catalog {
                   indexes_of_table_[table_name] = {index_name};
 
                 // TODO: persist the index in the meta data table.
-                return true;
+                return false;
         }
 
         TableSchema* getTableSchema(const std::string &table_name) {
