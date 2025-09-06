@@ -447,12 +447,16 @@ struct InsertStatementData : QueryData {
     ~InsertStatementData() {
         for(int i = 0; i < values_.size();++i)
             delete values_[i];
+        delete select_;
     }
 
 
     std::string table_name_ = {};
     std::vector<std::string> fields_ = {};
+    // only one of these should be used per insertStatement.
     std::vector<ExpressionNode*> values_ = {};
+    // this is used to support (insert into t select * from ..) syntax.
+    SelectStatementData* select_ = nullptr;
 };
 
 struct DeleteStatementData : QueryData {
@@ -1558,28 +1562,36 @@ void Parser::insertStatement(QueryCTX& ctx, int parent_idx){
     ++ctx;
   }
 
-  if(!ctx.matchTokenType(TokenType::VALUES)){
+  if(ctx.matchTokenType(TokenType::VALUES) ){ // insert into ... values ... syntax
+    ++ctx;
+    if(!ctx.matchTokenType(TokenType::LP)){
+      ctx.error_status_ = Error::EXPECTED_LEFT_PARANTH; 
+      return;
+    }
+    ++ctx;
+
+    expressionList(ctx,statement->idx_);
+
+    if(!statement->values_.size()){
+      ctx.error_status_ = Error::EXPECTED_VALUES;
+      return;
+    }
+
+    if(!ctx.matchTokenType(TokenType::RP)){
+      ctx.error_status_ = Error::EXPECTED_RIGHT_PARANTH; 
+      return;
+    }
+    ++ctx;
+  }
+  else if(ctx.matchTokenType(TokenType::SELECT)){ // insert into ... select from ... syntax
+    // TODO: Don't use this hack.
+    int select_statement_idx = ctx.queries_call_stack_.size();
+    selectStatement(ctx, statement->idx_);
+    if((bool)ctx.error_status_ || select_statement_idx <= ctx.queries_call_stack_.size()) return;
+    statement->select_ = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[select_statement_idx]);
+  } else {
     ctx.error_status_ = Error::EXPECTED_VALUES; 
     return;
   }
-  ++ctx;
 
-  if(!ctx.matchTokenType(TokenType::LP)){
-    ctx.error_status_ = Error::EXPECTED_LEFT_PARANTH; 
-    return;
-  }
-  ++ctx;
-
-  expressionList(ctx,statement->idx_);
-
-  if(!statement->values_.size()){
-    ctx.error_status_ = Error::EXPECTED_VALUES;
-    return;
-  }
-
-  if(!ctx.matchTokenType(TokenType::RP)){
-    ctx.error_status_ = Error::EXPECTED_RIGHT_PARANTH; 
-    return;
-  }
-  ++ctx;
 }
