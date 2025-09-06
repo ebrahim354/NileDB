@@ -460,8 +460,9 @@ class IndexScanExecutor : public Executor {
 
 class InsertionExecutor : public Executor {
     public:
-        InsertionExecutor(TableSchema* table, std::vector<IndexHeader> indexes, QueryCTX& ctx, int query_idx, int parent_query_idx)
-            : Executor(INSERTION_EXECUTOR, table, ctx, query_idx, parent_query_idx, nullptr), table_(table), indexes_(indexes)
+        InsertionExecutor(TableSchema* table, std::vector<IndexHeader> indexes, QueryCTX& ctx, int query_idx, int parent_query_idx, int select_idx)
+            : Executor(INSERTION_EXECUTOR, table, ctx, query_idx, parent_query_idx, nullptr),
+            table_(table), indexes_(indexes), select_idx_(select_idx)
         {}
         ~InsertionExecutor()
         {}
@@ -538,49 +539,85 @@ class InsertionExecutor : public Executor {
                 for(auto& field_name : statement->fields_){
                     int idx = table_->colExist(field_name);
                     if(!table_->isValidCol(field_name) || idx < 0) {
-                        error_status_ = 0;
+                        error_status_ = 1;
                         return;
                     }
                 }
             }
-            if(statement->values_.size() != statement->fields_.size()){
-                error_status_ = 0;
+
+            // TODO: Provide strict type checking before inserting data.
+           
+        
+            // this means we're using insert .. select syntax.
+            if(select_idx_ != -1 && select_idx_ < ctx_.executors_call_stack_.size()){
+              child_executor_ = ctx_.executors_call_stack_[select_idx_];
+              child_executor_->init();
+              if(child_executor_->error_status_) {
+                error_status_ = 1;
                 return;
+              }
+            } else {
+              // insert .. values syntax.
+              if(statement->values_.size() != statement->fields_.size()){
+                  error_status_ = 1;
+                  return;
+              }
             }
-            // values
-            for(int i = 0; i < statement->values_.size(); ++i){
-                ExpressionNode* val_exp = statement->values_[i];
-                int idx = table_->colExist(statement->fields_[i]); 
-                vals_[idx] = evaluate_expression(val_exp, eval);
-            }
+
         }
 
         std::vector<Value> next() {
-            RecordID* rid = new RecordID();
-            Record* record = table_->translateToRecord(vals_);
-            int err = table_->getTable()->insertRecord(rid, *record);
-            // loop over table indexes.
-            for(int i = 0; i < indexes_.size(); ++i){
-                IndexKey k = getIndexKeyFromTuple(indexes_[i].fields_numbers_, vals_);
-                if(k.keys_.size() == 0) {
-                    error_status_ = 1;
-                    break;
-                }
-                bool err = indexes_[i].index_->Insert(k, *rid);
-                indexes_[i].index_->See();
-                if(!err){
-                    error_status_ = 1;
-                    break;
-                }
+          if(error_status_ || finished_) return {};
+          // TODO: fix alot of vector copying.
+          if(child_executor_){
+            std::vector<Value> values = child_executor_->next();
+            if(child_executor_->finished_) {
+              finished_ = 1;
+              return {};
             }
-            delete record;
-            delete rid;
-            if(err) {
-                error_status_ = 1;
-                return {};
+            if(child_executor_->error_status_ || values.size() != statement->fields_.size()){
+              error_status_ = 1;
+              return {};
             }
+            for(int i = 0; i < values.size(); ++i){
+              int idx = table_->colExist(statement->fields_[i]); 
+              vals_[idx] = values[i];
+            }
+
+          } else {
+            for(int i = 0; i < statement->values_.size(); ++i){
+              ExpressionNode* val_exp = statement->values_[i];
+              int idx = table_->colExist(statement->fields_[i]); 
+              vals_[idx] = evaluate_expression(val_exp, eval);
+            }
+          }
+
+          RecordID* rid = new RecordID();
+          Record* record = table_->translateToRecord(vals_);
+          int err = table_->getTable()->insertRecord(rid, *record);
+          // loop over table indexes.
+          for(int i = 0; i < indexes_.size(); ++i){
+              IndexKey k = getIndexKeyFromTuple(indexes_[i].fields_numbers_, vals_);
+              if(k.keys_.size() == 0) {
+                  error_status_ = 1;
+                  break;
+              }
+              bool success = indexes_[i].index_->Insert(k, *rid);
+              indexes_[i].index_->See();
+              if(!success){
+                  error_status_ = 1;
+                  break;
+              }
+          }
+          delete record;
+          delete rid;
+          if(err || error_status_) {
+              error_status_ = 1;
+              return {};
+          }
+          if(!child_executor_ || child_executor_->finished_)
             finished_ = 1;
-            return vals_;
+          return vals_;
         }
 
         IndexKey getIndexKeyFromTuple(std::vector<int>& fields, std::vector<Value>& tuples){
@@ -596,6 +633,7 @@ class InsertionExecutor : public Executor {
         TableSchema* table_ = nullptr;
         std::vector<IndexHeader> indexes_;
         InsertStatementData* statement = nullptr;
+        int select_idx_ = -1;
         std::vector<Value> vals_  {};
         std::function<Value(ASTNode*)>
             eval = std::bind(&InsertionExecutor::evaluate, this, std::placeholders::_1);
@@ -1685,9 +1723,16 @@ class ExecutionEngine {
                     {
                         auto statement = reinterpret_cast<InsertStatementData*>(ctx.queries_call_stack_[query_idx]);
                         TableSchema* table = catalog_->getTableSchema(statement->table_name_);
+                        int select_idx = statement->select_idx_;
 
-                        InsertionExecutor* insert =  new InsertionExecutor(table,
-                                    catalog_->getIndexesOfTable(statement->table_name_), ctx, query_idx, parent_query_idx);
+                        InsertionExecutor* insert =  new InsertionExecutor(
+                                                         table,
+                                                         catalog_->getIndexesOfTable(statement->table_name_),            
+                                                         ctx, 
+                                                         query_idx, 
+                                                         parent_query_idx, 
+                                                         select_idx
+                                                       );
                         return insert;
                     } break;
                 default: 
