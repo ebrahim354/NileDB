@@ -1092,6 +1092,18 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
         sub_query_node->used_with_exists_ = exists;
         return sub_query_node;
     }
+    // sub-query, without () might accur with the 'IN' operator : IN (sub-query).
+    if(ctx.matchTokenType(TokenType::SELECT)){
+        int sub_query_id = ctx.queries_call_stack_.size();
+        selectStatement(ctx, expression_ctx->query_idx_);
+        SelectStatementData* sub_query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[sub_query_id]);
+        if(!sub_query) {
+            return nullptr;
+        }
+        SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
+        //sub_query_node->used_with_exists_ = exists;
+        return sub_query_node;
+    }
     // nested expressions.
     if(ctx.matchTokenType(TokenType::LP)){
         ++ctx;
@@ -1103,7 +1115,7 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
         }
         ++ctx;
         return ex;
-    }
+    }     
     if(expression_ctx)
         i = case_expression(ctx, expression_ctx);
     if(!i && expression_ctx)
@@ -1482,9 +1494,13 @@ void Parser::createTableStatement(QueryCTX& ctx, int parent_idx){
 
 void Parser::createIndexStatement(QueryCTX& ctx, int parent_idx){
     if((bool)ctx.error_status_) return; 
-    if(!ctx.matchMultiTokenType({TokenType::CREATE , TokenType::INDEX}))
-        return;
-    ctx += 2;
+    if(ctx.matchMultiTokenType({TokenType::CREATE , TokenType::INDEX})){
+      ctx += 2;
+    } else if(ctx.matchMultiTokenType({TokenType::CREATE, TokenType::UNIQUE , TokenType::INDEX})){
+      ctx += 3;
+    } else {
+      return;
+    }
     CreateIndexStatementData* statement = new CreateIndexStatementData(parent_idx);
     statement->idx_ = ctx.queries_call_stack_.size();
     ctx.queries_call_stack_.push_back(statement);
