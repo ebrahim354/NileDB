@@ -1,6 +1,7 @@
 #include "../src/NileDB.cpp"
 #include "md5.c"
 #include <dirent.h>
+#include <stdlib.h>
 #include <algorithm>
 #include <cstdio>
 #include <stdio.h>
@@ -720,22 +721,28 @@ int test_file(const char* file_name){
   return nErr; 
 }
 
-void test_directory(const char* dir_name){
+int test_directory(const char* dir_name){
     DIR *dp = opendir(dir_name);
     struct dirent *ep;
 
     if(!dp) {
         std::cout << "TESTING the following file: " + (std::string) dir_name << "\n";
-        test_file(dir_name);
-        return;
+        int err = test_file(dir_name);
+        // TODO: NOT SECURE DON'T USE THIS IN PRODUCTION.
+        if(!err)
+          system("rm ./*.ndb");
+        return err;
     }
+    int err_status = 0;
     while((ep = readdir(dp)) != NULL){
         if((std::string)ep->d_name == "." || (std::string)ep->d_name == "..") continue;
         std::string tmp = (std::string) dir_name + "/";
         tmp += (std::string) ep->d_name;
 
-        test_directory(tmp.c_str());
+        int err_status = test_directory(tmp.c_str());
+        if(err_status) break;
     }
+    return err_status;
 }
 
 
@@ -744,5 +751,6 @@ int main(int argc, char **argv){
     if(argc <= 2){
         std::cout << "usage: test [file | directory]\n";
     }
-    test_directory(argv[1]);
+    int err_status = test_directory(argv[1]);
+    return err_status;
 }
