@@ -588,7 +588,7 @@ class InsertionExecutor : public Executor {
             for(int i = 0; i < statement->values_.size(); ++i){
               ExpressionNode* val_exp = statement->values_[i];
               int idx = table_->colExist(statement->fields_[i]); 
-              vals_[idx] = evaluate_expression(val_exp, eval);
+              vals_[idx] = evaluate_expression(ctx_, val_exp, eval);
             }
           }
 
@@ -658,7 +658,6 @@ class FilterExecutor : public Executor {
         }
 
         Value evaluate(ASTNode* item){
-
             if(item->category_ == SUB_QUERY){
                 auto sub_query = reinterpret_cast<SubQueryNode*>(item);
                 bool used_with_exists = sub_query->used_with_exists_;
@@ -790,7 +789,7 @@ class FilterExecutor : public Executor {
                     if(idx < 0){
                         for(int i = 0; i < field_names_.size(); i++){
                             if(field == field_names_[i]) 
-                                return evaluate_expression(fields_[i], eval);
+                                return evaluate_expression(ctx_, fields_[i], eval);
                         }
                     }
                     // can't find the field in current context,
@@ -857,7 +856,7 @@ class FilterExecutor : public Executor {
 
                 if(child_executor_ && ((finished_ || error_status_) && output_.size() == 0)) return {};
 
-                Value exp = evaluate_expression(filter_, eval).getBoolVal();
+                Value exp = evaluate_expression(ctx_, filter_, eval).getBoolVal();
                 if(exp != false && !exp.isNull()){
                     if(child_executor_){
                         return output_;
@@ -1001,7 +1000,7 @@ class AggregationExecutor : public Executor {
                                             ++output_[idx];
                                             break;
                                         }
-                                        Value val = evaluate_expression(exp, eval);
+                                        Value val = evaluate_expression(ctx_, exp, eval);
                                         if(!val.isNull()) 
                                             ++output_[idx];
                                     }
@@ -1009,7 +1008,7 @@ class AggregationExecutor : public Executor {
                         case AVG:
                         case SUM:
                                    {
-                                       Value val = evaluate_expression(exp, eval);
+                                       Value val = evaluate_expression(ctx_, exp, eval);
                                        if(val.type_ == INT) output_[idx] += val; 
                                        else if(val.isNull())
                                          *counter += -1;
@@ -1017,7 +1016,7 @@ class AggregationExecutor : public Executor {
                                    break;
                         case MIN:
                                    {
-                                       Value val = evaluate_expression(exp, eval);
+                                       Value val = evaluate_expression(ctx_, exp, eval);
                                        if(val.type_ == INT) {
                                            if(counter->getIntVal() == 1) output_[idx] = val;
                                            output_[idx] = std::min<Value>(output_[idx], val);
@@ -1026,7 +1025,7 @@ class AggregationExecutor : public Executor {
                                    break;
                         case MAX:
                                    {
-                                       Value val = evaluate_expression(exp, eval);
+                                       Value val = evaluate_expression(ctx_, exp, eval);
                                        if(val.type_ == INT) {
                                            if(counter->getIntVal() == 1) output_[idx] = val;
                                            output_[idx] = std::max<Value>(output_[i], val);
@@ -1258,7 +1257,7 @@ class ProjectionExecutor : public Executor {
                         tmp_output.push_back(val);
                     }
                 } else {
-                    tmp_output.push_back(evaluate_expression(fields_[i], eval));
+                    tmp_output.push_back(evaluate_expression(ctx_, fields_[i], eval));
                 }
             }
             return tmp_output;

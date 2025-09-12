@@ -33,7 +33,7 @@ enum class TokenType {
     REAL, // float8
     TIMESTAMP,
     BOOLEAN,
-	SELECT, // keywords
+    SELECT, // keywords
     ORDER,
     GROUP,
     CROSS,

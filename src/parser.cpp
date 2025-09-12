@@ -1101,7 +1101,6 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
             return nullptr;
         }
         SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
-        //sub_query_node->used_with_exists_ = exists;
         return sub_query_node;
     }
     // nested expressions.
