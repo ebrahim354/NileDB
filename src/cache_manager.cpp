@@ -32,7 +32,7 @@ class CacheManager {
             std::cout << "pages contents: " << std::endl;
             for (size_t i = 0; i < pool_size_; i++) {
                 std::cout << "page number: " << i << " " << *pages_[i].data_ << " pinCnt: " << pages_[i].pin_count_
-                    << " isDirty: " << pages_[i].is_dirty_ << " page_id: " << pages_[i].page_id_.file_name_ 
+                    << " isDirty: " << pages_[i].is_dirty_ << " page_id: " << pages_[i].page_id_.file_id_
                     << " " << pages_[i].page_id_.page_num_ << std::endl;
             }
         }
@@ -105,7 +105,7 @@ Page* CacheManager::newPage(std::string file_name){
 
 Page* CacheManager::fetchPage(PageID page_id){
     const std::lock_guard<std::mutex> lock(latch_);
-    if (page_id.file_name_ == INVALID_PAGE_ID.file_name_ || page_id.page_num_ == INVALID_PAGE_ID.page_num_) {
+    if (page_id.file_id_ < 0 || page_id.page_num_ < 0) {
         return nullptr;
     }
     int32_t frame = -1;
@@ -205,8 +205,7 @@ bool CacheManager::flushPage(PageID page_id){
     if (res != page_table_.end()) {
         frame = res->second;
     }
-    bool invalid_page = page_id.page_num_ == INVALID_PAGE_ID.page_num_ || 
-        page_id.file_name_ == INVALID_PAGE_ID.file_name_;
+    bool invalid_page = (page_id.file_id_ < 0 || page_id.page_num_ < 0);
     if (invalid_page || res == page_table_.end() || frame == -1) {
         return false;
     }
@@ -222,8 +221,7 @@ bool CacheManager::flushPage(PageID page_id){
 void CacheManager::flushAllPages() {
     const std::lock_guard<std::mutex> lock(latch_);
     for (size_t i = 0; i < pool_size_; i++) {
-        bool invalid_page = pages_[i].page_id_.page_num_ == INVALID_PAGE_ID.page_num_ || 
-            pages_[i].page_id_.file_name_ == INVALID_PAGE_ID.file_name_;
+        bool invalid_page = (pages_[i].page_id_.file_id_ < 0 || pages_[i].page_id_.page_num_ < 0);
         if (invalid_page) continue;
         Page *page_to_be_flushed = &pages_[i];
         disk_manager_->writePage(page_to_be_flushed->page_id_, page_to_be_flushed->data_);
