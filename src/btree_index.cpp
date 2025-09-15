@@ -17,13 +17,13 @@
 class BTreeIndex {
     public:
         BTreeIndex(CacheManager* cm, 
-                std::string file_name, 
+                FileID fid, 
                 PageID root_page_id, 
                 int leaf_max_size = LEAF_MAX_SIZE, 
                 int internal_max_size = INTERNAL_MAX_SIZE):
 
             cache_manager_(cm),
-            file_name_(file_name),
+            fid_(fid),
             root_page_id_(root_page_id),
             leaf_max_size_(leaf_max_size),
             internal_max_size_(internal_max_size)
@@ -35,7 +35,7 @@ class BTreeIndex {
             // TODO: fix dead lock.
             //std::unique_lock locker(this->root_page_id_lock_);
             root_page_id_ = root_page_id;
-            std::cout << "update: " << root_page_id.file_name_ << "\n";
+            std::cout << "update: " << fid_to_fname[root_page_id.fid_] << "\n";
             // TODO: persist the b tree to disk.
             //UpdateRootPageId(insert_record);
         }
@@ -95,13 +95,13 @@ class BTreeIndex {
             std::unique_lock locker(root_page_id_lock_);
             // Invalid index file, can't insert data.
             //if(root_page_id_ == INVALID_PAGE_ID) return false;
-            if(!file_name_.size())  return false;
+            if(!fid_to_fname.count(fid_))  return false;
             //PageID invalid_page_id = {.file_name_=root_page_id_.file_name_, .page_num_= -1};
             std::deque<Page *> page_deque;
             BTreePage *root;
             if (root_page_id_ == INVALID_PAGE_ID) {
                 // if no root then the new root will be treated as a leaf node.
-                auto *leaf_page = cache_manager_->newPage(file_name_);
+                auto *leaf_page = cache_manager_->newPage(fid_);
                 // could not create a page.
                 if(!leaf_page) 
                     return false;
@@ -196,7 +196,7 @@ class BTreeIndex {
                         break;
                     }
                     // in case of non root splits:
-                    auto *new_page_raw = cache_manager_->newPage(file_name_);
+                    auto *new_page_raw = cache_manager_->newPage(fid_);
                     // could not create page.
                     if(!new_page_raw) 
                         return false;
@@ -225,7 +225,7 @@ class BTreeIndex {
                     // the splitted node and the new root.
                     if (cur->IsRootPage()) {
                         // create a new root
-                        auto *new_root_raw = cache_manager_->newPage(file_name_);
+                        auto *new_root_raw = cache_manager_->newPage(fid_);
                         // could not create page.
                         if(!new_page_raw) 
                             return false;
@@ -269,7 +269,7 @@ class BTreeIndex {
                     }
 
                     // in case of non root splits:
-                    auto *new_page_raw = cache_manager_->newPage(file_name_);
+                    auto *new_page_raw = cache_manager_->newPage(fid_);
                     // could not create page.
                     if(!new_page_raw) 
                         return false;
@@ -372,7 +372,7 @@ class BTreeIndex {
                     // the splitted node and the new root.
                     if (cur->IsRootPage()) {
                         // create a new root
-                        auto *new_root_raw = cache_manager_->newPage(file_name_);
+                        auto *new_root_raw = cache_manager_->newPage(fid_);
                         // could not create page.
                         if(!new_root_raw)
                             return false;
@@ -1065,7 +1065,7 @@ class BTreeIndex {
 
 
         CacheManager* cache_manager_ = nullptr;
-        std::string file_name_ = "";
+        FileID fid_ = -1;
         PageID root_page_id_ = INVALID_PAGE_ID;
         int leaf_max_size_ = 0;
         int internal_max_size_ = 0;

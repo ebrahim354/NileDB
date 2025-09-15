@@ -32,7 +32,7 @@ class CacheManager {
             std::cout << "pages contents: " << std::endl;
             for (size_t i = 0; i < pool_size_; i++) {
                 std::cout << "page number: " << i << " " << *pages_[i].data_ << " pinCnt: " << pages_[i].pin_count_
-                    << " isDirty: " << pages_[i].is_dirty_ << " page_id: " << pages_[i].page_id_.file_name_ 
+                    << " isDirty: " << pages_[i].is_dirty_ << " page_id: " << fid_to_fname[pages_[i].page_id_.fid_]
                     << " " << pages_[i].page_id_.page_num_ << std::endl;
             }
         }
@@ -40,7 +40,7 @@ class CacheManager {
         // create a new page on the cache then persist it with allocatePage and returns a pointer to the page.
         // this is not effecient because we persist the new page twice once on creation and flushing,
         // should be optimized later.
-        Page* newPage(std::string file_name);
+        Page* newPage(FileID fid);
         Page* fetchPage(PageID page_id);
         bool unpinPage(PageID page_id, bool is_dirty);
         bool flushPage(PageID page_id);
@@ -61,7 +61,7 @@ class CacheManager {
 
 
 
-Page* CacheManager::newPage(std::string file_name){
+Page* CacheManager::newPage(FileID fid){
     const std::lock_guard<std::mutex> lock(latch_);
     Page *new_page = nullptr;
     int32_t new_frame = -1;
@@ -90,9 +90,9 @@ Page* CacheManager::newPage(std::string file_name){
         page_to_be_flushed->ResetMemory();
         new_page = page_to_be_flushed;
     }
-    int err = disk_manager_->allocateNewPage(file_name,new_page->data_, &new_page->page_id_);
+    int err = disk_manager_->allocateNewPage(fid, new_page->data_, &new_page->page_id_);
     if(err) {
-        std::cout << " could not allocate a new page " << file_name << std::endl;
+        std::cout << " could not allocate a new page " << fid_to_fname[fid] << std::endl;
         return nullptr;
     }
     page_table_.insert({new_page->page_id_, new_frame});
@@ -105,7 +105,7 @@ Page* CacheManager::newPage(std::string file_name){
 
 Page* CacheManager::fetchPage(PageID page_id){
     const std::lock_guard<std::mutex> lock(latch_);
-    if (page_id.file_name_ == INVALID_PAGE_ID.file_name_ || page_id.page_num_ == INVALID_PAGE_ID.page_num_) {
+    if (page_id.fid_ == INVALID_PAGE_ID.fid_ || page_id.page_num_ == INVALID_PAGE_ID.page_num_) {
         return nullptr;
     }
     int32_t frame = -1;
@@ -206,7 +206,7 @@ bool CacheManager::flushPage(PageID page_id){
         frame = res->second;
     }
     bool invalid_page = page_id.page_num_ == INVALID_PAGE_ID.page_num_ || 
-        page_id.file_name_ == INVALID_PAGE_ID.file_name_;
+        page_id.fid_ == INVALID_PAGE_ID.fid_;
     if (invalid_page || res == page_table_.end() || frame == -1) {
         return false;
     }
@@ -223,7 +223,7 @@ void CacheManager::flushAllPages() {
     const std::lock_guard<std::mutex> lock(latch_);
     for (size_t i = 0; i < pool_size_; i++) {
         bool invalid_page = pages_[i].page_id_.page_num_ == INVALID_PAGE_ID.page_num_ || 
-            pages_[i].page_id_.file_name_ == INVALID_PAGE_ID.file_name_;
+            pages_[i].page_id_.fid_ == INVALID_PAGE_ID.fid_;
         if (invalid_page) continue;
         Page *page_to_be_flushed = &pages_[i];
         disk_manager_->writePage(page_to_be_flushed->page_id_, page_to_be_flushed->data_);

@@ -52,7 +52,7 @@ class Table {
             // allocate a new one with the cache manager
             // or if there is free space fetch the page with enough free space.
             if(no_free_space) {
-                table_page = reinterpret_cast<TableDataPage*>(cache_manager_->newPage(first_page_id_.file_name_));
+                table_page = reinterpret_cast<TableDataPage*>(cache_manager_->newPage(first_page_id_.fid_));
                 // couldn't fetch any pages for any reason.
                 if(table_page == nullptr) {
                     std::cout << " could not create a new table_page " << std::endl;

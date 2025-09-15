@@ -11,6 +11,7 @@
 // first 4 bytes in the first page are the number of pages of the table let's call it ( n ).
 // next n bytes are the fractions per n pages of the table.
 // the free space pages do not shrink by convention ( I should probably make a FreeSpaceMapPage class ).
+
 class FreeSpaceMap {
     public:
         FreeSpaceMap(CacheManager* cm, PageID first_page_id): cm_(cm), first_page_id_(first_page_id){
@@ -45,11 +46,13 @@ class FreeSpaceMap {
         int addPage(uint8_t fraction){
             Page* last_page = nullptr;
             Page* first_page = cm_->fetchPage(first_page_id_);
-            if(!first_page) first_page = cm_->newPage(first_page_id_.file_name_);
+            if(!first_page) first_page = cm_->newPage(first_page_id_.fid_);
+            //if(!first_page) first_page = cm_->newPage(first_page_id_.file_name_);
             // something is wrong with the file name or just can't allocate a first fsm page, just return an error.
             if(!first_page) return 1;
 
-            if((size_+4) % PAGE_SIZE == 0) last_page = cm_->newPage(first_page_id_.file_name_);
+            //if((size_+4) % PAGE_SIZE == 0) last_page = cm_->newPage(first_page_id_.file_name_);
+            if((size_+4) % PAGE_SIZE == 0) last_page = cm_->newPage(first_page_id_.fid_);
             else last_page = getPageAtOffset(size_);
 
             if(!last_page) return 1;

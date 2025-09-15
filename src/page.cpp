@@ -4,45 +4,48 @@
 #include <shared_mutex>
 #include <cstring>
 
+#define FileID int32_t
+
+std::unordered_map<FileID, std::string> fid_to_fname;
+
 
 struct PageID{
+
+    FileID fid_{-1};
+    int32_t page_num_{-1};
     PageID& operator=(const PageID &rhs){
-        this->file_name_ = rhs.file_name_; 
+        this->fid_ = rhs.fid_; 
         this->page_num_ = rhs.page_num_;
         return *this;
     }
-    std::string file_name_{0};
-    int32_t page_num_{0};
 
     bool operator<(const PageID &other) const { 
-        int files_match = strcmp(file_name_.c_str(), other.file_name_.c_str());
-        if(files_match == 0)  return page_num_ < other.page_num_;
-        return (files_match < 0);
+        int files_match = (fid_ == other.fid_); 
+        if(files_match)  return page_num_ < other.page_num_;
+        return (fid_ < other.fid_);
     }
 
     bool operator==(const PageID &other) const { 
-        int files_match = strcmp(file_name_.c_str(), other.file_name_.c_str());
-        if(files_match == 0)  return page_num_ == other.page_num_;
-        return 0;
+        int files_match = (fid_ == other.fid_); 
+        if(files_match)  return page_num_ == other.page_num_;
+        return (files_match);
     }
     bool operator!=(const PageID &other) const { 
-        int files_match = strcmp(file_name_.c_str(), other.file_name_.c_str());
-        if(files_match == 0)  return page_num_ != other.page_num_;
+        int files_match = (fid_ == other.fid_); 
+        if(files_match)  return page_num_ != other.page_num_;
         return 1;
     }
-  
 };
 
 
 #define PAGE_SIZE 4096 //4KB
 #define FILE_EXT ".ndb" // nile db
 #define SIZE_PAGE_HEADER = 8;
-PageID INVALID_PAGE_ID = { .file_name_ = "INVALID_FILE_NAME", .page_num_ = -1 };
+PageID INVALID_PAGE_ID = { .fid_ = -1 , .page_num_ = -1 };
 
 
 
-class Page {
-    public:
+struct Page {
         char data_[PAGE_SIZE]{};
         PageID page_id_ = INVALID_PAGE_ID;
         int pin_count_ {0};

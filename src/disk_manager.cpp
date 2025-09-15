@@ -5,9 +5,10 @@
 #include <cstdint>
 #include <string.h>
 #include <sys/types.h>
-#include<unistd.h>
+#include <unistd.h>
 #include <thread>
 #include <unordered_map>
+#include <cassert>
 #include "page.cpp"
 
 
@@ -33,7 +34,7 @@ class DiskManager {
         int writePage(PageID page_id, char* input_buffer);
 
         // page_id is the output and return value 1 in case of failure.
-        int allocateNewPage(std::string file_name, char* buffer ,PageID *page_id);
+        int allocateNewPage(FileID fid, char* buffer ,PageID *page_id);
         int deallocatePage(PageID page_id);
 
     private:
@@ -62,7 +63,8 @@ DiskManager::~DiskManager(){
 }
 
 int DiskManager::deallocatePage(PageID page_id) {
-    auto file_name = page_id.file_name_;
+  assert(fid_to_fname.count(page_id.fid_) != 0); // TODO: replace assertion with an error message.
+    auto file_name = fid_to_fname[page_id.fid_];
     auto page_num = page_id.page_num_;
 
     int err = openFile(file_name);
@@ -89,12 +91,15 @@ int DiskManager::deallocatePage(PageID page_id) {
 }
 
 
-// file_name is a param to make the usage of function more clear, we can provide it inside page_id
-// but it's better to separate input from output.
-int DiskManager::allocateNewPage(std::string file_name, char* buffer , PageID *page_id){
+// fid is a param to make the usage of function more clear, we can provide it inside page_id
+// but it's clearer to separate input from output.
+int DiskManager::allocateNewPage(FileID fid, char* buffer , PageID *page_id){
+  assert(fid_to_fname.count(fid) != 0); // TODO: replace assertion with an error message.
+    auto file_name = fid_to_fname[fid];
+
     int err = openFile(file_name);
     if(err) return 1;
-    page_id->file_name_ = file_name;
+    page_id->fid_ = fid;
     auto file_stream = &cached_files_[file_name].fs_;
     int next_free_page = cached_files_[file_name].freelist_ptr_;
     int offset_to_eof = (cached_files_[file_name].num_of_pages_) * PAGE_SIZE;
@@ -155,7 +160,8 @@ int DiskManager::allocateNewPage(std::string file_name, char* buffer , PageID *p
 
 
 int DiskManager::readPage(PageID page_id, char* output_buffer) {
-    std::string file_name =  page_id.file_name_;
+  assert(fid_to_fname.count(page_id.fid_) != 0); // TODO: replace assertion with an error message.
+    auto file_name = fid_to_fname[page_id.fid_];
     uint32_t page_num = page_id.page_num_;
     int offset = page_num * PAGE_SIZE;
     int open_err = openFile(file_name);
@@ -175,7 +181,8 @@ int DiskManager::readPage(PageID page_id, char* output_buffer) {
 }
 
 int DiskManager::writePage(PageID page_id, char* input_buffer) {
-    std::string file_name =  page_id.file_name_;
+  assert(fid_to_fname.count(page_id.fid_) != 0); // TODO: replace assertion with an error message.
+    auto file_name = fid_to_fname[page_id.fid_];
     uint32_t page_num = page_id.page_num_;
     int offset = page_num * PAGE_SIZE;
     int open_err = openFile(file_name);

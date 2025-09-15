@@ -16,7 +16,9 @@
  * It is loaded from disk once at booting process of the system.
  * The special table name is :  NILEDB_META_DATA.
  * The schema of the table is as follows: 
- * table_name (var char), col_name (var char), col_type (integer), col_offset (integer), 4 boolean type columns.
+ * table_name (var char), col_name (var char), fid(int), col_type (integer), col_offset (integer), 4 boolean type columns.
+ * fid is an id that is assigned to the name of the file that the table will be stored in
+ * (storing fid for every column is redundent but doesn't matter too much because the meta table is small anyway).
  * col_position is indicating the index of the column within the columns_ vector of the schema.
  * The 4 columns are some sort of a bitmap to store weather this column has the constraints of this index or not, 
  * For example: 1 0 1 0 means this column has constraints:  NULLABLE, not a PRIMARY KEY, FOREIGHT KEY, not UNIQUE.
@@ -304,24 +306,30 @@ class Catalog {
             : cache_manager_ (cm)
         {
             
+          // the fid of an fsm is always the fid of the table + 1.
+          const FileID meta_data_fid = 0;
+
+          fid_to_fname[meta_data_fid] = META_DATA_FILE;
+          fid_to_fname[meta_data_fid+1] = META_DATA_FSM;
             // change the size after adding free space map support.
-            PageID meta_fsm_pid = {.file_name_ = META_DATA_FSM, .page_num_ = 1};
+            PageID meta_fsm_pid = {.fid_ = meta_data_fid + 1, .page_num_ = 1};
             free_space_map_ = new FreeSpaceMap(cm, meta_fsm_pid);
 
 
             // loading the hard coded meta data table schema.
-            PageID meta_pid = {.file_name_ = META_DATA_FILE, .page_num_ = 1};
+            PageID meta_pid = {.fid_ = meta_data_fid, .page_num_ = 1};
             auto meta_data_table = new Table(cm, meta_pid, free_space_map_);
 
             std::vector<Column> meta_data_columns;
             meta_data_columns.emplace_back(Column("table_name", VARCHAR, 0));
             meta_data_columns.emplace_back(Column("col_name"  , VARCHAR, 4));
-            meta_data_columns.emplace_back(Column("col_type"  , INT    , 8));
-            meta_data_columns.emplace_back(Column("col_offset", INT    , 12));
-            meta_data_columns.emplace_back(Column("nullable"  , BOOLEAN, 16));
-            meta_data_columns.emplace_back(Column("primary"   , BOOLEAN, 17));
-            meta_data_columns.emplace_back(Column("foreign"   , BOOLEAN, 18));
-            meta_data_columns.emplace_back(Column("unique"    , BOOLEAN, 19));
+            meta_data_columns.emplace_back(Column("fid"       , INT    , 8));
+            meta_data_columns.emplace_back(Column("col_type"  , INT    , 12));
+            meta_data_columns.emplace_back(Column("col_offset", INT    , 16));
+            meta_data_columns.emplace_back(Column("nullable"  , BOOLEAN, 20));
+            meta_data_columns.emplace_back(Column("primary"   , BOOLEAN, 21));
+            meta_data_columns.emplace_back(Column("foreign"   , BOOLEAN, 22));
+            meta_data_columns.emplace_back(Column("unique"    , BOOLEAN, 23));
             meta_table_schema_ = new TableSchema(META_DATA_TABLE, meta_data_table, meta_data_columns);
 
             // loading TableSchema of each table into memory.
@@ -334,17 +342,24 @@ class Catalog {
                 // extract the data of this row.
                 std::string table_name = values[0].getStringVal();
                 std::string col_name = values[1].getStringVal();
-                Type col_type = static_cast<Type>(values[2].getIntVal());
-                int col_offset = values[3].getIntVal();
-                int not_null = values[4].getBoolVal();
-                int primary_key = values[5].getBoolVal();
-                int foreign_key = values[6].getBoolVal();
-                int unique = values[7].getBoolVal();
+                FileID fid = values[2].getIntVal();
+                Type col_type = static_cast<Type>(values[3].getIntVal());
+                int col_offset = values[4].getIntVal();
+                int not_null = values[5].getBoolVal();
+                int primary_key = values[6].getBoolVal();
+                int foreign_key = values[7].getBoolVal();
+                int unique = values[8].getBoolVal();
 
                 // first time seeing this table? if yes then we need to initialize it.
                 if(!tables_.count(table_name)){
-                    PageID first_page = {.file_name_ = table_name+".ndb", .page_num_ = 1};
-                    PageID first_fsm_page = {.file_name_ = table_name+"_fsm.ndb", .page_num_ = 1};
+                    std::string fname = table_name+".ndb";
+                    std::string fsm = table_name+"_fsm.ndb";
+                    assert((fid_to_fname.count(fid) == 0) && "[FATAL] fid already exists!"); 
+                    fid_to_fname[fid] = fname;
+                    fid_to_fname[fid+1] = fsm;
+
+                    PageID first_page = {.fid_ = fid, .page_num_ = 1};
+                    PageID first_fsm_page = {.fid_ = fid+1, .page_num_ = 1};
                     // the table owns its free space map pointer and is responsible for deleting it.
                     FreeSpaceMap* free_space = new FreeSpaceMap(cm, first_fsm_page);
                     Table* table = new Table(cm, first_page, free_space);
@@ -374,11 +389,18 @@ class Catalog {
         }
 
         TableSchema* createTable(const std::string &table_name, std::vector<Column> &columns) {
-                if (tables_.count(table_name))
+                FileID nfid = fid_to_fname.size();// TODO: Dropping tables is going to break this method.
+                assert(fid_to_fname.count(nfid) == 0 && "[FATAL] fid already exists!"); // TODO: Remove this assertion.
+                if (tables_.count(table_name) || fid_to_fname.count(nfid))
                     return nullptr;
+                std::string fname = table_name+".ndb";
+                std::string fsm = table_name+"_fsm.ndb";
+                fid_to_fname[nfid] = fname;
+                fid_to_fname[nfid+1] = fsm;
+
                 // initialize the table
-                PageID first_page = {.file_name_ = table_name+".ndb", .page_num_ = 1};
-                PageID first_fsm_page = {.file_name_ = table_name+"_fsm.ndb", .page_num_ = 1};
+                PageID first_page = {.fid_ = nfid, .page_num_ = 1};
+                PageID first_fsm_page = {.fid_ = nfid+1, .page_num_ = 1};
                 FreeSpaceMap* free_space = new FreeSpaceMap(cache_manager_, first_fsm_page);
                 Table* table = new Table(cache_manager_, first_page, free_space);
                 TableSchema* schema = new TableSchema(table_name, table, columns);
@@ -390,6 +412,7 @@ class Catalog {
                     std::vector<Value> vals;
                     vals.emplace_back(Value(table_name));
                     vals.emplace_back(Value(c.getName()));
+                    vals.emplace_back(Value(nfid));
                     vals.emplace_back(Value((int)c.getType()));
                     vals.emplace_back(Value(c.getOffset()));
                     vals.emplace_back(Value(c.isNullable()));
@@ -431,7 +454,12 @@ class Catalog {
                 }
                 // initialize the index
                 //PageID first_page = {.file_name_ = index_name+"_INDEX.ndb", .page_num_ = -1};
-                BTreeIndex* index = new BTreeIndex(cache_manager_, index_name+"_INDEX.ndb" ,INVALID_PAGE_ID);
+                std::string index_fname = index_name+"_INDEX.ndb";
+                FileID nfid = fid_to_fname.size();
+                assert(fid_to_fname.count(nfid) == 0); // TODO: replace assertion with error.
+                fid_to_fname[nfid] = index_fname;
+                
+                BTreeIndex* index = new BTreeIndex(cache_manager_, nfid, INVALID_PAGE_ID);
                 indexes_.insert({index_name, {index , cols}});
 
                 if(indexes_of_table_.count(table_name))
