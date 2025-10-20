@@ -5,6 +5,7 @@
 #include <cstring>
 struct IndexKey;
 int index_key_cmp(IndexKey lhs,IndexKey rhs);
+IndexKey temp_index_key_from_values(std::vector<Value>& vals);
 
 /*
 * this structure is used to group multiple columns into one key to support multi column indexes for example: 
@@ -15,7 +16,7 @@ int index_key_cmp(IndexKey lhs,IndexKey rhs);
 * because it stores the schema from within the record rather than using an external schema to decypher the data.
 * this format is perfect for a btree because the structure will do direct byte-level comparisons without the need 
 * to do any high level conversions using an external schema just to compare two keys,
-* however this comes at the cost of having to store a small header for each and every key.
+* however this comes at the cost of having to store a small header for every key.
 * you can make the argument that either formats are ok to use both in an index or a table, But I don't care too much
 * the goal is to try multiple ways and understand the different trade offs.
 */
@@ -34,14 +35,16 @@ enum class SerialType {
 struct IndexKey {
   // size of the data is stored in the first byte.
   char* data_ = nullptr;
+  uint32_t size_ = 0;
 
-  inline char get_header_size(){
-    return (char)*data_;
+  inline uint8_t get_header_size(){
+    if(!data_) return 0;
+    return (uint8_t)*data_;
   }
 
   inline char* get_payload_ptr(){
     if(!data_) return nullptr;
-    return data_+get_header_size();
+    return get_header_ptr()+get_header_size();
   }
 
   inline char* get_header_ptr(){
@@ -86,14 +89,19 @@ struct IndexKey {
 
 // -1 ==> lhs < rhs, 0 eq, 1 ==> lhs > rhs
 int index_key_cmp(IndexKey lhs,IndexKey rhs) {
-  if(!lhs.data_ || !rhs.data_ || lhs.get_header_size() != rhs.get_header_size()) assert(1 && "INVALID COMPARISON");
+  //asm("int3");
+  if(lhs.data_  && !rhs.data_ ) return 1;
+  if(rhs.data_  && !lhs.data_ ) return -1;
+  if(!rhs.data_ && !lhs.data_ ) return 0;
+
+  if(lhs.get_header_size() != rhs.get_header_size()) assert(0 && "INVALID COMPARISON");
   char* payload_ptr = lhs.get_payload_ptr();
   char* rhs_payload_ptr = rhs.get_payload_ptr();
   char* header = lhs.get_header_ptr();
   char* rhs_header = rhs.get_header_ptr();
   while(header != lhs.get_payload_ptr()){
-    if((*header >= 13 && *rhs_header < 13) || (*header < 13 && *rhs_header >= 13)) assert(1 && "INVALID COMPARISON");
-    if(*header < 13 && *header != *rhs_header) assert(1&& "TODO: SUPPORT NUMERIC CASTING.");
+    if((*header >= 13 && *rhs_header < 13) || (*header < 13 && *rhs_header >= 13)) assert(0 && "INVALID COMPARISON");
+    if(*header < 13 && *header != *rhs_header) assert(0 && "TODO: SUPPORT NUMERIC CASTING.");
     int diff = 0;
     int advance = 0;
     switch(*header){
@@ -117,7 +125,7 @@ int index_key_cmp(IndexKey lhs,IndexKey rhs) {
                }
       case (uint8_t)SerialType::TEXT:
       default:{
-        if(*header < 13) return false;
+        if(*header < 13) assert(0 && "TYPE NOT SUPPORTED FOR COMPARISON!");
         diff = memcmp(payload_ptr, rhs_payload_ptr, (*header) - 13);
         advance = (*header) - 13;
         break;
@@ -130,4 +138,62 @@ int index_key_cmp(IndexKey lhs,IndexKey rhs) {
     rhs_header++;
   }
   return 0;
+}
+
+// user has ownership over the return value.
+IndexKey temp_index_key_from_values(std::vector<Value>& vals) {
+  int buf_size = 128; // TODO: test small value.
+  if(vals.size() >= buf_size || vals.size() > 255) assert(0 && "TOO MANY VALUES FOR AN INDEX KEY!");
+  if(vals.size() < 1) return {};
+
+  char* buf = (char*)malloc(buf_size);
+  char* bound = buf+buf_size;
+
+  char* header_ptr = buf;
+  *header_ptr = (uint8_t)vals.size();
+  header_ptr++;
+  char* payload_ptr = header_ptr+vals.size();
+  for(int i = 0; i < vals.size(); ++i, header_ptr++){
+    auto val_type = vals[i].type_;
+    uint8_t val_size = (uint8_t) vals[i].size_;
+    switch(val_type){
+      case NULL_TYPE:
+        *header_ptr = (char)SerialType::NIL;
+        break;
+      case INT:
+        *header_ptr = (char)SerialType::INT;
+        break;
+      case BIGINT:
+        *header_ptr = (char)SerialType::LONG;
+        break;
+      case FLOAT:
+        *header_ptr = (char)SerialType::FLOAT;
+        break;
+      case VARCHAR:
+        *header_ptr = val_size + (char)SerialType::TEXT;
+        break;
+      default:
+        assert(0 && "NOT SUPPORTED INDEX KEY TYPE!\n");
+    }
+    while(payload_ptr + val_size >= bound) {
+      int payload_offset = payload_ptr - buf;
+      int header_offset  = header_ptr - buf;
+
+      char* new_buf = (char*)malloc(buf_size * 2);
+      memcpy(new_buf, buf, buf_size);
+      free(buf);
+      buf_size *= 2; 
+      buf = new_buf;
+
+      payload_ptr = buf + payload_offset;
+      header_ptr = buf + header_offset;
+      bound = buf + buf_size;
+    }
+    memcpy(payload_ptr, vals[i].content_, val_size);
+    payload_ptr += val_size;
+  }
+  return {
+    .data_ = buf,
+    .size_ = (uint32_t)(payload_ptr - buf),
+  };
 }

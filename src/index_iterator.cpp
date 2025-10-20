@@ -28,22 +28,24 @@ class IndexIterator {
         bool hasNext() {
             // invalid current page.
             if(cur_page_id_ == INVALID_PAGE_ID || !cur_page_) return false;
-            if(cur_page_->GetNextPageId() == INVALID_PAGE_ID && entry_idx_ + 1 >= cur_page_->GetSize()) return false;
+            if(cur_page_->get_next_page_number() == INVALID_PAGE_NUM && entry_idx_ + 1 >= cur_page_->get_num_of_slots()) 
+              return false;
             return true;
 
         }
         // 0 in case of no more records.
         int advance(){
             if(!hasNext()) return 0;
-            PageID next_page_id = cur_page_->GetNextPageId();
-            if (entry_idx_ + 1 >= cur_page_->GetSize() && next_page_id != INVALID_PAGE_ID) {
+            PageID next_page_id = cur_page_id_;
+            next_page_id.page_num_ = cur_page_->get_next_page_number();
+            if (entry_idx_ + 1 >= cur_page_->get_num_of_slots() && next_page_id.isValidPage()) {
                 cache_manager_->unpinPage(cur_page_id_, false);
 
                 cur_raw_page_ = cache_manager_->fetchPage(next_page_id);
                 cur_page_ = reinterpret_cast<BTreeLeafPage*>(cur_raw_page_->data_);
                 cur_page_id_ = next_page_id;
                 entry_idx_ = 0;
-                if(cur_page_->GetSize() == 0) return advance();
+                if(cur_page_->get_num_of_slots() == 0) return advance();
             } else {
                 entry_idx_++;
             }
@@ -51,11 +53,11 @@ class IndexIterator {
         }
 
         RecordID getCurRecordID(){
-            if(entry_idx_ > cur_page_->GetSize()) return RecordID(INVALID_PAGE_ID, -1);
+            if(entry_idx_ > cur_page_->get_num_of_slots()) return RecordID(INVALID_PAGE_ID, -1);
             char* cur_data = nullptr;
-            std::pair<IndexKey, RecordID>* cur_entry = cur_page_->getPointer(entry_idx_);
-            if(!cur_entry) return RecordID(INVALID_PAGE_ID, -1);
-            return cur_entry->second;
+            std::pair<IndexKey, RecordID> cur_entry = cur_page_->getPointer(entry_idx_);
+            if(!cur_entry.first.data_) return RecordID(INVALID_PAGE_ID, -1);
+            return cur_entry.second;
         }
 
         Record getCurRecordCpy(){

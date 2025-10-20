@@ -598,12 +598,13 @@ class InsertionExecutor : public Executor {
           // loop over table indexes.
           for(int i = 0; i < indexes_.size(); ++i){
               IndexKey k = getIndexKeyFromTuple(indexes_[i].fields_numbers_, vals_);
-              if(k.keys_.size() == 0) {
+              if(k.size_ == 0) {
                   error_status_ = 1;
                   break;
               }
               bool success = indexes_[i].index_->Insert(k, *rid);
-              indexes_[i].index_->See();
+              delete k.data_;
+              //indexes_[i].index_->See();
               if(!success){
                   error_status_ = 1;
                   break;
@@ -620,14 +621,14 @@ class InsertionExecutor : public Executor {
           return vals_;
         }
 
-        IndexKey getIndexKeyFromTuple(std::vector<int>& fields, std::vector<Value>& tuples){
-            IndexKey k = {};
+        IndexKey getIndexKeyFromTuple(std::vector<int>& fields, std::vector<Value>& values){
+          std::vector<Value> keys;
             for(int i = 0; i < fields.size(); ++i){
-                if(fields[i] >= tuples.size()) 
+                if(fields[i] >= values.size()) 
                     return {};
-                k.keys_.push_back(tuples[fields[i]]);
+                keys.push_back(values[fields[i]]);
             }
-            return k;
+            return temp_index_key_from_values(keys);
         }
     private:
         TableSchema* table_ = nullptr;
@@ -1604,7 +1605,9 @@ class ExecutionEngine {
                         }
 
                         TableSchema* new_output_schema = new TableSchema(tname, schema->getTable(), columns, true);
-                        SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
+                        //SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
+
+                        IndexScanExecutor* scan = new IndexScanExecutor(catalog_->getIndexesOfTable(tname)[0].index_, new_output_schema, ctx, query_idx, parent_query_idx);
                         return scan;
                     } break;
                 case PRODUCT: 

@@ -10,23 +10,14 @@
 #include "btree_leaf_page.cpp"
 #include "btree_internal_page.cpp"
 
-// better for testing, real values should be estimated before usage.
-#define INTERNAL_MAX_SIZE 1
-#define LEAF_MAX_SIZE 1
-
 class BTreeIndex {
     public:
         BTreeIndex(CacheManager* cm, 
                 FileID fid, 
-                PageID root_page_id, 
-                int leaf_max_size = LEAF_MAX_SIZE, 
-                int internal_max_size = INTERNAL_MAX_SIZE):
-
+                PageID root_page_id):
             cache_manager_(cm),
             fid_(fid),
-            root_page_id_(root_page_id),
-            leaf_max_size_(leaf_max_size),
-            internal_max_size_(internal_max_size)
+            root_page_id_(root_page_id)
             {}
         ~BTreeIndex(){}
 
@@ -59,9 +50,9 @@ class BTreeIndex {
             auto *start = reinterpret_cast<BTreePage *>(start_page->data_);
             while (!start->IsLeafPage()) {
                 auto *cur = reinterpret_cast<BTreeInternalPage *>(start);
-                auto page_id = cur->NextPage(key);
+                PageID page_id = cur->NextPage(key, fid_);
                 auto *tmp = start_page;
-                auto tmp_page_id = start->GetPageId();
+                auto tmp_page_id = start->GetPageId(fid_);
 
                 start_page = cache_manager_->fetchPage(page_id);
                 // could not fetch page.
@@ -84,7 +75,7 @@ class BTreeIndex {
 
             // TODO: fix dead lock.
             // start_page->mutex_.unlock_shared();
-            cache_manager_->unpinPage(start->GetPageId(), false);
+            cache_manager_->unpinPage(start->GetPageId(fid_), false);
             return status;
         }
 
@@ -111,7 +102,7 @@ class BTreeIndex {
                 page_deque.push_back(leaf_page);
                 auto *leaf = reinterpret_cast<BTreeLeafPage *>(leaf_page->data_);
 
-                leaf->Init(leaf_page->page_id_, INVALID_PAGE_ID, leaf_max_size_);
+                leaf->Init(leaf_page->page_id_, INVALID_PAGE_ID);
                 leaf->SetPageType(BTreePageType::LEAF_PAGE);
                 root = leaf;
                 SetRootPageId(leaf_page->page_id_, 1);
@@ -132,7 +123,7 @@ class BTreeIndex {
             custom_stk.push_back(root);
             while (!custom_stk.back()->IsLeafPage()) {
                 auto *tmp = reinterpret_cast<BTreeInternalPage *>(custom_stk.back());
-                auto page_id = tmp->NextPage(key);
+                auto page_id = tmp->NextPage(key, fid_);
 
                 auto *ptr_page = cache_manager_->fetchPage(page_id);
                 // could not fetch page.
@@ -163,10 +154,10 @@ class BTreeIndex {
                         page_deque.pop_front();
                         // write unlatch.
                         cur_page->mutex_.unlock();
-                        if (cur->GetPageId() == root_page_id_) {
+                        if (cur->GetPageId(fid_) == root_page_id_) {
                             locker.unlock();
                         }
-                        cache_manager_->unpinPage(cur->GetPageId(), false);
+                        cache_manager_->unpinPage(cur->GetPageId(fid_), false);
                     }
                 }
                 page_deque.push_back(ptr_page);
@@ -205,16 +196,18 @@ class BTreeIndex {
                     // TODO: fix dead lock.
                     //new_page_raw->mutex_.lock();
                     auto *new_page = reinterpret_cast<BTreeLeafPage *>(new_page_raw->data_);
-                    new_page->Init(new_page_id, cur->GetParentPageId(), cur->GetMaxSize());
+                    new_page->Init(new_page_id, cur->GetParentPageId(fid_));
                     new_page->SetPageType(BTreePageType::LEAF_PAGE);
-                    int md = std::ceil(static_cast<float>(cur->GetMaxSize()) / 2);
+                    // int md = std::ceil(static_cast<float>(cur->GetMaxSize()) / 2);
+                    //  TODO: USE AN ALTERNATIVE way to know when to split.
+                    int md = std::ceil(static_cast<float>(cur->get_num_of_slots()) / 2);
                     md--;
-                    for (int i = md + 1, j = 0; i < cur->GetSize(); i++, j++) {
+                    for (int i = md + 1, j = 0; i < cur->get_num_of_slots(); i++, j++) {
                         new_page->SetKeyAt(j, cur->KeyAt(i));
                         new_page->SetValAt(j, cur->ValAt(i));
-                        new_page->IncreaseSize(1);
+                        new_page->increase_size(1);
                     }
-                    cur->SetSize(md + 1);
+                    cur->set_num_of_slots(md + 1);
                     IndexKey middle_key = cur->KeyAt(md);
 
                     current_key = middle_key;
@@ -233,14 +226,15 @@ class BTreeIndex {
                         //TODO: Fix DEAD LOCK.
                         //new_root_raw->mutex_.lock();
                         auto *new_root = reinterpret_cast<BTreeInternalPage *>(new_root_raw->data_);
-                        new_root->Init(tmp_root_id, INVALID_PAGE_ID, internal_max_size_);
+                        new_root->Init(tmp_root_id, INVALID_PAGE_ID);
                         new_root->SetPageType(BTreePageType::INTERNAL_PAGE);
 
                         // every root starts with only 1 key and 2 pointers.
-                        new_root->SetValAt(0, cur->GetPageId());
+                        // TODO: FIX STARTING KEY.
+                        new_root->SetValAt(0, cur->GetPageId(fid_));
                         new_root->SetKeyAt(1, current_key);
                         new_root->SetValAt(1, new_page_id);
-                        new_root->SetSize(2);
+                        new_root->set_num_of_slots(2);
                         SetRootPageId(tmp_root_id);
                         new_root_raw->mutex_.unlock();
                         cache_manager_->unpinPage(root_page_id_, true);
@@ -248,14 +242,14 @@ class BTreeIndex {
                         cur->SetParentPageId(root_page_id_);
                         new_page->SetParentPageId(root_page_id_);
                     }
-                    new_page->SetNextPageId(cur->GetNextPageId());
-                    cur->SetNextPageId(new_page_id);
+                    new_page->set_next_page_number(cur->get_next_page_number());
+                    cur->set_next_page_number(new_page_id.page_num_);
 
                     // unpin the current_page and the new_page we don't need them any more and they are dirty.
                     page_deque.back()->mutex_.unlock();
                     new_page_raw->mutex_.unlock();
-                    cache_manager_->unpinPage(cur->GetPageId(), true);
-                    cache_manager_->unpinPage(new_page->GetPageId(), true);
+                    cache_manager_->unpinPage(cur->GetPageId(fid_), true);
+                    cache_manager_->unpinPage(new_page->GetPageId(fid_), true);
 
                     custom_stk.pop_back();
                     page_deque.pop_back();
@@ -277,23 +271,25 @@ class BTreeIndex {
                     // TODO: Fix dead lock.
                     //new_page_raw->mutex_.lock();
                     auto *new_page = reinterpret_cast<BTreeInternalPage *>(new_page_raw->data_);
-                    new_page->Init(new_page_id, cur->GetParentPageId(), cur->GetMaxSize());
+                    new_page->Init(new_page_id, cur->GetParentPageId(fid_));
                     new_page->SetPageType(BTreePageType::INTERNAL_PAGE);
-                    int md = std::ceil(static_cast<float>(cur->GetMaxSize() + 1) / 2);
+                    //int md = std::ceil(static_cast<float>(cur->GetMaxSize() + 1) / 2);
+                    //TODO: FIX md value.
+                    int md = std::ceil(static_cast<float>(cur->get_num_of_slots() + 1) / 2);
                     int pos = cur->InsertionPosition(current_key);
                     int inserted_on_new = 0;  // 1 => on new page, 0 => no insertion, -1 => cur page.
 
                     if (pos > md) {
-                        new_page->SetValAt(0, cur->ValueAt(md));
+                        new_page->SetValAt(0, cur->ValueAt(md, fid_));
                         inserted_on_new = 1;
                     } else if (pos < md) {
                         md--;
-                        new_page->SetValAt(0, cur->ValueAt(md));
+                        new_page->SetValAt(0, cur->ValueAt(md, fid_));
                         inserted_on_new = -1;
                     } else {
                         new_page->SetValAt(0, current_internal_value);
                     }
-                    auto *tmp1_page = cache_manager_->fetchPage(new_page->ValueAt(0));
+                    auto *tmp1_page = cache_manager_->fetchPage(new_page->ValueAt(0, fid_));
                     // could not fetch page.
                     if(!tmp1_page) 
                         return false;
@@ -302,7 +298,7 @@ class BTreeIndex {
                     auto *tmp1 = reinterpret_cast<BTreeInternalPage *>(tmp1_page->data_);
                     tmp1->SetParentPageId(new_page_id);
                     tmp1_page->mutex_.unlock();
-                    cache_manager_->unpinPage(tmp1->GetPageId(), true);
+                    cache_manager_->unpinPage(tmp1->GetPageId(fid_), true);
                     // cur key = 3, cur val = 4.
                     // pos > md => md = 2
                     // pos < md => md = 1
@@ -311,12 +307,12 @@ class BTreeIndex {
                     if (inserted_on_new == 0) {
                         inc = 0;
                     }
-                    for (int i = md + inc, j = 1; i < cur->GetSize(); i++, j++) {
+                    for (int i = md + inc, j = 1; i < cur->get_num_of_slots(); i++, j++) {
                         new_page->SetKeyAt(j, cur->KeyAt(i));
-                        new_page->SetValAt(j, cur->ValueAt(i));
-                        new_page->IncreaseSize(1);
+                        new_page->SetValAt(j, cur->ValueAt(i, fid_));
+                        new_page->increase_size(1);
 
-                        auto *tmp_page = cache_manager_->fetchPage(new_page->ValueAt(i));
+                        auto *tmp_page = cache_manager_->fetchPage(new_page->ValueAt(i, fid_));
                         // could not fetch page.
                         if(!tmp_page)
                             return false;
@@ -325,9 +321,9 @@ class BTreeIndex {
                         auto *tmp = reinterpret_cast<BTreeInternalPage *>(tmp_page->data_);
                         tmp->SetParentPageId(new_page_id);
                         tmp_page->mutex_.unlock();
-                        cache_manager_->unpinPage(tmp->GetPageId(), true);
+                        cache_manager_->unpinPage(tmp->GetPageId(fid_), true);
                     }
-                    cur->SetSize(md);
+                    cur->set_num_of_slots(md);
                     IndexKey middle_key = current_key;
                     if (inserted_on_new != 0) {
                         middle_key = cur->KeyAt(md);
@@ -343,11 +339,11 @@ class BTreeIndex {
                         //tmp2_page->mutex_.lock();
                         auto *tmp2 = reinterpret_cast<BTreeInternalPage *>(tmp2_page->data_);
 
-                        tmp2->SetParentPageId(cur->GetPageId());
+                        tmp2->SetParentPageId(cur->GetPageId(fid_));
 
                         // TODO: Fix Dead lock.
                         //tmp2_page->mutex_.lock();
-                        cache_manager_->unpinPage(tmp2->GetPageId(), true);
+                        cache_manager_->unpinPage(tmp2->GetPageId(fid_), true);
                     } else if (inserted_on_new == 1) {
                         new_page->Insert(current_key, current_internal_value);
 
@@ -362,7 +358,7 @@ class BTreeIndex {
                         tmp2->SetParentPageId(new_page_id);
 
                         tmp2_page->mutex_.unlock();
-                        cache_manager_->unpinPage(tmp2->GetPageId(), true);
+                        cache_manager_->unpinPage(tmp2->GetPageId(fid_), true);
                     }
 
                     current_key = middle_key;
@@ -380,14 +376,14 @@ class BTreeIndex {
                         // TODO: Fix Dead lock.
                         // new_root_raw->mutex_.lock();
                         auto *new_root = reinterpret_cast<BTreeInternalPage *>(new_root_raw->data_);
-                        new_root->Init(tmp_root_id, INVALID_PAGE_ID, internal_max_size_);
+                        new_root->Init(tmp_root_id, INVALID_PAGE_ID);
                         new_root->SetPageType(BTreePageType::INTERNAL_PAGE);
 
                         // every root starts with only 1 key and 2 pointers.
-                        new_root->SetValAt(0, cur->GetPageId());
+                        new_root->SetValAt(0, cur->GetPageId(fid_));
                         new_root->SetKeyAt(1, current_key);
                         new_root->SetValAt(1, current_internal_value);
-                        new_root->SetSize(2);
+                        new_root->set_num_of_slots(2);
 
                         SetRootPageId(tmp_root_id);
                         new_root_raw->mutex_.unlock();
@@ -399,8 +395,8 @@ class BTreeIndex {
                     // unpin the current_page and the new_page we don't need them any more and they are dirty.
                     page_deque.back()->mutex_.unlock();
                     new_page_raw->mutex_.unlock();
-                    cache_manager_->unpinPage(cur->GetPageId(), true);
-                    cache_manager_->unpinPage(new_page->GetPageId(), true);
+                    cache_manager_->unpinPage(cur->GetPageId(fid_), true);
+                    cache_manager_->unpinPage(new_page->GetPageId(fid_), true);
 
                     custom_stk.pop_back();
                     page_deque.pop_back();
@@ -409,7 +405,7 @@ class BTreeIndex {
             // in case of the key not getting inserted because of duplication we need to clear the stack.
             while (!custom_stk.empty()) {
                 page_deque.front()->mutex_.unlock();
-                cache_manager_->unpinPage(custom_stk.front()->GetPageId(), true);
+                cache_manager_->unpinPage(custom_stk.front()->GetPageId(fid_), true);
                 custom_stk.pop_front();
                 page_deque.pop_front();
             }
@@ -438,7 +434,7 @@ class BTreeIndex {
             page_deque.push_back(root_page);
             while (!custom_stk.back()->IsLeafPage()) {
                 auto *tmp = reinterpret_cast<BTreeInternalPage *>(custom_stk.back());
-                auto page_id = tmp->NextPage(key);
+                auto page_id = tmp->NextPage(key, fid_);
 
                 auto *ptr_page = cache_manager_->fetchPage(page_id);
                 lock_cnt++;
@@ -452,7 +448,7 @@ class BTreeIndex {
 
             while (!custom_stk.empty()) {
                 bool cur_unpined = false;
-                auto tmp_cur_id = custom_stk.back()->GetPageId();
+                auto tmp_cur_id = custom_stk.back()->GetPageId(fid_);
                 auto *tmp_cur_page = page_deque.back();
                 if (custom_stk.back()->IsLeafPage()) {
                     auto *cur_page = page_deque.back();
@@ -465,7 +461,7 @@ class BTreeIndex {
                     // no deletion happened or the node is not short even after deletion then just get out.
                     // if the current leaf is the root can't merge just return.
                     if (!too_short || !deleted || cur->IsRootPage()) {
-                        auto tmp_id = cur->GetPageId();
+                        auto tmp_id = cur->GetPageId(fid_);
                         lock_cnt--;
                         cur_page->mutex_.unlock();
                         cache_manager_->unpinPage(tmp_id, deleted);
@@ -479,10 +475,11 @@ class BTreeIndex {
                     // (if no. entries on cur + no. entries on sibling"left or right" is less than max size of a leaf node).
                     // left and right are going to be fetched using iterators and check if they share the same parent with
                     // the current node.
-                    auto next_page_id = cur->GetNextPageId();
-                    auto cur_size = cur->GetSize();
-                    auto cur_page_id = cur->GetPageId();
-                    auto parent_page_id = cur->GetParentPageId();
+                    auto next_page_id = cur->GetNextPageId(fid_);
+                    //auto cur_size = cur->get_num_of_slots();
+                    auto cur_size = cur->get_num_of_slots();
+                    auto cur_page_id = cur->GetPageId(fid_);
+                    auto parent_page_id = cur->GetParentPageId(fid_);
                     // check it out later IMPORTANT.
                     // auto *parent = reinterpret_cast<InternalPage *>(cache_manager_->fetchPage(parent_page_id)->data_);
                     auto *parent = reinterpret_cast<BTreeInternalPage *>(custom_stk.back());
@@ -491,7 +488,7 @@ class BTreeIndex {
                     PageID prev_page_id = INVALID_PAGE_ID;
                     auto prev_pos = parent->PrevPageOffset(key);
                     if (prev_pos != -1) {
-                        prev_page_id = parent->ValueAt(prev_pos);
+                        prev_page_id = parent->ValueAt(prev_pos, fid_);
                     }
                     // check it out later IMPORTANT.
                     auto done = false;
@@ -502,17 +499,19 @@ class BTreeIndex {
                         //TODO: Fix Dead Lock.
                         //prev_page->mutex_.lock();
                         auto *prev = reinterpret_cast<BTreeLeafPage *>(prev_page->data_);
-                        auto prev_size = prev->GetSize();
-                        if (prev->GetParentPageId() == parent_page_id && prev_size + cur_size < cur->GetMaxSize()) {
-                            // std::cout << cur->GetSize() << " " << cur->GetNextPageId() << std::endl;
+                        //auto prev_size = prev->get_num_of_slots();
+                        auto prev_size = prev->get_num_of_slots();
+                        //if (prev->GetParentPageId(fid_) == parent_page_id && prev_size + cur_size < cur->GetMaxSize()) {
+                        if (prev->GetParentPageId(fid_) == parent_page_id && cur->can_merge_with_me(prev)) {
+                            // std::cout << cur->get_num_of_slots() << " " << cur->GetNextPageId(fid_) << std::endl;
                             done = true;
                             // merge into prev and delete cur, update the parent(remove the key-value) then break.
                             for (int i = 0; i < cur_size; i++) {
                                 prev->SetKeyAt(prev_size + i, cur->KeyAt(i));
                                 prev->SetValAt(prev_size + i, cur->ValAt(i));
                             }
-                            prev->IncreaseSize(cur_size);
-                            prev->SetNextPageId(cur->GetNextPageId());
+                            prev->increase_size(cur_size);
+                            prev->SetNextPageId(cur->GetNextPageId(fid_));
 
                             lock_cnt--;
                             cur_page->mutex_.unlock();
@@ -522,14 +521,14 @@ class BTreeIndex {
 
                             // clear parent
                             auto pos = prev_pos + 1;
-                            for (int i = pos; i < parent->GetSize() - 1; i++) {
+                            for (int i = pos; i < parent->get_num_of_slots() - 1; i++) {
                                 parent->SetKeyAt(i, parent->KeyAt(i + 1));
-                                parent->SetValAt(i, parent->ValueAt(i + 1));
+                                parent->SetValAt(i, parent->ValueAt(i + 1, fid_));
                             }
-                            parent->IncreaseSize(-1);
+                            parent->increase_size(-1);
                         }
                         //std::cout << "------------------------- leaf prev merge everything is just fine\n";
-                        //std::cout << prev->GetPageId() << " " << prev_page_id << std::endl;
+                        //std::cout << prev->GetPageId(fid_) << " " << prev_page_id << std::endl;
                         lock_cnt--;
                         prev_page->mutex_.unlock();
                         cache_manager_->unpinPage(prev_page_id, true);
@@ -543,18 +542,19 @@ class BTreeIndex {
                         // TODO: Fix Dead Lock.
                         // next_page->mutex_.lock();
                         auto *next = reinterpret_cast<BTreeLeafPage *>(next_page->data_);
-                        auto next_size = next->GetSize();
+                        auto next_size = next->get_num_of_slots();
                         bool got_in = false;
-                        if (next->GetParentPageId() == parent_page_id && next_size + cur_size < cur->GetMaxSize()) {
-                            //std::cout << next_page_id << " " << next->GetNextPageId() << std::endl;
+                        //if (next->GetParentPageId(fid_) == parent_page_id && next_size + cur_size < cur->GetMaxSize()) {
+                        if (next->GetParentPageId(fid_) == parent_page_id && cur->can_merge_with_me(next)) {
+                            //std::cout << next_page_id << " " << next->GetNextPageId(fid_) << std::endl;
                             done = true;
                             got_in = true;
                             for (int i = 0; i < next_size; i++) {
                                 cur->SetKeyAt(cur_size + i, next->KeyAt(i));
                                 cur->SetValAt(cur_size + i, next->ValAt(i));
                             }
-                            cur->IncreaseSize(next_size);
-                            cur->SetNextPageId(next->GetNextPageId());
+                            cur->increase_size(next_size);
+                            cur->SetNextPageId(next->GetNextPageId(fid_));
 
                             lock_cnt--;
                             next_page->mutex_.unlock();
@@ -563,11 +563,11 @@ class BTreeIndex {
 
                             // clear parent
                             auto pos = parent->NextPageOffset(key);
-                            for (int i = pos; i < parent->GetSize() - 1; i++) {
+                            for (int i = pos; i < parent->get_num_of_slots() - 1; i++) {
                                 parent->SetKeyAt(i, parent->KeyAt(i + 1));
-                                parent->SetValAt(i, parent->ValueAt(i + 1));
+                                parent->SetValAt(i, parent->ValueAt(i + 1, fid_));
                             }
-                            parent->IncreaseSize(-1);
+                            parent->increase_size(-1);
                         }
                         if (!got_in) {
                             lock_cnt--;
@@ -586,15 +586,15 @@ class BTreeIndex {
                         // TODO: Fix Dead Lock.
                         // prev_page->mutex_.lock();
                         auto *prev = reinterpret_cast<BTreeLeafPage *>(prev_page->data_);
-                        auto prev_size = prev->GetSize();
+                        auto prev_size = prev->get_num_of_slots();
                         bool got_in = false;
 
-                        if (prev->GetParentPageId() == parent_page_id && !prev->TooShortBefore()) {
+                        if (prev->GetParentPageId(fid_) == parent_page_id && !prev->TooShortBefore()) {
                             done = true;
                             got_in = true;
                             // take last key from prev insert it into current then update parent.
                             cur->Insert(prev->KeyAt(prev_size), prev->ValAt(prev_size));
-                            prev->IncreaseSize(-1);
+                            prev->increase_size(-1);
                             prev_size--;
                             cur_size++;
 
@@ -613,10 +613,10 @@ class BTreeIndex {
                         // TODO: Fix Dead Lock.
                         // next_page->mutex_.lock();
                         auto *next = reinterpret_cast<BTreeLeafPage *>(next_page->data_);
-                        auto next_size = next->GetSize();
+                        auto next_size = next->get_num_of_slots();
                         auto got_in = false;
 
-                        if (next->GetParentPageId() == parent_page_id && !next->TooShortBefore()) {
+                        if (next->GetParentPageId(fid_) == parent_page_id && !next->TooShortBefore()) {
                             done = true;
                             got_in = true;
                             // take first key from next insert it into current then update parent.
@@ -648,14 +648,14 @@ class BTreeIndex {
                     if (!too_short) {
                         lock_cnt--;
                         cur_page->mutex_.unlock();
-                        cache_manager_->unpinPage(cur->GetPageId(), true);
+                        cache_manager_->unpinPage(cur->GetPageId(fid_), true);
                         cur_unpined = true;
                         break;
                     }
                     if (cur->IsRootPage()) {
-                        SetRootPageId(cur->ValueAt(0));
+                        SetRootPageId(cur->ValueAt(0, fid_));
 
-                        auto *child_page = cache_manager_->fetchPage(cur->ValueAt(0));
+                        auto *child_page = cache_manager_->fetchPage(cur->ValueAt(0, fid_));
                         lock_cnt++;
                         // TODO: Fix Dead lock.
                         // child_page->mutex_.lock();
@@ -663,25 +663,25 @@ class BTreeIndex {
                         child->SetParentPageId(INVALID_PAGE_ID);
                         lock_cnt--;
                         child_page->mutex_.unlock();
-                        cache_manager_->unpinPage(cur->ValueAt(0), true);
+                        cache_manager_->unpinPage(cur->ValueAt(0, fid_), true);
 
                         lock_cnt--;
                         cur_page->mutex_.unlock();
-                        cache_manager_->unpinPage(cur->GetPageId(), true);
-                        cache_manager_->deletePage(cur->GetPageId());
+                        cache_manager_->unpinPage(cur->GetPageId(fid_), true);
+                        cache_manager_->deletePage(cur->GetPageId(fid_));
                         cur_unpined = true;
                         break;
                     }
                     // first merges:
                     // no prev and next pointer so need to get them from the parent.
                     // may as well just fetch the parent right away.
-                    auto cur_page_id = cur->GetPageId();
-                    // auto parent_page_id = cur->GetParentPageId();
-                    auto cur_size = cur->GetSize();
+                    auto cur_page_id = cur->GetPageId(fid_);
+                    // auto parent_page_id = cur->GetParentPageId(fid_);
+                    auto cur_size = cur->get_num_of_slots();
                     // IMPORTANT.
                     auto *parent = reinterpret_cast<BTreeInternalPage *>(custom_stk.back());
 
-                    auto parent_size = parent->GetSize();
+                    auto parent_size = parent->get_num_of_slots();
                     bool done = false;
                     auto prev_page_id = INVALID_PAGE_ID;
                     auto next_page_id = INVALID_PAGE_ID;
@@ -689,10 +689,10 @@ class BTreeIndex {
                     auto next_pos = parent->NextPageOffset(key);
 
                     if (prev_pos != -1) {
-                        prev_page_id = parent->ValueAt(prev_pos);
+                        prev_page_id = parent->ValueAt(prev_pos, fid_);
                     }
                     if (next_pos < parent_size) {
-                        next_page_id = parent->ValueAt(next_pos);
+                        next_page_id = parent->ValueAt(next_pos, fid_);
                     }
 
                     if (prev_page_id != INVALID_PAGE_ID && !done) {
@@ -704,23 +704,24 @@ class BTreeIndex {
                         // TODO: Fix Dead Lock.
                         //prev_page->mutex_.lock();
                         auto *prev = reinterpret_cast<BTreeInternalPage *>(prev_page->data_);
-                        auto prev_size = prev->GetSize();
-                        if (prev_size + cur_size <= prev->GetMaxSize()) {
+                        auto prev_size = prev->get_num_of_slots();
+                        //if (prev_size + cur_size <= prev->GetMaxSize()) {
+                        if (prev->can_merge_with_me(cur)) {
                             auto pos = prev_pos + 1;
                             // add the key from the parent and the first pointer from current as a new key-value pair.
                             auto parent_key = parent->KeyAt(pos);
                             prev->SetKeyAt(prev_size, parent_key);
-                            prev->SetValAt(prev_size, cur->ValueAt(0));
-                            prev->IncreaseSize(1);
+                            prev->SetValAt(prev_size, cur->ValueAt(0, fid_));
+                            prev->increase_size(1);
                             prev_size++;
 
-                            for (int i = 0; i < cur->GetSize(); i++) {
-                                auto child_page = cache_manager_->fetchPage(cur->ValueAt(i));
+                            for (int i = 0; i < cur->get_num_of_slots(); i++) {
+                                auto child_page = cache_manager_->fetchPage(cur->ValueAt(i, fid_));
                                 lock_cnt++;
                                 // TODO: Fix Dead Lock.
                                 // child_page->mutex_.lock();
                                 auto *child = reinterpret_cast<BTreePage *>(child_page->data_);
-                                auto tmp_child_page_id = child->GetPageId();
+                                auto tmp_child_page_id = child->GetPageId(fid_);
 
                                 child->SetParentPageId(prev_page_id);
 
@@ -731,20 +732,20 @@ class BTreeIndex {
 
                             for (int i = 1; i < cur_size; i++) {
                                 prev->SetKeyAt(prev_size + (i - 1), cur->KeyAt(i));
-                                prev->SetValAt(prev_size + (i - 1), cur->ValueAt(i));
+                                prev->SetValAt(prev_size + (i - 1), cur->ValueAt(i, fid_));
                             }
-                            prev->IncreaseSize((cur_size - 1));
+                            prev->increase_size((cur_size - 1));
                             lock_cnt--;
                             cur_page->mutex_.unlock();
                             cache_manager_->unpinPage(cur_page_id, true);
                             cache_manager_->deletePage(cur_page_id);
                             cur_unpined = true;
                             // clear parent
-                            for (int i = pos; i < parent->GetSize() - 1; i++) {
+                            for (int i = pos; i < parent->get_num_of_slots() - 1; i++) {
                                 parent->SetKeyAt(i, parent->KeyAt(i + 1));
-                                parent->SetValAt(i, parent->ValueAt(i + 1));
+                                parent->SetValAt(i, parent->ValueAt(i + 1, fid_));
                             }
-                            parent->IncreaseSize(-1);
+                            parent->increase_size(-1);
                             done = true;
                         }
                         lock_cnt--;
@@ -761,44 +762,45 @@ class BTreeIndex {
                         //TODO: Fix  Dead Lock.
                         //next_page->mutex_.lock();
                         auto *next = reinterpret_cast<BTreeInternalPage *>(next_page->data_);
-                        auto next_size = next->GetSize();
+                        auto next_size = next->get_num_of_slots();
                         auto parent_key = parent->KeyAt(next_pos);
-                        if (next_size + cur_size <= cur->GetMaxSize()) {
+                        //if (next_size + cur_size <= cur->GetMaxSize()) {
+                        if (cur->can_merge_with_me(next)) {
                             // add the key from the parent and the first pointer from next as a new key-value pair.
                             cur->SetKeyAt(cur_size, parent_key);
-                            cur->SetValAt(cur_size, next->ValueAt(0));
+                            cur->SetValAt(cur_size, next->ValueAt(0, fid_));
                             //std::cout << next->ValueAt(1) << std::endl;
-                            for (int i = 0; i < next->GetSize(); i++) {
-                                auto *child_page = cache_manager_->fetchPage(next->ValueAt(i));
+                            for (int i = 0; i < next->get_num_of_slots(); i++) {
+                                auto *child_page = cache_manager_->fetchPage(next->ValueAt(i, fid_));
                                 lock_cnt++;
                                 // TODO: Fix Dead Lock.
                                 //child_page->mutex_.lock();
                                 auto *child = reinterpret_cast<BTreePage *>(child_page->data_);
-                                auto tmp_child_page_id = child->GetPageId();
+                                auto tmp_child_page_id = child->GetPageId(fid_);
                                 child->SetParentPageId(cur_page_id);
                                 lock_cnt--;
                                 child_page->mutex_.unlock();
                                 cache_manager_->unpinPage(tmp_child_page_id, true);
                             }
-                            cur->IncreaseSize(1);
+                            cur->increase_size(1);
                             cur_size++;
 
                             for (int i = 1; i < next_size; i++) {
                                 cur->SetKeyAt(cur_size + (i - 1), next->KeyAt(i));
-                                cur->SetValAt(cur_size + (i - 1), next->ValueAt(i));
+                                cur->SetValAt(cur_size + (i - 1), next->ValueAt(i, fid_));
                             }
-                            cur->IncreaseSize((next_size - 1));
+                            cur->increase_size((next_size - 1));
                             cur_size += (next_size - 1);
                             lock_cnt--;
                             next_page->mutex_.unlock();
                             cache_manager_->unpinPage(next_page_id, true);
                             cache_manager_->deletePage(next_page_id);
                             // clear parent
-                            for (int i = next_pos; i < parent->GetSize() - 1; i++) {
+                            for (int i = next_pos; i < parent->get_num_of_slots() - 1; i++) {
                                 parent->SetKeyAt(i, parent->KeyAt(i + 1));
-                                parent->SetValAt(i, parent->ValueAt(i + 1));
+                                parent->SetValAt(i, parent->ValueAt(i + 1, fid_));
                             }
-                            parent->IncreaseSize(-1);
+                            parent->increase_size(-1);
                             done = true;
                         }
                         if (!done) {
@@ -820,26 +822,26 @@ class BTreeIndex {
                         // TODO: Fix Dead Lock.
                         //prev_page->mutex_.lock();
                         auto *prev = reinterpret_cast<BTreeInternalPage *>(prev_page->data_);
-                        auto prev_size = prev->GetSize();
+                        auto prev_size = prev->get_num_of_slots();
                         auto pos = prev_pos + 1;
                         auto parent_key = parent->KeyAt(pos);
 
                         if (!prev->TooShortBefore()) {
                             done = true;
                             // take the current key of the parent node add it to the cur
-                            auto *child_page = cache_manager_->fetchPage(prev->ValueAt(prev_size - 1));
+                            auto *child_page = cache_manager_->fetchPage(prev->ValueAt(prev_size - 1, fid_));
                             lock_cnt++;
                             // TODO: Fix Dead Lock.
                             // child_page->mutex_.lock();
                             auto *child = reinterpret_cast<BTreePage *>(child_page->data_);
                             child->SetParentPageId(cur_page_id);
 
-                            cur->InsertKeyAtStart(parent_key, prev->ValueAt(prev_size - 1));
+                            cur->insert_key_at_start(parent_key, prev->ValueAt(prev_size - 1, fid_));
                             cur_size++;
                             parent->SetKeyAt(pos, prev->KeyAt(prev_size - 1));
-                            prev->IncreaseSize(-1);
+                            prev->increase_size(-1);
                             prev_size--;
-                            auto tmp_child_page_id = child->GetPageId();
+                            auto tmp_child_page_id = child->GetPageId(fid_);
 
                             lock_cnt--;
                             child_page->mutex_.unlock();
@@ -857,7 +859,7 @@ class BTreeIndex {
                         // TODO: Fix Dead Lock.
                         //next_page->mutex_.lock();
                         auto *next = reinterpret_cast<BTreeInternalPage *>(next_page->data_);
-                        auto next_size = next->GetSize();
+                        auto next_size = next->get_num_of_slots();
                         auto pos = next_pos - 1;
                         auto parent_key = parent->KeyAt(pos + 1);
 
@@ -867,29 +869,29 @@ class BTreeIndex {
                         if (!next->TooShortBefore()) {
                             std::cout << "HI\n";
                             //std::cout << "child id : " << cur->ValueAt(0) << std::endl;
-                            auto *random_page = reinterpret_cast<BTreeLeafPage *>(cache_manager_->fetchPage(next->ValueAt(0)));
-                            //std::cout << random_page->GetNextPageId() << std::endl;
+                            auto *random_page = reinterpret_cast<BTreeLeafPage *>(cache_manager_->fetchPage(next->ValueAt(0, fid_)));
+                            //std::cout << random_page->GetNextPageId(fid_) << std::endl;
                             done = true;
                             // tell the child who is his real father :( .
-                            auto *child_page = cache_manager_->fetchPage(next->ValueAt(0));
+                            auto *child_page = cache_manager_->fetchPage(next->ValueAt(0, fid_));
                             lock_cnt++;
                             // TODO: Fix Dead Lock.
                             // child_page->mutex_.lock();
                             auto *child = reinterpret_cast<BTreePage *>(child_page->data_);
-                            auto tmp_child_page_id = child->GetPageId();
+                            auto tmp_child_page_id = child->GetPageId(fid_);
                             child->SetParentPageId(cur_page_id);
                             // append the parent's key to the end of cur along with the first val from next
                             // then push the first key up from next to the parent
                             cur->SetKeyAt(cur_size, parent_key);
-                            cur->SetValAt(cur_size, next->ValueAt(0));
+                            cur->SetValAt(cur_size, next->ValueAt(0, fid_));
                             lock_cnt--;
                             child_page->mutex_.unlock();
                             cache_manager_->unpinPage(tmp_child_page_id, true);
 
-                            cur->IncreaseSize(1);
+                            cur->increase_size(1);
                             cur_size++;
                             parent->SetKeyAt(pos + 1, next->KeyAt(1));
-                            next->RemoveFromStart();
+                            next->remove_from_start();
                             next_size--;
                             std::cout << std::endl;
                         }
@@ -910,7 +912,7 @@ class BTreeIndex {
             while (!custom_stk.empty()) {
                 lock_cnt--;
                 page_deque.front()->mutex_.unlock();
-                cache_manager_->unpinPage(custom_stk.front()->GetPageId(), false);
+                cache_manager_->unpinPage(custom_stk.front()->GetPageId(fid_), false);
                 custom_stk.pop_front();
                 page_deque.pop_front();
             }
@@ -927,22 +929,22 @@ class BTreeIndex {
 
             while (!root->IsLeafPage()) {
                 auto *cur = reinterpret_cast<BTreeInternalPage *>(root);
-                auto *next_page = cache_manager_->fetchPage(cur->ValueAt(0));
+                auto *next_page = cache_manager_->fetchPage(cur->ValueAt(0, fid_));
                 //next_page->RLatch();
                 auto *next = reinterpret_cast<BTreePage *>(next_page->data_);
                 //root_page->RUnlatch();
 
-                cache_manager_->unpinPage(cur->GetPageId(), false);
-                if (cur->GetPageId() == root_page_id_) {
+                cache_manager_->unpinPage(cur->GetPageId(fid_), false);
+                if (cur->GetPageId(fid_) == root_page_id_) {
                     locker.unlock();
                 }
                 root = next;
                 root_page = next_page;
             }
 
-            auto it = IndexIterator(cache_manager_, root->GetPageId(), 0);
+            auto it = IndexIterator(cache_manager_, root->GetPageId(fid_), 0);
             //root_page->RUnlatch();
-            cache_manager_->unpinPage(root->GetPageId(), false);
+            cache_manager_->unpinPage(root->GetPageId(fid_), false);
             return it;
         }
 
@@ -958,16 +960,16 @@ class BTreeIndex {
             auto *root = reinterpret_cast<BTreePage *>(root_page->data_);
             while (!root->IsLeafPage()) {
                 auto *cur = reinterpret_cast<BTreeInternalPage *>(root);
-                auto next_page_id = cur->NextPage(key);
+                auto next_page_id = cur->NextPage(key, fid_);
 
                 auto *next_page = cache_manager_->fetchPage(next_page_id);
                 //next_page->RLatch();
                 auto *next = reinterpret_cast<BTreePage *>(next_page->data_);
 
                 //root_page->RUnlatch();
-                cache_manager_->unpinPage(cur->GetPageId(), false);
+                cache_manager_->unpinPage(cur->GetPageId(fid_), false);
 
-                if (cur->GetPageId() == root_page_id_) {
+                if (cur->GetPageId(fid_) == root_page_id_) {
                     locker.unlock();
                 }
 
@@ -976,11 +978,11 @@ class BTreeIndex {
             }
             auto *tmp = reinterpret_cast<BTreeLeafPage *>(root);
             int pos = tmp->GetPos(key);
-            std::cout << "size: " << tmp->GetSize() << std::endl;
-            auto it = IndexIterator(cache_manager_, root->GetPageId(), pos);
+            std::cout << "size: " << tmp->get_num_of_slots() << std::endl;
+            auto it = IndexIterator(cache_manager_, root->GetPageId(fid_), pos);
 
             //root_page->RUnlatch();
-            cache_manager_->unpinPage(root->GetPageId(), false);
+            cache_manager_->unpinPage(root->GetPageId(fid_), false);
             return it;
         }
 
@@ -997,37 +999,40 @@ class BTreeIndex {
             while (!root->IsLeafPage()) {
                 auto *cur = reinterpret_cast<BTreeInternalPage *>(root);
 
-                auto *next_page = cache_manager_->fetchPage(cur->ValueAt(cur->GetSize() - 1));
+                auto *next_page = cache_manager_->fetchPage(cur->ValueAt(cur->get_num_of_slots() - 1, fid_));
                 //next_page->RLatch();
                 auto *next = reinterpret_cast<BTreePage *>(next_page->data_);
 
                 //root_page->RUnlatch();
-                cache_manager_->unpinPage(cur->GetPageId(), false);
+                cache_manager_->unpinPage(cur->GetPageId(fid_), false);
 
-                if (cur->GetPageId() == root_page_id_) {
+                if (cur->GetPageId(fid_) == root_page_id_) {
                     locker.unlock();
                 }
 
                 root = next;
                 root_page = next_page;
             }
-            auto it = IndexIterator(cache_manager_, root->GetPageId(), root->GetSize());
+            auto it = IndexIterator(cache_manager_, root->GetPageId(fid_), root->get_num_of_slots());
             //root_page->RUnlatch();
-            cache_manager_->unpinPage(root->GetPageId(), false);
+            cache_manager_->unpinPage(root->GetPageId(fid_), false);
             return it;
         }
 
         void See(){
+          /*
             auto *root = reinterpret_cast<BTreePage *>(cache_manager_->fetchPage(root_page_id_)->data_);
             ToString(root);
+            */
         }
 
+        /*
         void ToString(BTreePage* page){
             if (page->IsLeafPage()) {
                 auto *leaf = reinterpret_cast<BTreeLeafPage *>(page);
-                std::cout << "Leaf Page: " << leaf->GetPageId().page_num_ << " parent: " << leaf->GetParentPageId().page_num_
-                    << " next: " << leaf->GetNextPageId().page_num_ << std::endl;
-                for (int i = 0; i < leaf->GetSize(); i++) {
+                std::cout << "Leaf Page: " << leaf->GetPageId(fid_).page_num_ << " parent: " << leaf->GetParentPageId(fid_).page_num_
+                    << " next: " << leaf->GetNextPageId(fid_).page_num_ << std::endl;
+                for (int i = 0; i < leaf->get_num_of_slots(); i++) {
                     if(leaf->KeyAt(i).keys_.size())
                         std::cout << leaf->KeyAt(i).keys_[0].toString() << ",";
                 }
@@ -1035,19 +1040,20 @@ class BTreeIndex {
                 std::cout << std::endl;
             } else {
                 auto *internal = reinterpret_cast<BTreeInternalPage *>(page);
-                std::cout << "Internal Page: " << internal->GetPageId().page_num_ << " parent: " << internal->GetParentPageId().page_num_ << std::endl;
-                for (int i = 0; i < internal->GetSize(); i++) {
+                std::cout << "Internal Page: " << internal->GetPageId(fid_).page_num_ << " parent: " << internal->GetParentPageId(fid_).page_num_ << std::endl;
+                for (int i = 0; i < internal->get_num_of_slots(); i++) {
                     if(internal->KeyAt(i).keys_.size())
-                        std::cout << internal->KeyAt(i).keys_[0].toString() << ": " << internal->ValueAt(i).page_num_ << ",";
+                        std::cout << internal->KeyAt(i).keys_[0].toString() << ": " << internal->ValueAt(i, fid_).page_num_ << ",";
                 }
                 std::cout << std::endl;
                 std::cout << std::endl;
-                for (int i = 0; i < internal->GetSize(); i++) {
-                    ToString(reinterpret_cast<BTreePage *>(cache_manager_->fetchPage(internal->ValueAt(i))->data_));
+                for (int i = 0; i < internal->get_num_of_slots(); i++) {
+                    ToString(reinterpret_cast<BTreePage *>(cache_manager_->fetchPage(internal->ValueAt(i, fid_))->data_));
                 }
             }
-            cache_manager_->unpinPage(page->GetPageId(), false);
+            cache_manager_->unpinPage(page->GetPageId(fid_), false);
         }
+        */
 
 
 
@@ -1058,7 +1064,7 @@ class BTreeIndex {
             }
             auto raw_root = reinterpret_cast<Page*>(cache_manager_->fetchPage(root_page_id_)); 
             auto *root = reinterpret_cast<BTreePage *>(raw_root->data_);
-            int sz = root->GetSize();
+            int sz = root->get_num_of_slots();
             cache_manager_->unpinPage(root_page_id_, false);
             return sz == 0;
         }
@@ -1067,8 +1073,6 @@ class BTreeIndex {
         CacheManager* cache_manager_ = nullptr;
         FileID fid_ = -1;
         PageID root_page_id_ = INVALID_PAGE_ID;
-        int leaf_max_size_ = 0;
-        int internal_max_size_ = 0;
 
         std::shared_mutex root_page_id_lock_;
 };

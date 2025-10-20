@@ -13,11 +13,13 @@ class Value {
         //Value(){} 
         void value_from_size(int sz){
             size_ = sz;
-            delete [] content_;
-            content_ = new char[size_];
+            //delete [] content_;
+            //content_ = new char[size_];
+            free(content_);
+            content_ = (char*) malloc(size_);
         }
         ~Value(){
-            delete [] content_;
+            free(content_);
         }
 
         Value(Type type = NULL_TYPE){
@@ -28,8 +30,10 @@ class Value {
         Value(const Value& rhs){
             this->size_ = rhs.size_;
             if(!rhs.isNull()){
-                delete[] this->content_;
-                this->content_ = new char[size_];
+                //delete[] this->content_;
+                //this->content_ = new char[size_];
+                free(this->content_);
+                this->content_ = (char*) malloc(size_);
                 memcpy(this->content_, rhs.content_, size_);
             }
             this->type_ = rhs.type_;
@@ -38,48 +42,56 @@ class Value {
         Value& operator=(const Value& rhs){
             this->size_ = rhs.size_;
             if(!rhs.isNull()){
-                delete[] this->content_;
-                this->content_ = new char[size_];
+                //delete[] this->content_;
+                //this->content_ = new char[size_];
+                free(this->content_);
+                this->content_ = (char*) malloc(size_);
                 memcpy(this->content_, rhs.content_, size_);
             }
             this->type_ = rhs.type_;
             return *this;
         } 
 
-        Value(std::string str){
+        Value(const std::string& str){
             size_ = str.size(); 
-            content_ = new char[size_];
+            //content_ = new char[size_];
+            this->content_ = (char*) malloc(size_);
             //str.copy(content_, size_);
             memcpy(content_, str.c_str(), size_);
             type_ = VARCHAR;
         }
         Value(bool val){
             size_ = 1; 
-            content_ = new char[size_];
+            //content_ = new char[size_];
+            this->content_ = (char*) malloc(size_);
             memcpy(content_, &val, size_);
             type_ = BOOLEAN;
         }
         Value(int val){
             size_ = 4; 
-            content_ = new char[size_];
+            //content_ = new char[size_];
+            this->content_ = (char*) malloc(size_);
             memcpy(content_, &val, size_);
             type_ = INT;
         }
         Value(long long val){
             size_ = 8; 
-            content_ = new char[size_];
+            //content_ = new char[size_];
+            this->content_ = (char*) malloc(size_);
             memcpy(content_, &val, size_);
             type_ = BIGINT;
         }
         Value(float val){
             size_ = 4; 
-            content_ = new char[size_];
+            //content_ = new char[size_];
+            this->content_ = (char*) malloc(size_);
             memcpy(content_, &val, size_);
             type_ = FLOAT;
         }
         Value(double val){
             size_ = 8; 
-            content_ = new char[size_];
+            //content_ = new char[size_];
+            this->content_ = (char*) malloc(size_);
             memcpy(content_, &val, size_);
             type_ = DOUBLE;
         }
