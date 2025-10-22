@@ -4,7 +4,7 @@
 #include <math.h>
 #include <cstring>
 
-#define MAX_FRACTION 255
+#define MAX_FRACTION 255 // can't be less than page size.
 
 
 

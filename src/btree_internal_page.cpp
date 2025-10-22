@@ -35,7 +35,7 @@ void BTreeInternalPage::Init(PageID page_id, PageID parent_id) {
   SetPageType(BTreePageType::INTERNAL_PAGE);
   SetPageId(page_id);
   SetParentPageId(parent_id);
-  set_free_space_offset_ptr(PAGE_SIZE - 1);
+  set_free_space_offset(PAGE_SIZE - 1);
   increase_size(1);
   //SetMaxSize(max_size);
 }
@@ -198,9 +198,10 @@ void BTreeInternalPage::remove_from_start() {
   int sz = get_num_of_slots();
   int entry_sz = INTERNAL_SLOT_ENTRY_SIZE_;
   if(sz <= 1) return;
-  memmove(get_ptr_to(SLOT_ARRAY_OFFSET_), get_ptr_to(SLOT_ARRAY_OFFSET_)+entry_sz, sz*entry_sz);
+
+  // move the slot array back by 1 slot.
+  memmove(get_ptr_to(SLOT_ARRAY_OFFSET_), get_ptr_to(SLOT_ARRAY_OFFSET_)+entry_sz, (sz-1)*entry_sz);
   increase_size(-1);
-  /* TODO: clean up key payloads.*/
 }
 
 
@@ -241,11 +242,13 @@ bool BTreeInternalPage::Insert(IndexKey k, PageID v){
   }
   int cur = low;
 
-  memmove(get_ptr_to(SLOT_ARRAY_OFFSET_) + 
-          (entry_sz * cur) + entry_sz, 
-          get_ptr_to(SLOT_ARRAY_OFFSET_) +
-          (entry_sz * cur), 
-          (1+size-cur)*entry_sz);
+  if(cur < size){
+    memmove(get_ptr_to(SLOT_ARRAY_OFFSET_) + 
+        (entry_sz * cur) + entry_sz, 
+        get_ptr_to(SLOT_ARRAY_OFFSET_) +
+        (entry_sz * cur), 
+        (size-cur)*entry_sz);
+  }
   increase_size(1);
   SetKeyAt(cur, k);
   SetValAt(cur, v);

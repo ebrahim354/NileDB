@@ -32,7 +32,7 @@ void BTreeLeafPage::Init(PageID page_id, PageID parent_id) {
   SetPageId(page_id);
   SetParentPageId(parent_id);
   set_next_page_number(INVALID_PAGE_NUM);
-  set_free_space_offset_ptr(PAGE_SIZE - 1);
+  set_free_space_offset(PAGE_SIZE - 1);
 }
 
 
@@ -145,11 +145,13 @@ bool BTreeLeafPage::Insert(IndexKey k, RecordID v){
   if (cur < size && KeyAt(cur) == k) {
     return false;
   }
-  memmove(get_ptr_to(SLOT_ARRAY_OFFSET_) + 
-          (entry_sz * cur) + entry_sz, 
-          get_ptr_to(SLOT_ARRAY_OFFSET_) +
-          (entry_sz * cur), 
-          (1+size-cur)*entry_sz);
+  if(cur < size){
+    memmove(get_ptr_to(SLOT_ARRAY_OFFSET_) + 
+        (entry_sz * cur) + entry_sz, 
+        get_ptr_to(SLOT_ARRAY_OFFSET_) +
+        (entry_sz * cur), 
+        (size-cur)*entry_sz);
+  }
   increase_size(1);
   SetKeyAt(cur, k);
   SetValAt(cur, v);
@@ -196,12 +198,12 @@ bool BTreeLeafPage::Remove(IndexKey k){
   if (!(KeyAt(cur) == k) || cur >= size) {
     return false;
   }
-
+  // offset the slot array.
   memmove(get_ptr_to(SLOT_ARRAY_OFFSET_) + 
-          (entry_sz * cur), 
-          get_ptr_to(SLOT_ARRAY_OFFSET_) +
-          (entry_sz * cur) + entry_sz, 
-          (size-cur)*entry_sz);
+      (entry_sz * cur), 
+      get_ptr_to(SLOT_ARRAY_OFFSET_) +
+      (entry_sz * cur) + entry_sz, 
+      (size-(cur+1))*entry_sz);
   increase_size(-1);
   /*
   while (cur + 1 < size) {
@@ -210,7 +212,6 @@ bool BTreeLeafPage::Remove(IndexKey k){
   }
   IncreaseSize(-1);
   */
-  /* TODO: clean up key payloads.*/
   return true;
 }
 

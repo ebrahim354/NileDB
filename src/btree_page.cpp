@@ -1,4 +1,5 @@
 #pragma once
+#include <set>
 #include "page.cpp"
 #include "value.cpp"
 #include "index_key.cpp"
@@ -131,6 +132,41 @@ class BTreePage {
     // array_[index].first = key; 
   }
 
+  uint16_t compact(){
+    uint32_t sz = get_num_of_slots();
+    // sroted slots by the closest key payload to the end of the page(highest key paylod offset).
+    //               offset,index
+    std::set<std::pair<uint16_t, uint32_t>, std::greater<std::pair<uint16_t, uint32_t>>> sorted_slots;
+    auto type = get_page_type();
+    uint8_t entry_size = (type == BTreePageType::INTERNAL_PAGE ? INTERNAL_SLOT_ENTRY_SIZE_ : LEAF_SLOT_ENTRY_SIZE_);
+    uint32_t idx = (type == BTreePageType::INTERNAL_PAGE ? 1 : 0);
+    for(; idx < sz; ++idx){
+      uint16_t offset = *(uint16_t*)get_ptr_to(SLOT_ARRAY_OFFSET_ + (idx * entry_size));
+      sorted_slots.insert({offset, idx});
+    }
+
+    //asm("int3");
+
+    uint16_t new_fso = PAGE_SIZE-1;
+    uint16_t fso = get_free_space_offset();
+
+    for(auto it : sorted_slots) {
+      uint16_t offset = it.first;
+      uint32_t idx = it.second;
+      char* kp = get_key_ptr(idx);
+      uint16_t ks = get_key_size(idx);
+      int32_t hole_size = (new_fso - offset)+ks;
+      assert(hole_size >= 0 && "HOLE SIZE CANT BE NEGATIVE!\n");
+      if(hole_size > 0) {
+        memmove(kp+hole_size, kp, ks);
+        *(uint16_t*)get_ptr_to(SLOT_ARRAY_OFFSET_ + (idx * entry_size)) = offset + (uint16_t)hole_size;
+      }
+      new_fso -= ks;
+    }
+    set_free_space_offset(new_fso);
+    assert(new_fso >= fso && "ERROR WHILE COMPACTING SPACE!");
+    return new_fso-fso;
+  }
 
 
   char* get_val_ptr(int idx) {
@@ -140,10 +176,6 @@ class BTreePage {
           (idx * (type == BTreePageType::INTERNAL_PAGE ? INTERNAL_SLOT_ENTRY_SIZE_ : LEAF_SLOT_ENTRY_SIZE_)));
   }
 
- //protected:
-  void set_free_space_offset_ptr(uint32_t free_space_ptr) {
-    memcpy(get_ptr_to(FREE_SPACE_PTR_OFFSET_), &free_space_ptr, sizeof(free_space_ptr)); 
-  }
 
  //private:
 
