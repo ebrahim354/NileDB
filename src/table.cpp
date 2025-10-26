@@ -44,6 +44,10 @@ class Table {
         // rid (output)
         // return 1 in case of an error.
         int insertRecord(RecordID* rid, Record &record){
+            if((PAGE_SIZE-TABLE_PAGE_HEADER_SIZE) < record.getRecordSize() + TABLE_SLOT_ENTRY_SIZE){
+              std::cout << "Record size is larger than page size.\n";
+              return 1; 
+            }
             rid->page_id_ = first_page_id_;
             uint32_t page_num = 0;
             TableDataPage* table_page = nullptr;
@@ -90,6 +94,7 @@ class Table {
             }
             // couldn't fetch any pages for any reason.
             if(table_page == nullptr) {
+              std::cout << "couldn't fetch any pages.\n";
                 return 1;
             }
             // should lock the page in write mode (TODO).

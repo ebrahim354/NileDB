@@ -14,6 +14,39 @@ class BTreeLeafPage : public BTreePage {
   PageNum get_next_page_number();
   void set_next_page_number(PageNum next_page_num);
 
+  bool split_with_and_insert(BTreeLeafPage* new_page, IndexKey k, RecordID v) {
+    int sz = get_num_of_slots();
+    int md = std::ceil(static_cast<float>(sz) / 2);
+    md--;
+    for (int i = md + 1, j = 0; i < sz; i++, j++) {
+      new_page->SetKeyAt(j, KeyAt(i));
+      new_page->SetValAt(j, ValAt(i));
+      new_page->increase_size(1);
+    }
+    sz = md+1;
+    set_num_of_slots(sz);
+    assert(sz > 0 && "Key couldn't fit in an empty page");
+    auto last_key = KeyAt(md);
+    if(k <= last_key && !IsFull(k)) 
+      return Insert(k, v);
+    else if(!new_page->IsFull(k))
+      return new_page->Insert(k, v);
+    return false;
+  }
+
+  inline IndexKey get_last_key_cpy() {
+    auto k = KeyAt(get_num_of_slots() - 1);
+    char* data = (char*)malloc(k.size_);
+    memcpy(data, k.data_, k.size_);
+    return {
+      .data_ = data,
+      .size_ = k.size_,
+    };
+  }
+
+  bool IsFull(IndexKey k) { 
+    return ((LEAF_SLOT_ENTRY_SIZE_ + k.size_) >= get_free_space_size());
+  }
 
   //IndexKey KeyAt(int index);
   RecordID ValAt(int index);
@@ -62,7 +95,9 @@ RecordID BTreeLeafPage::ValAt(int index){
 }
 
 void BTreeLeafPage::SetValAt(int index, RecordID v) {
-  *(RecordID*)get_val_ptr(index) = v;
+  char* ptr = get_val_ptr(index);
+  if(!ptr) return;
+  *(RecordID*)ptr = v;
 }
 
 
@@ -120,7 +155,7 @@ int BTreeLeafPage::GetPos(IndexKey k) {
 bool BTreeLeafPage::Insert(IndexKey k, RecordID v){
   int size = get_num_of_slots();
   int entry_sz = LEAF_SLOT_ENTRY_SIZE_;
-  if(entry_sz + k.size_ > get_free_space_size()) return false; // no space.
+  //if(entry_sz + k.size_ > get_free_space_size()) return false; // no space.
 
 
   int mid;

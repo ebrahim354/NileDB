@@ -13,7 +13,7 @@ struct RecordID {
         slot_number_ = slot_number;
     }
     PageID page_id_ = INVALID_PAGE_ID; 
-    uint32_t slot_number_;
+    uint32_t slot_number_ = 0;
 };
 
 

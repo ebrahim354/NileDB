@@ -5,6 +5,8 @@
 #include "index_key.cpp"
 
 
+#define BTREE_HEADER_SIZE 25
+
 enum class BTreePageType { 
   INVALID_PAGE  = '0',
   LEAF_PAGE     = '1',
@@ -17,16 +19,21 @@ class BTreePage {
   bool IsRootPage() const;
   void SetPageType(BTreePageType page_type);
 
+  static int get_max_key_size() {
+    auto mx = std::max(LEAF_SLOT_ENTRY_SIZE_, INTERNAL_SLOT_ENTRY_SIZE_);
+    return PAGE_SIZE-(BTREE_HEADER_SIZE+mx);
+  }
+
   uint32_t get_num_of_slots() const {
     return *reinterpret_cast<uint32_t*>(get_ptr_to(NUMBER_OF_SLOTS_OFFSET_));
   }
 
-  bool IsFull() { 
-    // should at least have enough space for the slot array. 
+  /*
+  bool IsFull(IndexKey k) { 
     auto entry_sz = (get_page_type() == 
       BTreePageType::INTERNAL_PAGE) ? INTERNAL_SLOT_ENTRY_SIZE_ : LEAF_SLOT_ENTRY_SIZE_;
-    return (get_free_space_size() < entry_sz);
-  }
+    return ((entry_sz + k.size_) >= get_free_space_size());
+  }*/
   void set_num_of_slots(uint32_t n);
 
 
@@ -94,6 +101,19 @@ class BTreePage {
           (idx * (type == BTreePageType::INTERNAL_PAGE ? INTERNAL_SLOT_ENTRY_SIZE_ : LEAF_SLOT_ENTRY_SIZE_)));
   }
 
+  IndexKey KeyAtCpy(int index) {
+    char* ptr = get_key_ptr(index);
+    unsigned int sz = get_key_size(index);
+    if(!ptr) return IndexKey();
+    char* k = (char*) malloc(sz);
+    memcpy(k, ptr, sz);
+    return {
+      .data_ = k,
+      .size_ = sz, 
+    };
+  }
+
+
   IndexKey KeyAt(int index) {
     char* ptr = get_key_ptr(index);
     if(!ptr) return IndexKey();
@@ -145,7 +165,6 @@ class BTreePage {
       sorted_slots.insert({offset, idx});
     }
 
-    //asm("int3");
 
     uint16_t new_fso = PAGE_SIZE-1;
     uint16_t fso = get_free_space_offset();
@@ -155,7 +174,7 @@ class BTreePage {
       uint32_t idx = it.second;
       char* kp = get_key_ptr(idx);
       uint16_t ks = get_key_size(idx);
-      int32_t hole_size = (new_fso - offset)+ks;
+      int32_t hole_size = (new_fso - offset)-ks;
       assert(hole_size >= 0 && "HOLE SIZE CANT BE NEGATIVE!\n");
       if(hole_size > 0) {
         memmove(kp+hole_size, kp, ks);
@@ -163,6 +182,7 @@ class BTreePage {
       }
       new_fso -= ks;
     }
+    memset(get_ptr_to(fso), 0, new_fso-fso); // TODO: Disable on release.
     set_free_space_offset(new_fso);
     assert(new_fso >= fso && "ERROR WHILE COMPACTING SPACE!");
     return new_fso-fso;
@@ -188,11 +208,11 @@ class BTreePage {
   }
 
   inline PageNum get_page_number() const {
-    return (PageNum)*get_ptr_to(PAGE_NUMBER_OFFSET_);
+    return *(PageNum*)get_ptr_to(PAGE_NUMBER_OFFSET_);
   }
 
   inline  PageNum get_parent_page_number() const {
-    return (PageNum)*get_ptr_to(PARENT_PAGE_NUMBER_OFFSET_);
+    return *(PageNum*)get_ptr_to(PARENT_PAGE_NUMBER_OFFSET_);
   }
 
   inline void set_page_type(BTreePageType t) {
@@ -201,12 +221,12 @@ class BTreePage {
   }
 
   inline void set_page_number(PageNum page_num) {
-    char* ptr = get_ptr_to(PAGE_NUMBER_OFFSET_);
+    PageNum* ptr = (PageNum*)get_ptr_to(PAGE_NUMBER_OFFSET_);
     *ptr = page_num;
   }
 
   inline void set_parent_page_number(PageNum page_num) {
-    char* ptr = get_ptr_to(PARENT_PAGE_NUMBER_OFFSET_);
+    PageNum* ptr = (PageNum*)get_ptr_to(PARENT_PAGE_NUMBER_OFFSET_);
     *ptr = page_num;
   }
 
@@ -234,7 +254,7 @@ class BTreePage {
   static const size_t SLOT_ARRAY_KEY_SIZE_ = 4;         //  2 bytes(offset) + 2 bytes(size).
   static const size_t INTERNAL_SLOT_ENTRY_SIZE_ = SLOT_ARRAY_KEY_SIZE_  + 4;//  4 bytes key + 4  bytes page number.
   static const size_t LEAF_SLOT_ENTRY_SIZE_ = SLOT_ARRAY_KEY_SIZE_  + 12;   //  4 bytes key + 12 bytes record id.
-  static const size_t HEADER_SIZE_ = 25;                 // 25 bytes are used for storing header data.
+  static const size_t HEADER_SIZE_ = BTREE_HEADER_SIZE; // 25 bytes are used for storing header data.
 };
 
 bool BTreePage::IsLeafPage() const { return get_page_type() == BTreePageType::LEAF_PAGE; }
@@ -243,7 +263,10 @@ void BTreePage::SetPageType(BTreePageType page_type) { set_page_type(page_type);
 
 
 void BTreePage::set_num_of_slots(uint32_t n) { 
-     *(uint32_t*)(get_ptr_to(NUMBER_OF_SLOTS_OFFSET_)) = n;
+  bool  shrinking = get_num_of_slots() > n;
+  *(uint32_t*)(get_ptr_to(NUMBER_OF_SLOTS_OFFSET_)) = n;
+
+  if(shrinking) compact();
 }
 /*
 uint32_t BTreePage::GetMinSize() const { return GetMaxSize() / 2;      }
@@ -256,6 +279,8 @@ void BTreePage::increase_size(int amount) {
   uint32_t* size_ptr = (uint32_t*)get_ptr_to(NUMBER_OF_SLOTS_OFFSET_);
   if(*size_ptr == 0 && amount < 1) return;
   *size_ptr += amount;
+
+  if(amount < 0) compact();
 }
 
 PageID BTreePage::GetParentPageId(FileID parent_fid) const { 

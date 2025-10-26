@@ -37,6 +37,23 @@ struct IndexKey {
   char* data_ = nullptr;
   uint32_t size_ = 0;
 
+  void print() {
+    if(!data_){
+      std::cout << '-';
+      return;
+    }
+    for(int i = 0; i < size_; ++i){
+      if(i < 2){
+        //int c = *(uint8_t*)(cur);
+        //std::cout << c << " ";
+      } else if(i == 2){
+        int x = *(int*)(data_+i);
+        //if(x == 256) asm("int3");
+        std::cout << x << " ";
+      } else break;
+    }
+  }
+
   inline uint8_t get_header_size(){
     if(!data_) return 0;
     return (uint8_t)*data_;
@@ -94,7 +111,10 @@ int index_key_cmp(IndexKey lhs,IndexKey rhs) {
   if(rhs.data_  && !lhs.data_ ) return -1;
   if(!rhs.data_ && !lhs.data_ ) return 0;
 
-  if(lhs.get_header_size() != rhs.get_header_size()) assert(0 && "INVALID COMPARISON");
+  if(lhs.get_header_size() != rhs.get_header_size()){
+    //asm("int3");
+    assert(0 && "INVALID COMPARISON");
+  }
   char* payload_ptr = lhs.get_payload_ptr();
   char* rhs_payload_ptr = rhs.get_payload_ptr();
   char* header = lhs.get_header_ptr();
@@ -106,17 +126,17 @@ int index_key_cmp(IndexKey lhs,IndexKey rhs) {
     int advance = 0;
     switch(*header){
       case (uint8_t)SerialType::INT:{
-        diff = (int32_t) *payload_ptr - (int32_t) *rhs_payload_ptr;
+        diff = *(int32_t*) payload_ptr - *(int32_t*) rhs_payload_ptr;
         advance = 4;
         break;
                }
       case (uint8_t)SerialType::LONG:{
-        diff = (int64_t) *payload_ptr - (int64_t) *rhs_payload_ptr;
+        diff = *(int64_t*) payload_ptr - *(int64_t*) rhs_payload_ptr;
         advance = 8;
         break;
                 }
       case (uint8_t)SerialType::FLOAT:{
-        diff = (double) *payload_ptr  - (double) *rhs_payload_ptr;
+        diff = *(double*) payload_ptr  - *(double*) rhs_payload_ptr;
         advance = 8;
         break;
                  }
@@ -195,5 +215,16 @@ IndexKey temp_index_key_from_values(std::vector<Value>& vals) {
   return {
     .data_ = buf,
     .size_ = (uint32_t)(payload_ptr - buf),
+  };
+}
+
+// user has ownership over the return value.
+IndexKey null_index_key (uint8_t size) {
+  char* buf = (char*)malloc(size+1);
+  memset(buf, (char)SerialType::NIL, size+1);
+  *buf = size;
+  return {
+    .data_ = buf,
+    .size_ = (uint32_t)size+1, 
   };
 }

@@ -5,6 +5,7 @@
 
 struct IndexKey;
 
+
 class BTreeInternalPage : public BTreePage {
  public:
   void Init(PageID page_id, PageID parent_id = INVALID_PAGE_ID);
@@ -15,6 +16,9 @@ class BTreeInternalPage : public BTreePage {
   PageID ValueAt(int index, FileID fid);
   int InsertionPosition(IndexKey k);
 
+  bool IsFull(IndexKey k) { 
+    return (INTERNAL_SLOT_ENTRY_SIZE_ + k.size_ >= get_free_space_size());
+  }
 
   /*
    
@@ -60,7 +64,7 @@ PageID BTreeInternalPage::ValueAt(int index, FileID fid) {
   if(!ptr) return INVALID_PAGE_ID;
   return {
     .fid_ = fid,
-    .page_num_ = (PageNum) *ptr,
+    .page_num_ = *(PageNum*)ptr,
   };
 }
 
@@ -191,6 +195,8 @@ void BTreeInternalPage::insert_key_at_start(IndexKey key, PageID start_val) {
   memmove(get_ptr_to(SLOT_ARRAY_OFFSET_) + entry_sz, get_ptr_to(SLOT_ARRAY_OFFSET_), sz*entry_sz);
   increase_size(1);
   SetKeyAt(1, key);
+  if(key.data_)
+    SetKeyAt(0, null_index_key(*(key.data_)));
   SetValAt(0, start_val);
 }
 

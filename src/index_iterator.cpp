@@ -52,6 +52,13 @@ class IndexIterator {
             return 1;
         }
 
+        IndexKey getCurKey(){
+            if(entry_idx_ > cur_page_->get_num_of_slots()) return IndexKey();
+            char* cur_data = nullptr;
+            std::pair<IndexKey, RecordID> cur_entry = cur_page_->getPointer(entry_idx_);
+            return cur_entry.first;
+        }
+
         RecordID getCurRecordID(){
             if(entry_idx_ > cur_page_->get_num_of_slots()) return RecordID(INVALID_PAGE_ID, -1);
             char* cur_data = nullptr;

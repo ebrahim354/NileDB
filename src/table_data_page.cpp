@@ -4,6 +4,9 @@
 #include <cstring>
 
 
+#define TABLE_PAGE_HEADER_SIZE 20
+#define TABLE_SLOT_ENTRY_SIZE 8
+
 class TableDataPage : public Page {
     public:
         // assumes that the ResetMemory function is called before this by the cache manager.
@@ -48,7 +51,7 @@ class TableDataPage : public Page {
         static const size_t FREE_SPACE_PTR_OFFSET_ = 12;
         static const size_t NUMBER_OF_SLOTS_OFFSET_ = 16;
         static const size_t SLOT_ARRAY_OFFSET_ = 20; 
-        static const size_t SLOT_ENTRY_SIZE_ = 8; 
+        static const size_t SLOT_ENTRY_SIZE_ = TABLE_SLOT_ENTRY_SIZE; 
         /* 
          * first entry of the slot array.
          * each entry is 8 bytes long 

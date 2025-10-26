@@ -595,6 +595,10 @@ class InsertionExecutor : public Executor {
           RecordID* rid = new RecordID();
           Record* record = table_->translateToRecord(vals_);
           int err = table_->getTable()->insertRecord(rid, *record);
+          if(err){
+            error_status_ = 1;
+            return {};
+          }
           // loop over table indexes.
           for(int i = 0; i < indexes_.size(); ++i){
               IndexKey k = getIndexKeyFromTuple(indexes_[i].fields_numbers_, vals_);
@@ -606,6 +610,7 @@ class InsertionExecutor : public Executor {
               delete k.data_;
               //indexes_[i].index_->See();
               if(!success){
+                  std::cout << "Could Not insert into index\n";
                   error_status_ = 1;
                   break;
               }
