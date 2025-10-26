@@ -430,7 +430,7 @@ class IndexScanExecutor : public Executor {
             finished_ = 0;
             output_.resize(output_schema_->numOfCols());
             //  delete it_;
-            //  it_ = index_->begin();
+            // it_ = index_->begin();
         }
 
         std::vector<Value> next() {

@@ -19,9 +19,9 @@ class BTreeLeafPage : public BTreePage {
     int md = std::ceil(static_cast<float>(sz) / 2);
     md--;
     for (int i = md + 1, j = 0; i < sz; i++, j++) {
+      new_page->increase_size(1);
       new_page->SetKeyAt(j, KeyAt(i));
       new_page->SetValAt(j, ValAt(i));
-      new_page->increase_size(1);
     }
     sz = md+1;
     set_num_of_slots(sz);
