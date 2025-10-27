@@ -6,6 +6,7 @@
 struct IndexKey;
 int index_key_cmp(IndexKey lhs,IndexKey rhs);
 IndexKey temp_index_key_from_values(std::vector<Value>& vals);
+#define EPS 1e-6
 
 /*
 * this structure is used to group multiple columns into one key to support multi column indexes for example: 
@@ -136,8 +137,12 @@ int index_key_cmp(IndexKey lhs,IndexKey rhs) {
         break;
                 }
       case (uint8_t)SerialType::FLOAT:{
-        diff = *(double*) payload_ptr  - *(double*) rhs_payload_ptr;
-        advance = 8;
+        float res = *(float*) payload_ptr  - *(float*) rhs_payload_ptr;
+        if(fabsf(res) > EPS){
+          if(res < 0.0) diff = -1;
+          else diff = 1;
+        }
+        advance = 4;
         break;
                  }
       case (uint8_t)SerialType::NIL:{
