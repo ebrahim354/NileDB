@@ -142,7 +142,10 @@ class BTreeIndex {
         // return true if inserted successfully.
         bool Insert(const IndexKey &key, const RecordID &value) {
             std::unique_lock locker(root_page_id_lock_);
-            if((key.size_ + 16) * 3 > BTreePage::get_max_key_size()) return false;
+            if((key.size_ + 16) * 3 > BTreePage::get_max_key_size()){
+              std::cout << "Key can't fit in one page\n";
+              return false;
+            }
             if(!fid_to_fname.count(fid_))  return false;
             std::deque<Page *> page_deque;
             BTreePage *root;

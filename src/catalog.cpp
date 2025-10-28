@@ -228,7 +228,7 @@ class Catalog {
           fid_to_fname[nfid] = index_fname;
 
 
-          // persist the index meta data.
+          // persist the index.
           // indexes_meta_data (text index_name, text table_name, int fid, int root_page_num).
           assert(tables_.count("NDB_INDEX_META") && tables_.count("NDB_INDEX_KEYS"));
           TableSchema* index_meta_data = tables_["NDB_INDEX_META"];
@@ -269,7 +269,22 @@ class Catalog {
             delete record;
             if(err) return false;
           }
-          
+
+          // insert rows of the table.
+          TableIterator* table_it = table->getTable()->begin();
+          while(table_it->advance()) {
+            Record r = table_it->getCurRecordCpy();
+            *rid = table_it->getCurRecordID();
+            std::vector<Value> vals;
+            int err = table->translateToValues(r, vals);
+            assert(err == 0 && "Could not traverse the table.");
+            IndexKey k = getIndexKeyFromTuple(indexes_[index_name].fields_numbers_, vals);
+            assert(k.size_ != 0);
+            bool success = indexes_[index_name].index_->Insert(k, *rid);
+            assert(success);
+            delete k.data_;
+          }
+          delete table_it;
           delete rid;
           return false;
         }
@@ -403,7 +418,7 @@ class Catalog {
 
             assert(indexes_.count(index_name) == 1); // index must exist.
             auto header = indexes_[index_name];
-            if(header.fields_numbers_.size() >= field_number_in_index) header.fields_numbers_.resize(field_number_in_index+1);
+            if(field_number_in_index >= header.fields_numbers_.size()) header.fields_numbers_.resize(field_number_in_index+1);
             header.fields_numbers_[field_number_in_index] = field_number_in_table;
           }
           delete it_keys;

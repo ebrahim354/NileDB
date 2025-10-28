@@ -27,6 +27,7 @@ struct IndexHeader;
 
 
 
+
 class ProductExecutor : public Executor {
     public:
         ProductExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs)
@@ -568,7 +569,7 @@ class InsertionExecutor : public Executor {
 
         std::vector<Value> next() {
           if(error_status_ || finished_) return {};
-          // TODO: fix alot of vector copying.
+          // TODO: replace alot of vector copying.
           if(child_executor_){
             std::vector<Value> values = child_executor_->next();
             if(child_executor_->finished_) {
@@ -626,15 +627,6 @@ class InsertionExecutor : public Executor {
           return vals_;
         }
 
-        IndexKey getIndexKeyFromTuple(std::vector<int>& fields, std::vector<Value>& values){
-          std::vector<Value> keys;
-            for(int i = 0; i < fields.size(); ++i){
-                if(fields[i] >= values.size()) 
-                    return {};
-                keys.push_back(values[fields[i]]);
-            }
-            return temp_index_key_from_values(keys);
-        }
     private:
         TableSchema* table_ = nullptr;
         std::vector<IndexHeader> indexes_;
@@ -1610,9 +1602,9 @@ class ExecutionEngine {
                         }
 
                         TableSchema* new_output_schema = new TableSchema(tname, schema->getTable(), columns, true);
-                        SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
+                        //SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
 
-                        //IndexScanExecutor* scan = new IndexScanExecutor(catalog_->getIndexesOfTable(tname)[0].index_, new_output_schema, ctx, query_idx, parent_query_idx);
+                        IndexScanExecutor* scan = new IndexScanExecutor(catalog_->getIndexesOfTable(tname)[0].index_, new_output_schema, ctx, query_idx, parent_query_idx);
                         return scan;
                     } break;
                 case PRODUCT: 
