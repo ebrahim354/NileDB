@@ -1610,9 +1610,9 @@ class ExecutionEngine {
                         }
 
                         TableSchema* new_output_schema = new TableSchema(tname, schema->getTable(), columns, true);
-                        //SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
+                        SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
 
-                        IndexScanExecutor* scan = new IndexScanExecutor(catalog_->getIndexesOfTable(tname)[0].index_, new_output_schema, ctx, query_idx, parent_query_idx);
+                        //IndexScanExecutor* scan = new IndexScanExecutor(catalog_->getIndexesOfTable(tname)[0].index_, new_output_schema, ctx, query_idx, parent_query_idx);
                         return scan;
                     } break;
                 case PRODUCT: 

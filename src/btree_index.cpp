@@ -9,26 +9,56 @@
 #include "btree_page.cpp"
 #include "btree_leaf_page.cpp"
 #include "btree_internal_page.cpp"
+#include "table_schema.cpp"
 
 class BTreeIndex {
     public:
         BTreeIndex(CacheManager* cm, 
                 FileID fid, 
-                PageID root_page_id):
+                PageID root_page_id,
+                TableSchema* index_meta_schema
+                ):
             cache_manager_(cm),
             fid_(fid),
-            root_page_id_(root_page_id)
+            root_page_id_(root_page_id),
+            index_meta_schema_(index_meta_schema)
             {}
         ~BTreeIndex(){}
 
+        void update_index_root(FileID fid, PageNum new_root_pid) {
+          //TableSchema* indexes_meta_schema = tables_["NDB_INDEX_META"];
+          TableSchema* indexes_meta_schema = index_meta_schema_; 
+          TableIterator* it_meta = indexes_meta_schema->getTable()->begin();
+
+          while(it_meta->advance()){
+            Record r = it_meta->getCurRecordCpy();
+            std::vector<Value> values;
+            int err = indexes_meta_schema->translateToValues(r, values);
+            assert(err == 0 && "Could not traverse the indexes schema.");
+
+            std::string index_name = values[0].getStringVal();
+            std::string table_name = values[1].getStringVal();
+            FileID index_fid = values[2].getIntVal();
+            PageNum root_pid = values[3].getIntVal();
+            if(index_fid != fid) continue;
+
+            RecordID rid = it_meta->getCurRecordID();
+
+            values[3] = Value(new_root_pid);
+            Record* new_record = indexes_meta_schema->translateToRecord(values);
+            err = indexes_meta_schema->getTable()->updateRecord(&rid, *new_record);
+            assert(err == 0 && "Could not update record.");
+            delete new_record;
+          }
+          delete it_meta;
+        }
 
         void SetRootPageId(PageID root_page_id, int insert_record = 0) {
             // TODO: fix dead lock.
             //std::unique_lock locker(this->root_page_id_lock_);
             root_page_id_ = root_page_id;
-            std::cout << "update: " << fid_to_fname[root_page_id.fid_] << "\n";
-            // TODO: persist the b tree to disk.
-            //UpdateRootPageId(insert_record);
+            assert(index_meta_schema_ != 0);
+            update_index_root(fid_, root_page_id.page_num_);
         }
 
         // true means value is returned.
@@ -418,6 +448,8 @@ class BTreeIndex {
                 custom_stk.pop_front();
                 page_deque.pop_front();
             }
+
+            cache_manager_->flushAllPages(); // TODO: this is not the job of the index.
             return inserted;
         }
 
@@ -1075,8 +1107,9 @@ class BTreeIndex {
 
 
         CacheManager* cache_manager_ = nullptr;
-        FileID fid_ = -1;
-        PageID root_page_id_ = INVALID_PAGE_ID;
+        TableSchema*  index_meta_schema_ = nullptr;
+        FileID fid_                  = -1;
+        PageID root_page_id_         = INVALID_PAGE_ID;
 
         std::shared_mutex root_page_id_lock_;
 };
