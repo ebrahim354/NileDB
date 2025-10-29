@@ -9,6 +9,18 @@ IndexKey temp_index_key_from_values(std::vector<Value>& vals);
 #define EPS 1e-6
 
 
+
+struct IndexField {
+  std::string name_;
+  bool desc_ = false;
+};
+
+struct NumberedIndexField {
+    int  idx_ = -1;
+    bool desc_ = false;
+};
+
+
 /*
 * this structure is used to group multiple columns into one key to support multi column indexes for example: 
 * create index tmp_index on tmp_table(a,b,c);
@@ -235,12 +247,12 @@ IndexKey null_index_key (uint8_t size) {
   };
 }
 
-IndexKey getIndexKeyFromTuple(std::vector<int>& fields, std::vector<Value>& values){
+IndexKey getIndexKeyFromTuple(std::vector<NumberedIndexField>& fields, std::vector<Value>& values){
   std::vector<Value> keys;
   for(int i = 0; i < fields.size(); ++i){
-    if(fields[i] >= values.size()) 
+    if(fields[i].idx_ >= values.size()) 
       return {};
-    keys.push_back(values[fields[i]]);
+    keys.push_back(values[fields[i].idx_]);
   }
   return temp_index_key_from_values(keys);
 }

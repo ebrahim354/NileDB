@@ -1389,7 +1389,7 @@ class ExecutionEngine {
                 col_constraints.push_back(fields[i].constraints_);
             }
             std::vector<Column> columns;
-            std::vector<std::string> primary_key_cols;
+            std::vector<IndexField> primary_key_cols;
             uint8_t offset_ptr = 0;
             for(size_t i = 0; i < col_names.size(); ++i){
                 columns.push_back(Column(col_names[i], col_types[i], offset_ptr, col_constraints[i]));
@@ -1400,7 +1400,8 @@ class ExecutionEngine {
                     break;
                   }
                 }
-                if(is_primary_key) primary_key_cols.push_back(col_names[i]);
+                if(is_primary_key) 
+                    primary_key_cols.push_back({col_names[i], false}); // primary key can only be asc.
                 offset_ptr += Column::getSizeFromType(col_types[i]);
             }
             TableSchema* sch = catalog_->createTable(table_name, columns);
@@ -1418,7 +1419,7 @@ class ExecutionEngine {
             CreateIndexStatementData* create_index = reinterpret_cast<CreateIndexStatementData*>(ctx.queries_call_stack_[0]);
             std::string index_name = create_index->index_name_;
             std::string table_name = create_index->table_name_;
-            std::vector<std::string> fields = create_index->fields_;
+            std::vector<IndexField> fields = create_index->fields_;
             bool err = catalog_->createIndex(table_name, index_name, fields);
             if(err) return false;
             return true;
@@ -1602,9 +1603,9 @@ class ExecutionEngine {
                         }
 
                         TableSchema* new_output_schema = new TableSchema(tname, schema->getTable(), columns, true);
-                        //SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
+                        SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
 
-                        IndexScanExecutor* scan = new IndexScanExecutor(catalog_->getIndexesOfTable(tname)[0].index_, new_output_schema, ctx, query_idx, parent_query_idx);
+                        //IndexScanExecutor* scan = new IndexScanExecutor(catalog_->getIndexesOfTable(tname)[0].index_, new_output_schema, ctx, query_idx, parent_query_idx);
                         return scan;
                     } break;
                 case PRODUCT: 

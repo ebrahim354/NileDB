@@ -5,6 +5,7 @@
 #include "utils.cpp"
 #include "query_ctx.cpp"
 #include "query_data.cpp"
+#include "index_key.cpp"
 #include <cmath>
 
 struct ExpressionNode;
@@ -436,7 +437,7 @@ struct CreateIndexStatementData : QueryData {
     ~CreateIndexStatementData() {}
 
 
-    std::vector<std::string> fields_ = {};
+    std::vector<IndexField> fields_ = {};
     std::string index_name_ = {};
     std::string table_name_ = {};
 };
@@ -1526,10 +1527,16 @@ void Parser::createIndexStatement(QueryCTX& ctx, int parent_idx){
             return;
         }
         Token token = ctx.getCurrentToken(); ++ctx;
-        statement->fields_.push_back(token.val_);
+        IndexField f = {
+          .name_ = token.val_,
+          .desc_ = false // ascending order is the default.
+        };
+        statement->fields_.push_back(f);
         // TODO: handle desc and asc orders.
         // opptional ASC or DESC
         if(ctx.matchAnyTokenType({TokenType::ASC, TokenType::DESC})) {
+            if(ctx.matchTokenType(TokenType::DESC)) 
+              statement->fields_[statement->fields_.size()-1].desc_ = true;
             ++ctx;
         }
         if(!ctx.matchTokenType(TokenType::COMMA)) 
