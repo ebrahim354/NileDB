@@ -45,8 +45,8 @@ struct PageID{
 };
 
 
-#define PAGE_SIZE 256 //80 Bytes. TODO: change to a higher size before release.
-//#define PAGE_SIZE 4096   //4 KB. 
+#define PAGE_SIZE 256 // TODO: change to a higher size before release.
+//#define PAGE_SIZE 4096 
 #define FILE_EXT ".ndb" // nile db
 #define SIZE_PAGE_HEADER = 8;
 PageID INVALID_PAGE_ID = { 
