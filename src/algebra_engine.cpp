@@ -1,6 +1,7 @@
 #pragma once
 #include "parser.cpp"
 #include "algebra_operation.cpp"
+#include <queue>
 #include <vector>
 #include <set>
 
@@ -15,7 +16,9 @@ struct ScanOperation: AlgebraOperation {
         {}
         ~ScanOperation()
         {}
-        void print() {
+        void print(int prefix_space_cnt) {
+            for(int i = 0; i < prefix_space_cnt; ++i)
+                std::cout << " ";
           std::cout << "Scan operation, name: " << table_name_ << " rename: " << table_rename_ << std::endl;
         }
         std::string table_name_{};
@@ -32,12 +35,14 @@ struct UnionOperation: AlgebraOperation {
             delete lhs_;
             delete rhs_;
         }
-        void print() {
+        void print(int prefix_space_cnt) {
+            for(int i = 0; i < prefix_space_cnt; ++i)
+                std::cout << " ";
           std::cout << "union operation\n"; 
           std::cout << " lhs:\n "; 
-          lhs_->print();
+          lhs_->print(prefix_space_cnt + 1);
           std::cout << " rhs:\n "; 
-          rhs_->print();
+          rhs_->print(prefix_space_cnt + 1);
         }
 
         AlgebraOperation* lhs_ = nullptr;
@@ -55,12 +60,12 @@ struct ExceptOperation: AlgebraOperation {
             delete lhs_;
             delete rhs_;
         }
-        void print() {
+        void print(int prefix_space_cnt) {
+            for(int i = 0; i < prefix_space_cnt; ++i)
+                std::cout << " ";
           std::cout << "except operation\n"; 
-          std::cout << " lhs:\n "; 
-          lhs_->print();
-          std::cout << " rhs:\n "; 
-          rhs_->print();
+          lhs_->print(prefix_space_cnt + 1);
+          rhs_->print(prefix_space_cnt + 1);
         }
 
         AlgebraOperation* lhs_ = nullptr;
@@ -78,12 +83,12 @@ struct IntersectOperation: AlgebraOperation {
             delete lhs_;
             delete rhs_;
         }
-        void print() {
+        void print(int prefix_space_cnt) {
+            for(int i = 0; i < prefix_space_cnt; ++i)
+                std::cout << " ";
           std::cout << "intersect operation\n"; 
-          std::cout << " lhs:\n "; 
-          lhs_->print();
-          std::cout << " rhs:\n "; 
-          rhs_->print();
+          lhs_->print(prefix_space_cnt + 1);
+          rhs_->print(prefix_space_cnt + 1);
         }
 
         AlgebraOperation* lhs_ = nullptr;
@@ -101,12 +106,12 @@ struct ProductOperation: AlgebraOperation {
             delete lhs_;
             delete rhs_;
         }
-        void print() {
+        void print(int prefix_space_cnt) {
+            for(int i = 0; i < prefix_space_cnt; ++i)
+                std::cout << " ";
           std::cout << "product operation\n"; 
-          std::cout << " lhs:\n "; 
-          lhs_->print();
-          std::cout << " rhs:\n "; 
-          rhs_->print();
+          lhs_->print(prefix_space_cnt + 1);
+          rhs_->print(prefix_space_cnt + 1);
         }
 
         AlgebraOperation* lhs_ = nullptr;
@@ -124,12 +129,12 @@ struct JoinOperation: AlgebraOperation {
             delete lhs_;
             delete rhs_;
         }
-        void print() {
+        void print(int prefix_space_cnt) {
+            for(int i = 0; i < prefix_space_cnt; ++i)
+                std::cout << " ";
           std::cout << "join operation\n"; 
-          std::cout << " lhs:\n "; 
-          lhs_->print();
-          std::cout << " rhs:\n "; 
-          rhs_->print();
+          lhs_->print(prefix_space_cnt + 1);
+          rhs_->print(prefix_space_cnt + 1);
         }
 
         AlgebraOperation* lhs_ = nullptr;
@@ -142,7 +147,9 @@ struct InsertionOperation: AlgebraOperation {
         InsertionOperation(QueryCTX& ctx): 
             AlgebraOperation(INSERTION, ctx)
         {}
-        void print() {
+        void print(int prefix_space_cnt) {
+            for(int i = 0; i < prefix_space_cnt; ++i)
+                std::cout << " ";
           std::cout << "insertion operation\n"; 
         }
         ~InsertionOperation()
@@ -151,24 +158,33 @@ struct InsertionOperation: AlgebraOperation {
 
 struct FilterOperation: AlgebraOperation {
     public:
+        Catalog* catalog_ = nullptr;
         FilterOperation(QueryCTX& ctx,AlgebraOperation* child, ExpressionNode* filter, 
                 std::vector<ExpressionNode*>& fields, 
-                std::vector<std::string>& field_names): 
+                std::vector<std::string>& field_names,
+                Catalog* catalog
+                ): 
             AlgebraOperation(FILTER, ctx),
             child_(child), 
             filter_(filter),
             fields_(fields),
-            field_names_(field_names)
+            field_names_(field_names),
+            catalog_(catalog)
         {}
         ~FilterOperation()
         {
             delete child_;
         }
 
-        void print() {
-          std::cout << "filter operation\n"; 
-          std::cout << " child:\n "; 
-          child_->print();
+        void print(int prefix_space_cnt) {
+            std::vector<std::string> table_access;
+            accessed_tables(filter_, table_access, catalog_);
+            for(int i = 0; i < prefix_space_cnt; ++i)
+                std::cout << " ";
+            std::cout << "filter operation "; 
+            for(int i = 0; i < table_access.size(); ++i) std::cout << table_access[i] << " ";
+            std::cout << "\n";
+            child_->print(prefix_space_cnt + 1);
         }
         ExpressionNode* filter_;
         std::vector<ExpressionNode*> fields_;
@@ -188,10 +204,11 @@ struct AggregationOperation: AlgebraOperation {
         {
             delete child_;
         }
-        void print() {
+        void print(int prefix_space_cnt) {
+            for(int i = 0; i < prefix_space_cnt; ++i)
+                std::cout << " ";
           std::cout << "agg operation\n"; 
-          std::cout << " child:\n "; 
-          child_->print();
+          child_->print(prefix_space_cnt + 1);
         }
         AlgebraOperation* child_ = nullptr;
         std::vector<AggregateFuncNode*> aggregates_;
@@ -210,10 +227,11 @@ struct ProjectionOperation: AlgebraOperation {
         {
             delete child_;
         }
-        void print() {
+        void print(int prefix_space_cnt) {
+            for(int i = 0; i < prefix_space_cnt; ++i)
+                std::cout << " ";
           std::cout << "projection operation\n"; 
-          std::cout << " child:\n "; 
-          child_->print();
+          child_->print(prefix_space_cnt + 1);
         }
         AlgebraOperation* child_ = nullptr;
         std::vector<ExpressionNode*> fields_;
@@ -230,10 +248,11 @@ struct SortOperation: AlgebraOperation {
         {
             delete child_;
         }
-        void print() {
+        void print(int prefix_space_cnt) {
+            for(int i = 0; i < prefix_space_cnt; ++i)
+                std::cout << " ";
           std::cout << "sort operation\n"; 
-          std::cout << " child:\n "; 
-          child_->print();
+          child_->print(prefix_space_cnt + 1);
         }
         AlgebraOperation* child_ = nullptr;
         std::vector<int> order_by_list_;
@@ -245,6 +264,70 @@ class AlgebraEngine {
         AlgebraEngine(Catalog* catalog): catalog_(catalog)
         {}
         ~AlgebraEngine(){}
+
+        std::vector<int> find_filters_that_access_table(std::string table, 
+                std::vector<std::pair<std::vector<std::string>, ExpressionNode*>> tables_per_filter) {
+            std::vector<int> ans;
+            for(int i = 0; i < tables_per_filter.size(); ++i){
+                for(int j = 0; j < tables_per_filter[i].first.size(); ++j){
+                    std::string cur = tables_per_filter[i].first[j];
+                    if(cur == table) {
+                        ans.push_back(i);
+                        continue;
+                    }
+                }
+            }
+            return ans;
+        }
+
+
+        // BFS on filters to sort tables as close as possible.
+        // soring tables as close as possible based on filters is importent in the predicate pushdown step,
+        // this will insure that filters are as close to the leafs as pussible.
+        // this implementation is cluncky but works.
+        // TODO: clean up this implementation. 
+        void group_close_tables(std::vector<std::pair<std::vector<std::string>, ExpressionNode*>>& tables_per_filter) {
+            std::queue<std::string> q;
+            std::set<int> visited_filter;
+            std::set<std::string> visited_table;
+            std::vector<int> sorted_order;
+            for(int f = 0; f < tables_per_filter.size(); ++f){
+                if(tables_per_filter[f].first.size() == 0) { // no accessed_tables comes first.
+                    sorted_order.push_back(f);
+                    continue;
+                };
+                q.push(tables_per_filter[f].first[0]);
+                visited_table.insert(q.front());
+                while(!q.empty()) {
+                    int n = q.size();
+                    std::string frnt = q.front(); q.pop();
+                    for(int i = 0; i < n; ++i){
+                        std::vector<int> ans = find_filters_that_access_table(frnt, tables_per_filter);
+                        for(int k = 0; k < ans.size(); ++k){
+                            if(visited_filter.count(ans[k])) continue;
+                            visited_filter.insert(ans[k]);
+                            sorted_order.push_back(ans[k]);
+                            for(int j = 0; j < tables_per_filter[ans[k]].first.size(); ++j){
+                                std::string cur = tables_per_filter[ans[k]].first[j];
+                                if(visited_table.count(cur)) continue;
+                                visited_table.insert(cur);
+                                q.push(cur);
+                            }
+                        }
+
+                    }
+                }
+            }
+            std::vector<std::pair<std::vector<std::string>, ExpressionNode*>> tables_per_filter_sorted;
+            for(int i = 0; i < sorted_order.size(); ++i){
+                int idx = sorted_order[i];
+                tables_per_filter_sorted.push_back(tables_per_filter[idx]);
+            }
+            assert(tables_per_filter.size() == tables_per_filter_sorted.size());
+            for(int i = 0; i < sorted_order.size(); ++i){
+                tables_per_filter[i] = tables_per_filter_sorted[i];
+            }
+        }
 
         
         void createAlgebraExpression(QueryCTX& ctx){
@@ -432,6 +515,7 @@ class AlgebraEngine {
                   replaceFilteredProductWithJoin(&op->child_);
                 }
               } break;
+            case JOIN: 
             case PRODUCT: 
               {
                 auto op = reinterpret_cast<ProductOperation*>(*root);
@@ -495,6 +579,15 @@ class AlgebraEngine {
                         return lhs.first.size() < rhs.first.size();
                     });
 
+
+
+            group_close_tables(tables_per_filter);
+            /*
+            for(int i = 0; i < order.size(); ++i)
+                std::cout << order[i] << " ";
+            std::cout << "\n";*/
+
+
             // this is the "predicate push down" step but we are building the tree from the ground up 
             // with predicates being as low as possible.
             //
@@ -512,12 +605,13 @@ class AlgebraEngine {
                 table_scanner[tables_per_filter[i].first[0]] = new FilterOperation(ctx, 
                     table_scanner[tables_per_filter[i].first[0]], 
                     tables_per_filter[i].second, 
-                    data->fields_, data->field_names_);
+                    data->fields_, data->field_names_, catalog_);
                 continue;
               } 
               
+              // loop over all tables that was accessed with in filter number 'i'
               for(int j = 0; j < tables_per_filter[i].first.size(); ++j) {
-                auto t = tables_per_filter[i].first[j];
+                  std::string t = tables_per_filter[i].first[j];
                 if(result == nullptr) {
                   result = table_scanner[t];
                 } else if(table_scanner.count(t)){
@@ -531,8 +625,10 @@ class AlgebraEngine {
               result = new FilterOperation(ctx, 
                   result, 
                   tables_per_filter[i].second, 
-                  data->fields_, data->field_names_);
+                  data->fields_, data->field_names_, catalog_);
             }
+              replaceFilteredProductWithJoin(&result);
+
 
             // remaining table outside of filters.
             for(auto &t:table_scanner) {
@@ -547,12 +643,13 @@ class AlgebraEngine {
                 result = new FilterOperation(ctx, 
                     result, 
                     tables_per_filter[i].second, 
-                    data->fields_, data->field_names_);
+                    data->fields_, data->field_names_, catalog_);
               }
             }
 
 
-            replaceFilteredProductWithJoin(&result);
+
+            //result->print(0);
 
             /*
             int idx = 0;
@@ -590,7 +687,7 @@ class AlgebraEngine {
                 result = new AggregationOperation(ctx, result, data->aggregates_, data->group_by_);
                 // TODO: make a specific having operator and executor.
                 if(data->having_)
-                  result = new FilterOperation(ctx, result, data->having_, data->fields_, data->field_names_);
+                  result = new FilterOperation(ctx, result, data->having_, data->fields_, data->field_names_, catalog_);
             }
             if(data->fields_.size())
                 result = new ProjectionOperation(ctx, result, data->fields_);
