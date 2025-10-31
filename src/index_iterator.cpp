@@ -22,6 +22,10 @@ class IndexIterator {
 
         }
         ~IndexIterator(){
+            clear();
+        }
+
+        void clear() {
             if(cur_page_) cache_manager_->unpinPage(cur_page_id_, false);
         }
 

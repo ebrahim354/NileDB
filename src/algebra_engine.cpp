@@ -305,6 +305,16 @@ class AlgebraEngine {
                         return false;
                 }
             }
+            std::unordered_map<std::string, int> mentioned_tables;
+            for(int i = 0; i < data->table_names_.size(); ++i){
+                if(mentioned_tables.count(data->table_names_[i])) {
+                    std::cout << "[ERROR] table name \"" << data->table_names_[i] << "\" specified more than once." 
+                        << std::endl;
+                    return false;
+
+                }
+                mentioned_tables[data->table_names_[i]] = i;
+            }
             // TODO: provide validation for fields and filters.
             return  true;
         }
@@ -462,8 +472,8 @@ class AlgebraEngine {
               // split conjunctive predicates.
               splitted_where = split_by_and(data->where_);
             }
+            // collect data about which tables did we access for each splitted predicate from the previous step.
             std::vector<std::pair<std::vector<std::string>, ExpressionNode*>> tables_per_filter;
-
             for(int i = 0; i < splitted_where.size(); ++i){
               std::vector<std::string> table_access;
               std::unordered_map<std::string, bool> f;
@@ -477,23 +487,28 @@ class AlgebraEngine {
               }
               tables_per_filter.push_back({ta, splitted_where[i]});
             }
-            sort(
-              tables_per_filter.begin(), tables_per_filter.end(),
-              [](std::pair<std::vector<std::string>, ExpressionNode*> lhs,
-                 std::pair<std::vector<std::string>, ExpressionNode*> rhs){ 
-                return lhs.first.size() < rhs.first.size();
-              });
+
+            // sort predicates by the least accessed number of tables.
+            sort(tables_per_filter.begin(), tables_per_filter.end(),
+                    [](std::pair<std::vector<std::string>, ExpressionNode*> lhs,
+                        std::pair<std::vector<std::string>, ExpressionNode*> rhs) {
+                        return lhs.first.size() < rhs.first.size();
+                    });
+
+            // this is the "predicate push down" step but we are building the tree from the ground up 
+            // with predicates being as low as possible.
+            //
+            // initialize 1 scanner for each accessed table.
             std::unordered_map<std::string, AlgebraOperation*> table_scanner;
             for(int i = 0; i < data->tables_.size(); ++i){
               AlgebraOperation* scan = new ScanOperation(ctx, data->tables_[i], data->table_names_[i]);
-              // TODO: fix the case of products of the same table for example: select * from t1, t1
-              table_scanner[data->tables_[i]] = scan;
+              table_scanner[data->table_names_[i]] = scan;
             }
 
             AlgebraOperation* result = nullptr;
             for(int i = 0; i < splitted_where.size(); ++i){
               if(tables_per_filter[i].first.size() == 0) continue; // 0 tables skip
-              if(tables_per_filter[i].first.size() == 1) { // 1 table access,  wrap it in a filter.
+              if(tables_per_filter[i].first.size() == 1) { // 1 table access,  wrap it in its filter.
                 table_scanner[tables_per_filter[i].first[0]] = new FilterOperation(ctx, 
                     table_scanner[tables_per_filter[i].first[0]], 
                     tables_per_filter[i].second, 
@@ -501,7 +516,7 @@ class AlgebraEngine {
                 continue;
               } 
               
-              for(int j = 0; j < tables_per_filter[i].first.size(); ++j){
+              for(int j = 0; j < tables_per_filter[i].first.size(); ++j) {
                 auto t = tables_per_filter[i].first[j];
                 if(result == nullptr) {
                   result = table_scanner[t];
@@ -527,7 +542,6 @@ class AlgebraEngine {
                 result =  new ProductOperation(ctx, result, table_scanner[t.first]); 
             }
             // handle filters with zero table access.
-
             for(int i = 0; i < splitted_where.size(); ++i){
               if(tables_per_filter[i].first.size() == 0){
                 result = new FilterOperation(ctx, 

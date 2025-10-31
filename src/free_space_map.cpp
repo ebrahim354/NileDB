@@ -20,7 +20,7 @@ class FreeSpaceMap {
                 return;
             char* d = page->data_;
             size_ = *reinterpret_cast<uint32_t*>(page->data_);
-            array_ = new uint8_t[size_]; 
+            array_ = (uint8_t*)malloc(size_);
             int i = 4;
             int tot = 0;
             PageID page_id_ptr = first_page_id_;
@@ -39,7 +39,9 @@ class FreeSpaceMap {
                 cm_->unpinPage(page_id_ptr, false);
         }
         ~FreeSpaceMap(){
-            delete[] array_;
+            if(array_){
+                free(array_);
+            }
         }
 
 
@@ -64,10 +66,10 @@ class FreeSpaceMap {
             
             // this is so slow but only happens once per new fsm page so it's fine.
             uint8_t* old_array = array_;
-            array_ = new uint8_t[size_]; 
+            array_ = (uint8_t*) malloc(size_);
             memcpy(array_, old_array, (size_-1) * sizeof(uint8_t));
             array_[size_-1] = fraction;
-            delete [] old_array;
+            free(old_array);
             cm_->flushPage(last_page->page_id_);
             cm_->flushPage(first_page->page_id_);
             cm_->unpinPage(last_page->page_id_, true);

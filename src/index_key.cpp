@@ -258,8 +258,8 @@ bool is_desc_order(char* bitmap, int idx) {
     char* cur_byte = bitmap+(idx/8);  
     return *cur_byte & (1 << (idx%8));
 }
-
-char* create_sort_order_bitmap(std::vector<NumberedIndexField>& fields) {
+// TODO: this leaks memory, should be fixed on the index side.
+char* create_sort_order_bitmap(std::vector<NumberedIndexField>& fields) { 
     int size = (fields.size() / 8) + (fields.size() % 8);
     char* bitmap = (char*) malloc(size);
     for(int i = 0; i < fields.size(); ++i){

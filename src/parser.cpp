@@ -703,7 +703,7 @@ void Parser::tableList(QueryCTX& ctx, int query_idx){
 
         // optional AS keyword.
         bool rename = false;
-        if(ctx.matchTokenType(TokenType::AS)){
+        if(ctx.matchTokenType(TokenType::AS)) {
             ++ctx;
             if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
                 return;
@@ -721,7 +721,7 @@ void Parser::tableList(QueryCTX& ctx, int query_idx){
         }
 
         if(!rename)
-            query->table_names_.push_back("");
+            query->table_names_.push_back(query->tables_[query->tables_.size()-1]);
 
         if(ctx.matchTokenType(TokenType::COMMA)) {
           ++ctx;
