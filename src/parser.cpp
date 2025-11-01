@@ -45,7 +45,7 @@ Type tokenTypeToDBType(TokenType tt){
         case TokenType::FLOAT:
             return FLOAT;
         case TokenType::REAL:
-            return DOUBLE;
+            return FLOAT; // TODO: this should be double.
         case TokenType::TIMESTAMP:
             return TIMESTAMP;
         case TokenType::VARCHAR:
@@ -355,9 +355,13 @@ struct OrNode : ASTNode {
     ASTNode* next_ = nullptr;
 };
 
+struct JoinedTablesData {
+    int lhs_idx_ = -1;
+    int rhs_idx_ = -1;
+    ExpressionNode* condition_ = nullptr;
+};
 
 // SQL statement data wrappers.
-
 struct SelectStatementData : QueryData {
 
     SelectStatementData(int parent_idx): QueryData(SELECT_DATA, parent_idx)
@@ -376,9 +380,10 @@ struct SelectStatementData : QueryData {
     std::vector<ExpressionNode*> fields_ = {};
     std::vector<std::string> field_names_ = {};
     std::vector<std::string> table_names_ = {};
+    std::vector<std::string> tables_ = {};
+    std::vector<JoinedTablesData> joined_tables_ = {};
     std::vector<AggregateFuncNode*> aggregates_;  
     bool has_star_ = false;
-    std::vector<std::string> tables_ = {};
     ExpressionNode* where_ = nullptr;
     ExpressionNode* having_ = nullptr;
     std::vector<int> order_by_list_ = {};
@@ -689,7 +694,6 @@ void Parser::selectList(QueryCTX& ctx, int query_idx){
     }
 }
 
-
 void Parser::tableList(QueryCTX& ctx, int query_idx){
     if((bool)ctx.error_status_) return; 
     auto query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[query_idx]);
@@ -729,9 +733,51 @@ void Parser::tableList(QueryCTX& ctx, int query_idx){
         } 
 
         if(ctx.matchMultiTokenType({TokenType::CROSS, TokenType::JOIN})) {
-          ctx += 2;
-          continue;
-        } 
+            ctx += 2;
+            continue;
+        }  else if(ctx.matchMultiTokenType({ TokenType::JOIN, TokenType::IDENTIFIER })) { 
+            // 'JOIN ... ON ...' syntax.
+            // TODO: refactor to a different function.
+            ++ctx; // skip join
+            std::string joined_table_name = ctx.getCurrentToken().val_;
+            query->tables_.push_back(joined_table_name);
+            ++ctx; // skip id
+
+            // optional AS keyword.
+            bool rename = false;
+            if(ctx.matchTokenType(TokenType::AS)) {
+                ++ctx;
+                if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
+                    return;
+                }
+                query->table_names_.push_back(ctx.getCurrentToken().val_);
+                ++ctx;
+                rename = true;
+            }
+            // optional renaming of a field.
+            if(!rename && ctx.matchTokenType(TokenType::IDENTIFIER)){
+                query->table_names_.push_back(ctx.getCurrentToken().val_);
+                ++ctx;
+                rename =  true;
+            }
+            if(!rename) query->table_names_.push_back(joined_table_name);
+
+            if(!ctx.matchTokenType(TokenType::ON)){
+                // explicit JOIN keyword must be paired with the ON keyword.
+                // TODO: set up an appropriat error.
+                return;
+            }
+            ++ctx; // skip on
+            JoinedTablesData t = {};
+            t.lhs_idx_ = (query->table_names_.size() - 2);
+            t.rhs_idx_ = (query->table_names_.size() - 1);
+            t.condition_ = expression(ctx, query->idx_, 0);
+            if(!t.condition_) {
+                // TODO: replace with error message.
+                return;
+            }
+            query->joined_tables_.push_back(t);
+        }
 
         break;
     }

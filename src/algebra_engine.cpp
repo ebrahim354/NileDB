@@ -184,7 +184,8 @@ struct FilterOperation: AlgebraOperation {
             std::cout << "filter operation "; 
             for(int i = 0; i < table_access.size(); ++i) std::cout << table_access[i] << " ";
             std::cout << "\n";
-            child_->print(prefix_space_cnt + 1);
+            if(child_)
+                child_->print(prefix_space_cnt + 1);
         }
         ExpressionNode* filter_;
         std::vector<ExpressionNode*> fields_;
@@ -208,7 +209,8 @@ struct AggregationOperation: AlgebraOperation {
             for(int i = 0; i < prefix_space_cnt; ++i)
                 std::cout << " ";
           std::cout << "agg operation\n"; 
-          child_->print(prefix_space_cnt + 1);
+          if(child_)
+            child_->print(prefix_space_cnt + 1);
         }
         AlgebraOperation* child_ = nullptr;
         std::vector<AggregateFuncNode*> aggregates_;
@@ -231,7 +233,8 @@ struct ProjectionOperation: AlgebraOperation {
             for(int i = 0; i < prefix_space_cnt; ++i)
                 std::cout << " ";
           std::cout << "projection operation\n"; 
-          child_->print(prefix_space_cnt + 1);
+          if(child_)
+            child_->print(prefix_space_cnt + 1);
         }
         AlgebraOperation* child_ = nullptr;
         std::vector<ExpressionNode*> fields_;
@@ -252,7 +255,8 @@ struct SortOperation: AlgebraOperation {
             for(int i = 0; i < prefix_space_cnt; ++i)
                 std::cout << " ";
           std::cout << "sort operation\n"; 
-          child_->print(prefix_space_cnt + 1);
+          if(child_)
+            child_->print(prefix_space_cnt + 1);
         }
         AlgebraOperation* child_ = nullptr;
         std::vector<int> order_by_list_;
@@ -556,6 +560,16 @@ class AlgebraEngine {
               // split conjunctive predicates.
               splitted_where = split_by_and(data->where_);
             }
+            // transform join .. on into a regular cross join and append the join condition to the where clause.
+            // not optimal but does the job.
+            // TODO: don't do that and create join operations instead.
+            // TODO: check that fields used inside the ON clause are scoped only to the two tables being joined.
+            for(int i = 0; i < data->joined_tables_.size(); ++i) {
+                std::vector<ExpressionNode*> splitted_on;
+                splitted_on = split_by_and(data->joined_tables_[i].condition_);
+                for(int j = 0; j < splitted_on.size(); ++j)
+                    splitted_where.push_back(splitted_on[j]);
+            }
             // collect data about which tables did we access for each splitted predicate from the previous step.
             std::vector<std::pair<std::vector<std::string>, ExpressionNode*>> tables_per_filter;
             for(int i = 0; i < splitted_where.size(); ++i){
@@ -564,7 +578,14 @@ class AlgebraEngine {
               accessed_tables(splitted_where[i], table_access, catalog_);
               std::vector<std::string> ta;
               for(auto &s: table_access){
-                if(!f.count(s)){
+                  bool used_in_query = false;
+                  for(int j = 0; j < data->table_names_.size(); ++j){
+                    if(data->table_names_[j] == s) {
+                        used_in_query = true;
+                        break;
+                    }
+                  }
+                if(!f.count(s) && used_in_query){
                   ta.push_back(s);
                   f[s] = 1;
                 }
@@ -582,10 +603,6 @@ class AlgebraEngine {
 
 
             group_close_tables(tables_per_filter);
-            /*
-            for(int i = 0; i < order.size(); ++i)
-                std::cout << order[i] << " ";
-            std::cout << "\n";*/
 
 
             // this is the "predicate push down" step but we are building the tree from the ground up 
@@ -615,7 +632,7 @@ class AlgebraEngine {
                 if(result == nullptr) {
                   result = table_scanner[t];
                 } else if(table_scanner.count(t)){
-                  result =  new ProductOperation(ctx, result, table_scanner[t]); 
+                  result =  new ProductOperation(ctx, table_scanner[t], result); 
                 } else {
                   continue;
                 }
@@ -631,12 +648,13 @@ class AlgebraEngine {
 
 
             // remaining table outside of filters.
-            for(auto &t:table_scanner) {
-              if(result == nullptr)
-                result = table_scanner[t.first];
-              else
-                result =  new ProductOperation(ctx, result, table_scanner[t.first]); 
-            }
+              for(std::string t : data->table_names_) {
+                  if(!table_scanner.count(t)) continue;
+                  if(result == nullptr)
+                      result = table_scanner[t];
+                  else
+                      result =  new ProductOperation(ctx, table_scanner[t], result);
+              }
             // handle filters with zero table access.
             for(int i = 0; i < splitted_where.size(); ++i){
               if(tables_per_filter[i].first.size() == 0){
@@ -647,40 +665,6 @@ class AlgebraEngine {
               }
             }
 
-
-
-            //result->print(0);
-
-            /*
-            int idx = 0;
-            while(idx < data->tables_.size()){
-                AlgebraOperation* scan = new ScanOperation(ctx, data->tables_[idx], data->table_names_[idx]);
-                std::map<int, bool> deleted;
-                for(int i = 0; i < splitted_where.size(); ++i){
-                  std::vector<std::string> table_access;
-                  accessed_tables(splitted_where[i], table_access, catalog_);
-                  if(table_access.size() == 1 && table_access[0] == data->tables_[idx]){
-                    scan = new FilterOperation(ctx, scan, splitted_where[i], data->fields_, data->field_names_);
-                    deleted[i] = true;
-                  }
-                }
-                std::vector<ExpressionNode*> new_splitted_where;
-                for(int i = 0; i < splitted_where.size(); ++i){
-                  if(!deleted[i]) new_splitted_where.push_back(splitted_where[i]);
-                }
-                splitted_where = new_splitted_where;
-                if(!result) result = scan;
-                else result = new ProductOperation(ctx, result, scan); 
-                idx++;
-            }
-
-            
-            if(splitted_where.size() > 0){
-              for(int i = 0; i < splitted_where.size(); ++i){
-                result = new FilterOperation(ctx, result, splitted_where[i], data->fields_, data->field_names_);
-              }
-            }
-            */
 
 
             if(data->aggregates_.size() || data->group_by_.size()){
@@ -697,6 +681,7 @@ class AlgebraEngine {
                 result->query_idx_ = data->idx_;
                 result->query_parent_idx_ = data->parent_idx_;
             }
+            result->print(0);
             return result;
         }
 
