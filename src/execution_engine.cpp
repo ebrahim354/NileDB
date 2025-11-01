@@ -54,6 +54,7 @@ class ProductExecutor : public Executor {
             output_.resize(left_child_->output_schema_->getColumns().size() + right_child_->output_schema_->getColumns().size()); 
             if(!finished_){
                 auto left_output = left_child_->next();
+                if(left_output.size() == 0 && left_child_->finished_) finished_ = true;
                 for(int i = 0; i < left_output.size(); ++i)
                     output_[i] = left_output[i];
             }
@@ -72,7 +73,10 @@ class ProductExecutor : public Executor {
               right_child_->init();
               right_output = right_child_->next();
             } 
-            if(right_output.size() == 0) return {};
+            if(right_output.size() == 0) {
+                finished_ = true;
+                return {};
+            }
 
             for(int i = 0; i < left_output.size(); ++i)
                 output_[i] = left_output[i];
@@ -1615,11 +1619,11 @@ class ExecutionEngine {
                         Executor* rhs = buildExecutionPlan(ctx, op->rhs_, query_idx, parent_query_idx);
                         std::vector<Column> lhs_columns = lhs->output_schema_->getColumns();
                         std::vector<Column> rhs_columns = rhs->output_schema_->getColumns();
-                        for(int i = 0; i < rhs_columns.size(); i++)
-                            lhs_columns.push_back(rhs_columns[i]);
+                        for(int i = 0; i < lhs_columns.size(); i++)
+                            rhs_columns.push_back(lhs_columns[i]);
 
-                        TableSchema* product_output_schema = new TableSchema("TMP_PRODUCT_TABLE", nullptr, lhs_columns, true);
-                        ProductExecutor* product = new ProductExecutor(product_output_schema, ctx, query_idx, parent_query_idx, lhs, rhs);
+                        TableSchema* product_output_schema = new TableSchema("TMP_PRODUCT_TABLE", nullptr, rhs_columns, true);
+                        ProductExecutor* product = new ProductExecutor(product_output_schema, ctx, query_idx, parent_query_idx, rhs, lhs);
                         return product;
                     } break;
                 case JOIN: 

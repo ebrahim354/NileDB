@@ -38,6 +38,7 @@ enum class TokenType {
     GROUP,
     CROSS,
     JOIN,
+    INNER,
     INDEX,
     PRIMARY,
     KEY,
@@ -133,6 +134,7 @@ Tokenizer::Tokenizer(){
     keywords_.insert({"GROUP"   , TokenType::GROUP   });
     keywords_.insert({"CROSS"   , TokenType::CROSS   });
     keywords_.insert({"JOIN"    , TokenType::JOIN    });
+    keywords_.insert({"INNER"   , TokenType::INNER   });
     keywords_.insert({"DISTINCT", TokenType::DISTINCT});
     keywords_.insert({"ALL"     , TokenType::ALL     });
     keywords_.insert({"BY"      , TokenType::BY      });

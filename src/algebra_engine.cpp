@@ -513,7 +513,7 @@ class AlgebraEngine {
                   auto product = reinterpret_cast<ProductOperation*>(op->child_);
                   auto join_node = new JoinOperation(product->ctx_, product->lhs_, product->rhs_, op->filter_);
                   // TODO: fix memory leak of the filter and the product nodes.
-                  (*root) = join_node;
+                  op->child_ = join_node;
                   replaceFilteredProductWithJoin(root);
                 }  else if(op->child_){
                   replaceFilteredProductWithJoin(&op->child_);

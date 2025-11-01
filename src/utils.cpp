@@ -111,13 +111,6 @@ std::string doubleToStr(double d){
     return s;
 }
 
-std::string floatToStr(float f){
-    std::ostringstream ss;
-    ss << f;
-    std::string s(ss.str());
-    return s;
-}
-
 std::string intToStr(int t){
     if(t == 0) return "0";
     std::string str = "";
@@ -135,4 +128,16 @@ std::string intToStr(int t){
 
 	return str;
 }
+
+std::string floatToStr(float f){
+    int caster = f;
+    //if(f == caster) return intToStr(caster);
+    return intToStr(caster);
+    std::ostringstream ss;
+    ss << std::fixed;
+    ss << f;
+    std::string s(ss.str());
+    return s;
+}
+
 

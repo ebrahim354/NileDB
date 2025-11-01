@@ -77,6 +77,7 @@ Value evaluate_expression(
             {
                 InNode* in = reinterpret_cast<InNode*>(expression);
                 Value val = evaluate_expression(ctx, in->val_, evaluator, false, eval_sub_query);
+                if(val.isNull()) return val;
                 bool answer = false;
                 for(int i = 0; i < in->list_.size(); ++i){
                   Value tmp = evaluate_expression(ctx, in->list_[i], evaluator, false, false);
@@ -120,13 +121,33 @@ Value evaluate_expression(
             }
         case BETWEEN  : 
             {
+                bool answer = false;
+                bool null_return = false;
                 BetweenNode* between = reinterpret_cast<BetweenNode*>(expression);
                 Value val = evaluate_expression(ctx, between->val_, evaluator, false, eval_sub_query);
+                if(val.isNull()) return val; 
+
                 Value lhs = evaluate_expression(ctx, between->lhs_, evaluator, false, eval_sub_query);
                 Value rhs = evaluate_expression(ctx, between->rhs_, evaluator, false, eval_sub_query);
-                if(val.isNull() || lhs.isNull() || rhs.isNull()) return Value(NULL_TYPE);
-                bool answer = false;
-                if(val >= lhs && val <= rhs) answer = true;
+
+                if(lhs.isNull() && rhs.isNull()) return lhs;  // both null => null
+
+                if(!lhs.isNull() && !rhs.isNull()) { // both valid => true/false
+                    if(val >= lhs && val <= rhs)
+                        answer = true;
+                }
+                // this logic is used to handle null lhs and rhs.
+                // if val is in the range of ]null, rhs] or [lhs, null[
+                // the result is always null and is always false in case of not being in that range.
+                if(lhs.isNull() && !rhs.isNull()) {
+                    if(val <= rhs) null_return = true;
+                }
+                if(!lhs.isNull() && rhs.isNull()) {
+                    if(val >= lhs) null_return = true;
+                }
+                if(null_return) 
+                    return Value(NULL_TYPE);
+
                 if(between->negated_) answer = !answer;
                 return Value(answer);
             }
@@ -182,10 +203,14 @@ Value evaluate_expression(
             {
                 EqualityNode* eq = reinterpret_cast<EqualityNode*>(expression);
                 TokenType op = eq->token_.type_;
-                Value lhs = evaluate_expression(ctx, eq->cur_, evaluator, true, eval_sub_query);
+                Value lhs = evaluate_expression(ctx, eq->cur_, evaluator, 
+                        eq->cur_->category_ == EQUALITY, 
+                        eval_sub_query);
                 ASTNode* ptr = eq->next_;
                 while(ptr){
-                    Value rhs = evaluate_expression(ctx, ptr, evaluator, true, eval_sub_query);
+                    Value rhs = evaluate_expression(ctx, ptr, evaluator, 
+                            eq->cur_->category_ == EQUALITY, 
+                            eval_sub_query);
                     bool is_or_isnot = (op == TokenType::IS || op == TokenType::ISNOT);
                     if((lhs.isNull() || rhs.isNull()) && !is_or_isnot) return Value(NULL_TYPE); 
                     if(op == TokenType::IS)    op = TokenType::EQ;
@@ -257,12 +282,15 @@ Value evaluate_expression(
                 ASTNode* ptr = t->next_;
                 while(ptr){
                     Value rhs = evaluate_expression(ctx, ptr, evaluator, ptr->category_ == TERM, eval_sub_query);
-                    if(lhs.isNull() || rhs.isNull()) return Value(NULL_TYPE);
-                    int lhs_num = lhs.getIntVal();
-                    int rhs_num = rhs.getIntVal();
-                    if(op == TokenType::PLUS) lhs_num += rhs_num; 
-                    if(op == TokenType::MINUS) lhs_num -= rhs_num;
-                    lhs = Value(lhs_num);
+                    if(lhs.isNull()) return lhs;
+                    if(rhs.isNull()) return rhs;
+                    //int lhs_num = lhs.getIntVal();
+                    //int rhs_num = rhs.getIntVal();
+                    //if(op == TokenType::PLUS) lhs_num += rhs_num; 
+                    //if(op == TokenType::MINUS) lhs_num -= rhs_num;
+                    //lhs = Value(lhs_num);
+                    if(op == TokenType::PLUS) lhs += rhs; 
+                    if(op == TokenType::MINUS) lhs -= rhs;
                     if(ptr->category_ == TERM){
                         TermNode* tmp = reinterpret_cast<TermNode*>(ptr);
                         op = ptr->token_.type_;
@@ -281,12 +309,14 @@ Value evaluate_expression(
                           while(ptr){
                               Value rhs = evaluate_expression(ctx, ptr, evaluator, 
                                   ptr->category_ == FACTOR, eval_sub_query);
-                              if(lhs.isNull() || rhs.isNull()) return Value(NULL_TYPE);
-                              int lhs_num = lhs.getIntVal();
-                              int rhs_num = rhs.getIntVal();
-                              if(op == TokenType::STAR) lhs_num *= rhs_num; 
-                              if(op == TokenType::SLASH && rhs_num != 0) lhs_num /= rhs_num;
-                              lhs = Value(lhs_num);
+                              if(lhs.isNull()) return lhs;
+                              if(rhs.isNull()) return rhs;
+                              //int lhs_num = lhs.getIntVal();
+                              //int rhs_num = rhs.getIntVal();
+                              if(op == TokenType::STAR) lhs *= rhs; //lhs_num *= rhs_num; 
+                              //if(op == TokenType::SLASH && rhs_num != 0)  lhs_num /= rhs_num;
+                              if(op == TokenType::SLASH && rhs.getIntVal() != 0) lhs /= rhs; 
+                              //lhs = Value(lhs_num);
                               if(ptr->category_ == FACTOR){
                                   FactorNode* tmp = reinterpret_cast<FactorNode*>(ptr);
                                   op = ptr->token_.type_;
@@ -325,7 +355,18 @@ Value evaluate_expression(
                           TypeCastNode* cast = reinterpret_cast<TypeCastNode*>(expression);
                           Value val = evaluate_expression(ctx, cast->exp_, evaluator, true, eval_sub_query);
                           if(val.type_ == NULL_TYPE) return val; // NULL values can't be casted? 
-                          val.type_ = cast->type_; // TODO: do more usefull type casting.
+                          if(val.type_ == cast->type_)
+                              return val;
+                          if(val.type_ == INT && cast->type_ == FLOAT) {
+                              float res = (float) val.getIntVal(); 
+                              return Value(res);
+                          } 
+                          if(val.type_ == FLOAT && cast->type_ == INT) {
+                              int res = (int)  val.getFloatVal();
+                              return Value(res);
+                          } 
+                          assert(0  && "TYPE CASTING NOT SUPPORTED YET!");
+                          // TODO: do more usefull type casting.
                           return val;
                       } 
         case STRING_CONSTANT: 
@@ -366,7 +407,7 @@ std::vector<ExpressionNode*> split_by_and(ExpressionNode* expression) {
   ASTNode* ptr = ex->cur_;
   std::vector<ExpressionNode*> ret;
   while(ptr){
-    // TODO: disgusting and should be changed.
+    // TODO: should be changed.
     ExpressionNode* ex_copy = new ExpressionNode(ex->top_level_statement_, ex->query_idx_);
     ex_copy->cur_ = ptr;
     ret.push_back(ex_copy);
@@ -553,8 +594,18 @@ void accessed_tables(ASTNode* expression ,std::vector<std::string>& tables, Cata
     case FIELD:{
                         std::string field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
                         std::vector<std::string> valid_tables = catalog->getTablesByField(field);
-                        for(int i = 0; i < valid_tables.size(); ++i)
-                          tables.push_back(valid_tables[i]);
+                        for(int i = 0; i < valid_tables.size(); ++i){
+                            int n = tables.size();
+                            bool exists = false;
+                            for(int j = 0; j < n; ++j){
+                                if(tables[j] == valid_tables[i]) {
+                                    exists = true; 
+                                    break;
+                                }
+                            }
+                            if(!exists)
+                                tables.push_back(valid_tables[i]);
+                        }
         return;
                       }
 

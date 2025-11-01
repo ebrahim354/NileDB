@@ -52,6 +52,190 @@ class Value {
             return *this;
         } 
 
+        Value& operator+=(const Value& rhs){
+            if(rhs.isNull() ||  isNull()) {
+                type_ = NULL_TYPE;
+                return *this;
+            } 
+            switch (type_) {
+                case INT : {
+                               if(rhs.type_ == INT) {
+                                   assert(size_ == 4 && rhs.size_ == 4);
+                                   *(int*)content_ += rhs.getIntVal();
+                               } else if(rhs.type_ == FLOAT) {
+                                   assert(size_ == 4 && rhs.size_ == 4);
+                                   float val = *(int*)content_;
+                                   val += rhs.getFloatVal();
+                                   *(float*)content_ = val; 
+                                   type_ = FLOAT;
+                               } else {
+                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                               }
+                           }
+                    break;
+                case FLOAT:{
+                               if(rhs.type_ == INT) {
+                                   assert(size_ == 4 && rhs.size_ == 4);
+                                   *(float*)content_ += rhs.getIntVal();
+                               } else if(rhs.type_ == FLOAT) {
+                                   assert(size_ == 4 && rhs.size_ == 4);
+                                   *(float*)content_ += rhs.getFloatVal();
+                               } else {
+                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                               }
+                           }
+                    break;
+                case BIGINT:
+                case VARCHAR: 
+                case BOOLEAN:
+                case DOUBLE:
+                case NULL_TYPE:
+                case INVALID:
+                default :
+                     assert(0 && "OPERATOR NOT SUPPORTED FOR THIS TYPE!");
+            }
+            return *this;
+        } 
+
+        Value& operator-=(const Value& rhs){
+            if(rhs.isNull() ||  isNull()) {
+                type_ = NULL_TYPE;
+                return *this;
+            } 
+            switch (type_) {
+                case INT : {
+                               if(rhs.type_ == INT) {
+                                   assert(size_ == 4 && rhs.size_ == 4);
+                                   *(int*)content_ -= rhs.getIntVal();
+                               } else if(rhs.type_ == FLOAT) {
+                                   assert(size_ == 4 && rhs.size_ == 4);
+                                   float val = *(int*)content_;
+                                   val -= rhs.getFloatVal();
+                                   *(float*)content_ = val; 
+                                   type_ = FLOAT;
+                               } else {
+                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                               }
+                           }
+                    break;
+                case FLOAT:{
+                               if(rhs.type_ == INT) {
+                                   assert(size_ == 4 && rhs.size_ == 4);
+                                   *(float*)content_ -= rhs.getIntVal();
+                               } else if(rhs.type_ == FLOAT) {
+                                   assert(size_ == 4 && rhs.size_ == 4);
+                                   *(float*)content_ -= rhs.getFloatVal();
+                               } else {
+                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                               }
+                           }
+                    break;
+                case BIGINT:
+                case VARCHAR: 
+                case BOOLEAN:
+                case DOUBLE:
+                case NULL_TYPE:
+                case INVALID:
+                default :
+                     assert(0 && "OPERATOR NOT SUPPORTED FOR THIS TYPE!");
+            }
+            return *this;
+        } 
+
+        Value& operator*=(const Value& rhs){
+            if(rhs.isNull() ||  isNull()) {
+                type_ = NULL_TYPE;
+                return *this;
+            } 
+            switch (type_) {
+                case INT : {
+                               if(rhs.type_ == INT) {
+                                   assert(size_ == 4 && rhs.size_ == 4);
+                                   *(int*)content_ *= rhs.getIntVal();
+                               } else if(rhs.type_ == FLOAT) {
+                                   assert(size_ == 4 && rhs.size_ == 4);
+                                   float val = *(int*)content_;
+                                   val *= rhs.getFloatVal();
+                                   *(float*)content_ = val; 
+                                   type_ = FLOAT;
+                               } else {
+                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                               }
+                           }
+                    break;
+                case FLOAT:{
+                               if(rhs.type_ == INT) {
+                                   assert(size_ == 4 && rhs.size_ == 4);
+                                   *(float*)content_ *= rhs.getIntVal();
+                               } else if(rhs.type_ == FLOAT) {
+                                   assert(size_ == 4 && rhs.size_ == 4);
+                                   *(float*)content_ *= rhs.getFloatVal();
+                               } else {
+                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                               }
+                           }
+                    break;
+                case BIGINT:
+                case VARCHAR: 
+                case BOOLEAN:
+                case DOUBLE:
+                case NULL_TYPE:
+                case INVALID:
+                default :
+                     assert(0 && "OPERATOR NOT SUPPORTED FOR THIS TYPE!");
+            }
+            return *this;
+        } 
+
+        Value& operator/=(const Value& rhs){
+            if(rhs.isNull() ||  isNull()) {
+                type_ = NULL_TYPE;
+                return *this;
+            } 
+            switch (type_) {
+                case INT : {
+                               if(rhs.type_ == INT) {
+                                   int rhs_int = rhs.getIntVal();
+                                   assert(size_ == 4 && rhs.size_ == 4 && rhs_int != 0);
+                                   *(int*)content_ /= rhs_int;
+                               } else if(rhs.type_ == FLOAT) {
+                                   float rhs_float = rhs.getFloatVal();
+                                   assert(size_ == 4 && rhs.size_ == 4 && rhs_float != 0.0);
+                                   float val = *(int*)content_;
+                                   val /= rhs_float; 
+                                   *(float*)content_ = val; 
+                                   type_ = FLOAT;
+                               } else {
+                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                               }
+                           }
+                    break;
+                case FLOAT:{
+                               if(rhs.type_ == INT) {
+                                   int rhs_int = rhs.getIntVal();
+                                   assert(size_ == 4 && rhs.size_ == 4 && rhs_int != 0);
+                                   *(float*)content_ /= rhs_int;
+                               } else if(rhs.type_ == FLOAT) {
+                                   float rhs_float = rhs.getFloatVal();
+                                   assert(size_ == 4 && rhs.size_ == 4 && rhs_float != 0.0);
+                                   *(float*)content_ /= rhs_float;
+                               } else {
+                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                               }
+                           }
+                    break;
+                case BIGINT:
+                case VARCHAR: 
+                case BOOLEAN:
+                case DOUBLE:
+                case NULL_TYPE:
+                case INVALID:
+                default :
+                     assert(0 && "OPERATOR NOT SUPPORTED FOR THIS TYPE!");
+            }
+            return *this;
+        } 
+
         Value(const std::string& str){
             size_ = str.size(); 
             //content_ = new char[size_];
@@ -261,6 +445,7 @@ class Value {
 
         // return true of lhs (this) > rhs else return false.
         bool operator>(const Value &rhs) const { 
+            if(type_ != rhs.type_) return false;
             // not the best solution to our current problem.
             switch (type_) {
                 case VARCHAR: 
@@ -281,6 +466,7 @@ class Value {
         }
 
         bool operator>=(const Value &rhs) const { 
+            if(type_ != rhs.type_) return false;
             // not the best solution to our current problem.
             switch (type_) {
                 case VARCHAR: 
@@ -335,6 +521,7 @@ class Value {
             }
             return *this;
         }
+        /*
         Value& operator+=(const Value& rhs) {
             if(!checkSameType(this->type_, rhs.type_)) return *this;
             switch (type_) {
@@ -350,5 +537,5 @@ class Value {
                     ;
             }
             return *this;
-        }
+        }*/
 };

@@ -735,7 +735,9 @@ void Parser::tableList(QueryCTX& ctx, int query_idx){
         if(ctx.matchMultiTokenType({TokenType::CROSS, TokenType::JOIN})) {
             ctx += 2;
             continue;
-        }  else if(ctx.matchMultiTokenType({ TokenType::JOIN, TokenType::IDENTIFIER })) { 
+        }  else if(ctx.matchMultiTokenType({ TokenType::INNER ,TokenType::JOIN, TokenType::IDENTIFIER }) ||
+                ctx.matchMultiTokenType({ TokenType::JOIN, TokenType::IDENTIFIER })) { 
+            if(ctx.matchTokenType(TokenType::INNER)) ++ctx; // skip inner.
             // 'JOIN ... ON ...' syntax.
             // TODO: refactor to a different function.
             ++ctx; // skip join
