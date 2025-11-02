@@ -73,6 +73,18 @@ Value evaluate_expression(
                 if(case_ex->else_) return evaluate_expression(ctx, case_ex->else_, evaluator, true, eval_sub_query);
                 return Value(NULL_TYPE);
             }
+        case NULLIF_EXPRESSION  : 
+            {
+                NullifExpressionNode* nullif_ex = reinterpret_cast<NullifExpressionNode*>(expression);
+                assert(nullif_ex->lhs_ && nullif_ex->rhs_); // if you are here they must not be null pointers.
+
+                Value lhs_val = evaluate_expression(ctx, nullif_ex->lhs_, evaluator, true, eval_sub_query);
+                Value rhs_val = evaluate_expression(ctx, nullif_ex->rhs_, evaluator, true, eval_sub_query);
+
+                if(lhs_val == rhs_val)
+                    return Value(NULL_TYPE);
+                return lhs_val;
+            }
         case IN  : 
             {
                 InNode* in = reinterpret_cast<InNode*>(expression);
@@ -443,6 +455,15 @@ void accessed_tables(ASTNode* expression ,std::vector<std::string>& tables, Cata
           accessed_tables(case_ex->else_, tables, catalog);
         return;
       }
+    case NULLIF_EXPRESSION  : 
+      {
+          NullifExpressionNode* nullif_ex = reinterpret_cast<NullifExpressionNode*>(expression);
+          assert(nullif_ex->lhs_ && nullif_ex->rhs_); // if you are here they must not be null pointers.
+
+          accessed_tables(nullif_ex->lhs_, tables, catalog);
+          accessed_tables(nullif_ex->rhs_, tables, catalog);
+          return;
+      }
     case IN  : 
       {
         InNode* in = reinterpret_cast<InNode*>(expression);
@@ -638,6 +659,15 @@ void accessed_fields(ASTNode* expression ,std::vector<std::string>& fields, bool
         if(case_ex->else_)  
           accessed_fields(case_ex->else_, fields);
         return;
+      }
+    case NULLIF_EXPRESSION  : 
+      {
+          NullifExpressionNode* nullif_ex = reinterpret_cast<NullifExpressionNode*>(expression);
+          assert(nullif_ex->lhs_ && nullif_ex->rhs_); // if you are here they must not be null pointers.
+
+          accessed_fields(nullif_ex->lhs_, fields);
+          accessed_fields(nullif_ex->rhs_, fields);
+          return;
       }
     case IN  : 
       {

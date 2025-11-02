@@ -59,6 +59,7 @@ enum class TokenType {
     WHEN,
     THEN,
     ELSE,
+    NULLIF,
     END,
     NULL_CONST,
     TRUE,
@@ -171,6 +172,7 @@ Tokenizer::Tokenizer(){
     keywords_.insert({"WHEN"    , TokenType::WHEN    });
     keywords_.insert({"THEN"    , TokenType::THEN    });
     keywords_.insert({"ELSE"    , TokenType::ELSE    });
+    keywords_.insert({"NULLIF"  , TokenType::NULLIF  });
     keywords_.insert({"END"     , TokenType::END     });
     keywords_.insert({"FALSE"   , TokenType::FALSE   });
     keywords_.insert({"TRUE"    , TokenType::TRUE    });

@@ -79,6 +79,7 @@ AggregateFuncType getAggFuncType(std::string& func){
 enum CategoryType {
     FIELD,       
     CASE_EXPRESSION,
+    NULLIF_EXPRESSION,
                 // scoped field is a field of the format: tableName + "." + fieldName
     SCOPED_FIELD,
     STRING_CONSTANT,
@@ -189,6 +190,17 @@ struct CaseExpressionNode : ASTNode {
     ExpressionNode* initial_value_ = nullptr;
     std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs_; // should be evaluated in order.
     ExpressionNode* else_ = nullptr;
+};
+
+struct NullifExpressionNode : ASTNode {
+    NullifExpressionNode(ExpressionNode* lhs, ExpressionNode* rhs):
+        ASTNode(NULLIF_EXPRESSION),
+        lhs_(lhs),
+        rhs_(rhs)
+    {}
+    ~NullifExpressionNode(){}
+    ExpressionNode* lhs_ = nullptr;
+    ExpressionNode* rhs_ = nullptr;
 };
 
 
@@ -502,6 +514,7 @@ class Parser {
         // scoped field is a field of the format: tableName + "." + fieldName
         ASTNode* scoped_field(QueryCTX& ctx);
         ASTNode* case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx);
+        ASTNode* nullif_expression(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* type_cast(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* scalar_func(QueryCTX& ctx, ExpressionNode* expression_ctx);
         ASTNode* agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx);
@@ -1027,6 +1040,33 @@ ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
     return new CaseExpressionNode(when_then_pairs, else_exp, initial_value);
 }
 
+ASTNode* Parser::nullif_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
+    if((bool)ctx.error_status_) return nullptr;
+    if(!expression_ctx) {
+        // TODO: use logger.
+        std::cout << "[ERROR] Cannot have nullif expression in this context" << std::endl;
+        return nullptr;
+    }
+    if(!ctx.matchMultiTokenType({TokenType::NULLIF, TokenType::LP})) 
+        return nullptr;
+    ctx+= 2; // eat 'NULLIF', '('
+    ExpressionNode* lhs = nullptr;
+    ExpressionNode* rhs = nullptr;
+    int id = expression_ctx->id_;
+    int query_idx = expression_ctx->query_idx_;
+    lhs = expression(ctx, query_idx, id);
+    if(!ctx.matchTokenType(TokenType::COMMA) || !lhs) 
+        return nullptr;
+    ++ctx; // eat ','
+    rhs = expression(ctx, query_idx, id);
+    if(!ctx.matchTokenType(TokenType::RP) || !rhs) {
+        return nullptr;
+    }
+    ++ctx; // eat ')'
+
+    return new NullifExpressionNode(lhs, rhs);
+}
+
 ASTNode* Parser::type_cast(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if((bool)ctx.error_status_) return nullptr;
     if(!expression_ctx) {
@@ -1166,6 +1206,8 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
     }     
     if(expression_ctx)
         i = case_expression(ctx, expression_ctx);
+    if(!i && expression_ctx)
+        i = nullif_expression(ctx, expression_ctx);
     if(!i && expression_ctx)
         i = type_cast(ctx , expression_ctx);
     if(!i && expression_ctx)
