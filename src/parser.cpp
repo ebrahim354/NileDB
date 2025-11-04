@@ -131,7 +131,7 @@ enum CategoryType {
     FIELD_DEF,
     FIELD_DEF_LIST,
     CREATE_TABLE_STATEMENT,
-    // add views and indexes later.
+    // TODO: add views and indexes later.
 };
 
 struct ASTNode {
@@ -151,6 +151,7 @@ struct AggregateFuncNode : ASTNode {
     int parent_id_ = 0;
     ExpressionNode* exp_ = nullptr;
     AggregateFuncType type_;
+    bool distinct_ = false;
 };
 
 struct ExpressionNode : ASTNode {
@@ -695,7 +696,7 @@ void Parser::selectList(QueryCTX& ctx, int query_idx){
             query->field_names_.push_back("");
 
         if(f != nullptr && f->aggregate_func_ != nullptr){
-            query->aggregates_.push_back(f->aggregate_func_);
+            //query->aggregates_.push_back(f->aggregate_func_);
         }
 
         if(ctx.matchTokenType(TokenType::COMMA)){
@@ -711,6 +712,15 @@ void Parser::tableList(QueryCTX& ctx, int query_idx){
     if((bool)ctx.error_status_) return; 
     auto query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[query_idx]);
     while(1){
+        if(ctx.matchTokenType(TokenType::LP)){
+            ++ctx;
+            tableList(ctx, query_idx);
+            if(!ctx.matchTokenType(TokenType::RP)) {
+                // TODO: set up an error message.
+                return;
+            }
+            ++ctx;
+        }
         if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
           return;
         }
@@ -1078,7 +1088,7 @@ ASTNode* Parser::type_cast(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if(!ctx.matchMultiTokenType({TokenType::CAST, TokenType::LP})) 
         return nullptr;
     ctx+=2;
-    ExpressionNode* exp = expression(ctx, expression_ctx->query_idx_, 0);
+    ExpressionNode* exp = expression(ctx, expression_ctx->query_idx_, expression_ctx->id_);
     if(!exp) return nullptr;
     if(!ctx.matchTokenType(TokenType::AS)) return nullptr;
     ++ctx;
@@ -1130,6 +1140,13 @@ ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
         return nullptr;
     ++ctx;
     ExpressionNode* exp = nullptr;
+    bool distinct = false;
+    // TODO: Provide real support instead skipping.
+    if(ctx.matchTokenType(TokenType::ALL)) ++ctx; // e.g: count (ALL b) 
+    else if(ctx.matchTokenType(TokenType::DISTINCT)){
+        distinct = true;
+        ++ctx; // e.g: count (DISTINCT a) 
+    }
     // only count can have a star parameter.
     if(type == COUNT && ctx.matchTokenType(TokenType::STAR)){
         ++ctx;
@@ -1143,11 +1160,15 @@ ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
         }
     }
     expression_ctx->aggregate_func_ =  new AggregateFuncNode(exp, type, expression_ctx->id_);
+    expression_ctx->aggregate_func_->distinct_ = distinct;
+    auto query = (SelectStatementData*)ctx.queries_call_stack_[expression_ctx->query_idx_];
+    query->aggregates_.push_back(expression_ctx->aggregate_func_);
 
     if(!ctx.matchTokenType(TokenType::RP)) return nullptr;
     ++ctx;
     std::string tmp = AGG_FUNC_IDENTIFIER_PREFIX;
-    tmp += intToStr(expression_ctx->id_);
+    //tmp += intToStr(expression_ctx->id_);
+    tmp += intToStr(query->aggregates_.size());
     return new ASTNode(FIELD, Token (TokenType::IDENTIFIER, tmp));
 }
 
@@ -1196,7 +1217,7 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if(ctx.matchTokenType(TokenType::LP)){
         ++ctx;
         int id = expression_ctx->id_;
-        auto ex = expression(ctx, expression_ctx->query_idx_ ,id);
+        auto ex = expression(ctx, expression_ctx->query_idx_ ,id+1);
         if(!ex) return nullptr;
         if(!ctx.matchTokenType(TokenType::RP)){
             return nullptr;

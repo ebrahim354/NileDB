@@ -947,12 +947,22 @@ class AggregationExecutor : public Executor {
             finished_ = 0;
             error_status_ = 0;
             aggregated_values_.clear();
+            for(int i = 0; i < aggregates_.size(); ++i) {
+                if(aggregates_[i]->distinct_) distinct_counters_[i] = std::set<std::string>();
+            }
 
 
             if(child_executor_){
                 child_executor_->init();
             }
-            aggregated_values_["PREFIX_"] = std::vector<Value> (output_schema_->getCols().size() + 1, Value(0));
+            int total_size = output_schema_->getCols().size() + 1;
+            aggregated_values_["PREFIX_"] = std::vector<Value> (total_size, Value(NULL_TYPE));
+
+            int agg_base_idx = total_size - (1+aggregates_.size());
+            for(int i = 0;i < aggregates_.size(); ++i) {
+                if(aggregates_[i]->type_ == COUNT)
+                aggregated_values_["PREFIX_"][i+agg_base_idx] = Value(0); // count can't be null.
+            }
 
             while(true){
                 // we always maintain rows count even if the user did not ask for it, that's why the size is | colmuns | + 1
@@ -988,12 +998,20 @@ class AggregationExecutor : public Executor {
 
 
                 // update the extra counter.
+                if(output_[output_.size() - 1].isNull()) output_[output_.size() - 1] = Value(0);
                 output_[output_.size() - 1] += 1; 
                 Value* counter = &output_[output_.size() - 1];
 
                 int base_size = child_output.size();
                 for(int i = 0; i < aggregates_.size(); i++){
                     ExpressionNode* exp = aggregates_[i]->exp_;
+                    if(exp){
+                        Value val = evaluate_expression(ctx_, exp, eval);
+                        if(aggregates_[i]->distinct_){
+                            if(distinct_counters_[i].count(val.toString())) continue;
+                            distinct_counters_[i].insert(val.toString());
+                        }
+                    }
                     int idx = base_size+i;
                     switch(aggregates_[i]->type_){
                         case COUNT:
@@ -1003,15 +1021,20 @@ class AggregationExecutor : public Executor {
                                             break;
                                         }
                                         Value val = evaluate_expression(ctx_, exp, eval);
-                                        if(!val.isNull()) 
+                                        if(!val.isNull()){
                                             ++output_[idx];
+                                        }
                                     }
                                     break;
                         case AVG:
                         case SUM:
                                    {
                                        Value val = evaluate_expression(ctx_, exp, eval);
-                                       if(val.type_ == INT) output_[idx] += val; 
+                                       if(output_[idx].isNull() 
+                                               && !val.isNull()) output_[idx] = Value(0);
+                                       if(val.type_ == INT) {
+                                           output_[idx] += val;
+                                       }
                                        else if(val.isNull())
                                          *counter += -1;
                                    }
@@ -1021,7 +1044,9 @@ class AggregationExecutor : public Executor {
                                        Value val = evaluate_expression(ctx_, exp, eval);
                                        if(val.type_ == INT) {
                                            if(counter->getIntVal() == 1) output_[idx] = val;
-                                           output_[idx] = std::min<Value>(output_[idx], val);
+                                           if(output_[idx].isNull() || output_[idx] > val) 
+                                               output_[idx] = val;
+                                           //output_[idx] = std::min<Value>(output_[idx], val);
                                        }
                                    }
                                    break;
@@ -1030,7 +1055,9 @@ class AggregationExecutor : public Executor {
                                        Value val = evaluate_expression(ctx_, exp, eval);
                                        if(val.type_ == INT) {
                                            if(counter->getIntVal() == 1) output_[idx] = val;
-                                           output_[idx] = std::max<Value>(output_[i], val);
+                                           if(output_[idx].isNull() || output_[idx] < val) 
+                                               output_[idx] = val;
+                                           //output_[idx] = std::max<Value>(output_[i], val);
                                        }
                                    }
                                    break;
@@ -1055,7 +1082,17 @@ class AggregationExecutor : public Executor {
             for(int i = 0; i < aggregates_.size(); i++){
                 int idx = (i + output_.size() - aggregates_.size())- 1;
                 if(aggregates_[i]->type_ == AVG && output_[output_.size()-1] != 0){
-                    output_[idx] = Value( (float)output_[idx].getIntVal()/(float) output_[output_.size()-1].getIntVal());
+                    if(output_[idx].isNull() || output_[output_.size() - 1].isNull()) output_[idx] = Value(NULL_TYPE);
+                    else {
+                        float denom = (float) output_[output_.size()-1].getIntVal();
+                        if(aggregates_[i]->distinct_) 
+                            denom = distinct_counters_[i].size();
+                        if(denom == 0) { // maybe too much checking?
+                            output_[idx] = Value(NULL_TYPE);
+                            continue;
+                        }
+                        output_[idx] = Value( (float)output_[idx].getIntVal()/ denom);
+                    }
                 }
             }
             ++it_;
@@ -1068,6 +1105,11 @@ class AggregationExecutor : public Executor {
         std::vector<AggregateFuncNode*> aggregates_;
         std::vector<ASTNode*> group_by_;
         std::unordered_map<std::string, std::vector<Value>> aggregated_values_;
+        // this hash table holds a set of values for each aggregate function 
+        // if that function uses the distinct keyword inside the clause e.g: count(distinct a).
+        // first value is the index of the function inside of the aggregates_ array,
+        // second value is the set of values that has been parameters to that function so far.
+        std::unordered_map<int, std::set<std::string>> distinct_counters_; 
         std::unordered_map<std::string, std::vector<Value>>::iterator it_;
         std::function<Value(ASTNode*)>
             eval = std::bind(&AggregationExecutor::evaluate, this, std::placeholders::_1);
@@ -1572,7 +1614,8 @@ class ExecutionEngine {
                         for(int i = 0; i < op->aggregates_.size(); i++){
                             std::string col_name = "agg_tmp_schema.";
                             col_name += AGG_FUNC_IDENTIFIER_PREFIX;
-                            col_name += intToStr(op->aggregates_[i]->parent_id_);
+                            //col_name += intToStr(op->aggregates_[i]->parent_id_);
+                            col_name += intToStr(i+1);
                             new_cols.push_back(Column(col_name, INT, offset_ptr));
                             offset_ptr += Column::getSizeFromType(INT);
                         }
