@@ -33,6 +33,7 @@ enum AggregateFuncType {
     AVG,
 };
 
+
 Type tokenTypeToDBType(TokenType tt){
     // enum Type { INVALID = -1, BOOLEAN, INT, BIGINT, FLOAT, DOUBLE, TIMESTAMP, VARCHAR, NULL_TYPE}; 
     switch(tt){
@@ -368,10 +369,33 @@ struct OrNode : ASTNode {
     ASTNode* next_ = nullptr;
 };
 
+
+enum JoinType {
+    INNER_JOIN = 0,
+    LEFT_JOIN,
+    RIGHT_JOIN,
+    FULL_JOIN
+};
+
+JoinType token_type_to_join_type (TokenType t) {
+    switch(t){
+        case TokenType::LEFT:
+            return LEFT_JOIN;
+        case TokenType::RIGHT:
+            return RIGHT_JOIN;
+        case TokenType::FULL:
+            return FULL_JOIN;
+        default:
+            return INNER_JOIN;
+    }
+    return INNER_JOIN;
+}
+
 struct JoinedTablesData {
     int lhs_idx_ = -1;
     int rhs_idx_ = -1;
     ExpressionNode* condition_ = nullptr;
+    JoinType type_ = INNER_JOIN; // default is inner.
 };
 
 // SQL statement data wrappers.
@@ -533,6 +557,9 @@ class Parser {
         ExpressionNode* expression(QueryCTX& ctx, int query_idx, int id);
 
         Value constVal(QueryCTX& ctx);
+        void table_with_rename(QueryCTX& ctx, int query_idx);
+        void inner_join(QueryCTX& ctx, int query_idx);
+        void outer_join(QueryCTX& ctx, int query_idx);
         void tableList(QueryCTX& ctx, int query_idx);
         void expressionList(QueryCTX& ctx, int query_idx);
         void argumentList(QueryCTX& ctx, int query_idx, std::vector<ExpressionNode*>& args);
@@ -708,6 +735,93 @@ void Parser::selectList(QueryCTX& ctx, int query_idx){
     }
 }
 
+void Parser::table_with_rename(QueryCTX& ctx, int query_idx) {
+    if((bool)ctx.error_status_) return; 
+    auto query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[query_idx]);
+    if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
+        return;
+    }
+
+    query->tables_.push_back(ctx.getCurrentToken().val_);
+    ++ctx;
+
+    // optional AS keyword.
+    bool rename = false;
+    if(ctx.matchTokenType(TokenType::AS)) {
+        ++ctx;
+        if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
+            return;
+        }
+        query->table_names_.push_back(ctx.getCurrentToken().val_);
+        ++ctx;
+        rename = true;
+    }
+
+    // optional renaming of a table.
+    if(!rename && ctx.matchTokenType(TokenType::IDENTIFIER)){
+        query->table_names_.push_back(ctx.getCurrentToken().val_);
+        ++ctx;
+        rename =  true;
+    }
+
+    if(!rename)
+        query->table_names_.push_back(query->tables_[query->tables_.size()-1]);
+}
+
+void Parser::inner_join(QueryCTX& ctx, int query_idx) {
+    if((bool)ctx.error_status_) return; 
+    auto query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[query_idx]);
+    if(ctx.matchTokenType(TokenType::INNER)) ++ctx; 
+    // 'JOIN ... ON ...' syntax.
+    // TODO: refactor to a different function.
+    ++ctx; // skip join
+    table_with_rename(ctx, query_idx);
+
+    if(!ctx.matchTokenType(TokenType::ON)){
+        // explicit JOIN keyword must be paired with the ON keyword.
+        // TODO: set up an appropriate error.
+        return;
+    }
+    ++ctx; // skip on
+    JoinedTablesData t = {};
+    t.lhs_idx_ = (query->table_names_.size() - 2);
+    t.rhs_idx_ = (query->table_names_.size() - 1);
+    t.condition_ = expression(ctx, query->idx_, 0);
+    if(!t.condition_) {
+        // TODO: replace with error message.
+        return;
+    }
+    query->joined_tables_.push_back(t);
+}
+
+void Parser::outer_join(QueryCTX& ctx, int query_idx) {
+    if((bool)ctx.error_status_) return; 
+    auto query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[query_idx]);
+    JoinedTablesData t = {};
+    t.type_ = token_type_to_join_type(ctx.getCurrentToken().type_);
+    ++ctx; // skip join type: full, left, right.
+    if(ctx.matchTokenType(TokenType::OUTER)) ++ctx; // skip optional 'outer'.
+
+    if(!ctx.matchTokenType(TokenType::JOIN)) return; // TODO: replace with error.
+    ++ctx; // skip 'join'
+    table_with_rename(ctx, query_idx);
+
+    if(!ctx.matchTokenType(TokenType::ON)){
+        // explicit JOIN keyword must be paired with the ON keyword.
+        // TODO: set up an appropriat error.
+        return;
+    }
+    ++ctx; // skip on
+    t.lhs_idx_ = (query->table_names_.size() - 2);
+    t.rhs_idx_ = (query->table_names_.size() - 1);
+    t.condition_ = expression(ctx, query->idx_, 0);
+    if(!t.condition_) {
+        // TODO: replace with error message.
+        return;
+    }
+    query->joined_tables_.push_back(t);
+}
+
 void Parser::tableList(QueryCTX& ctx, int query_idx){
     if((bool)ctx.error_status_) return; 
     auto query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[query_idx]);
@@ -721,88 +835,22 @@ void Parser::tableList(QueryCTX& ctx, int query_idx){
             }
             ++ctx;
         }
-        if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
-          return;
-        }
-
-        query->tables_.push_back(ctx.getCurrentToken().val_);
-        ++ctx;
-
-        // optional AS keyword.
-        bool rename = false;
-        if(ctx.matchTokenType(TokenType::AS)) {
-            ++ctx;
-            if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
-                return;
-            }
-            query->table_names_.push_back(ctx.getCurrentToken().val_);
-            ++ctx;
-            rename = true;
-        }
-
-        // optional renaming of a field.
-        if(!rename && ctx.matchTokenType(TokenType::IDENTIFIER)){
-            query->table_names_.push_back(ctx.getCurrentToken().val_);
-            ++ctx;
-            rename =  true;
-        }
-
-        if(!rename)
-            query->table_names_.push_back(query->tables_[query->tables_.size()-1]);
-
-        if(ctx.matchTokenType(TokenType::COMMA)) {
-          ++ctx;
-          continue;
-        } 
-
+        table_with_rename(ctx, query_idx);
+        // TODO: refactor repeated code.
         if(ctx.matchMultiTokenType({TokenType::CROSS, TokenType::JOIN})) {
             ctx += 2;
             continue;
         }  else if(ctx.matchMultiTokenType({ TokenType::INNER ,TokenType::JOIN, TokenType::IDENTIFIER }) ||
                 ctx.matchMultiTokenType({ TokenType::JOIN, TokenType::IDENTIFIER })) { 
-            if(ctx.matchTokenType(TokenType::INNER)) ++ctx; // skip inner.
-            // 'JOIN ... ON ...' syntax.
-            // TODO: refactor to a different function.
-            ++ctx; // skip join
-            std::string joined_table_name = ctx.getCurrentToken().val_;
-            query->tables_.push_back(joined_table_name);
-            ++ctx; // skip id
-
-            // optional AS keyword.
-            bool rename = false;
-            if(ctx.matchTokenType(TokenType::AS)) {
-                ++ctx;
-                if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
-                    return;
-                }
-                query->table_names_.push_back(ctx.getCurrentToken().val_);
-                ++ctx;
-                rename = true;
-            }
-            // optional renaming of a field.
-            if(!rename && ctx.matchTokenType(TokenType::IDENTIFIER)){
-                query->table_names_.push_back(ctx.getCurrentToken().val_);
-                ++ctx;
-                rename =  true;
-            }
-            if(!rename) query->table_names_.push_back(joined_table_name);
-
-            if(!ctx.matchTokenType(TokenType::ON)){
-                // explicit JOIN keyword must be paired with the ON keyword.
-                // TODO: set up an appropriat error.
-                return;
-            }
-            ++ctx; // skip on
-            JoinedTablesData t = {};
-            t.lhs_idx_ = (query->table_names_.size() - 2);
-            t.rhs_idx_ = (query->table_names_.size() - 1);
-            t.condition_ = expression(ctx, query->idx_, 0);
-            if(!t.condition_) {
-                // TODO: replace with error message.
-                return;
-            }
-            query->joined_tables_.push_back(t);
+            inner_join(ctx, query_idx);
+        } else if(ctx.matchAnyTokenType({ TokenType::LEFT, TokenType::RIGHT, TokenType::FULL })) {
+            outer_join(ctx, query_idx);
         }
+
+        if(ctx.matchTokenType(TokenType::COMMA)) {
+          ++ctx;
+          continue;
+        } 
 
         break;
     }
