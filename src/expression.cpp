@@ -91,43 +91,53 @@ Value evaluate_expression(
                 Value val = evaluate_expression(ctx, in->val_, evaluator, false, eval_sub_query);
                 if(val.isNull()) return val;
                 bool answer = false;
+                bool null_ret = false;
                 for(int i = 0; i < in->list_.size(); ++i){
-                  Value tmp = evaluate_expression(ctx, in->list_[i], evaluator, false, false);
-                  if(tmp.type_ == Type::EXECUTOR_ID){
-                    int idx = tmp.getIntVal();
-                    Executor* sub_query_executor = ctx.executors_call_stack_[idx]; 
-                    sub_query_executor->init();
-                    // TODO: register errors to ctx object and stop execution.
-                    if(sub_query_executor->error_status_){
-                      std::cout << "[ERROR] could not initialize sub-query" << std::endl;
-                      return Value();
+                    Value tmp = evaluate_expression(ctx, in->list_[i], evaluator, false, false);
+                    if(tmp.type_ == Type::EXECUTOR_ID){
+                        int idx = tmp.getIntVal();
+                        Executor* sub_query_executor = ctx.executors_call_stack_[idx]; 
+                        sub_query_executor->init();
+                        // TODO: register errors to ctx object and stop execution.
+                        if(sub_query_executor->error_status_){
+                            std::cout << "[ERROR] could not initialize sub-query" << std::endl;
+                            return Value();
+                        }
+
+                        while(!answer && !sub_query_executor->finished_ && !sub_query_executor->error_status_){
+                            std::vector<Value> sub_query_output = sub_query_executor->next();
+                            if(sub_query_output.size() == 0 && sub_query_executor->finished_) {
+                                break;
+                            }
+
+                            if(sub_query_executor->error_status_) {
+                                std::cout << "[ERROR] could not execute sub-query" << std::endl;
+                                return Value();
+                            }
+
+                            if(sub_query_output.size() != 1) {
+                                std::cout << "[ERROR] sub-query should return exactly 1 column" << std::endl;
+                                return Value();
+                            }
+                            if(sub_query_output[0].isNull()){
+                                null_ret = true;
+                            }
+                            else if(val == sub_query_output[0]){
+                                answer = true;
+                                null_ret = false;
+                                break;
+                            }
+                        }
+                    } else if(tmp.isNull()) {
+                        null_ret = true;
                     }
-
-                    while(!answer && !sub_query_executor->finished_ && !sub_query_executor->error_status_){
-                      std::vector<Value> sub_query_output = sub_query_executor->next();
-                      if(sub_query_output.size() == 0 && sub_query_executor->finished_) {
-                        break;
-                      }
-
-                      if(sub_query_executor->error_status_) {
-                        std::cout << "[ERROR] could not execute sub-query" << std::endl;
-                        return Value();
-                      }
-
-                      if(sub_query_output.size() != 1) {
-                        std::cout << "[ERROR] sub-query should return exactly 1 column" << std::endl;
-                        return Value();
-                      }
-                      if(val == sub_query_output[0]){
+                    else if(val == tmp) {
                         answer = true;
+                        null_ret = false;
                         break;
-                      }
                     }
-                  } else if(val == tmp) {
-                    answer = true;
-                    break;
-                  }
                 }
+                if(null_ret) return Value(NULL_TYPE);
                 if(in->negated_) answer = !answer;
                 return Value(answer);
             }
