@@ -5,6 +5,10 @@
 #include "column.cpp"
 #include "utils.cpp"
 
+#define EPS 1e-6
+class Value;
+int value_cmp(Value lhs, Value rhs);
+
 class Value {
     public:
         char* content_ = nullptr;  
@@ -236,6 +240,52 @@ class Value {
             return *this;
         } 
 
+        Value operator-(Value rhs) {
+            assert(size_ == rhs.size_);
+            if(rhs.isNull() ||  isNull()) {
+                return Value(NULL_TYPE);
+            } 
+            switch (type_) {
+                case INT : {
+                               if(rhs.type_ == INT) {
+                                   return Value(*(int*)content_ - rhs.getIntVal());
+                               } else if(rhs.type_ == FLOAT) {
+                                   float val = *(int*)content_;
+                                   return Value(val - rhs.getFloatVal());
+                               } else {
+                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                               }
+                           }
+                    break;
+                case FLOAT:{
+                               if(rhs.type_ == INT) {
+                                   return Value(*(float*)content_ - rhs.getIntVal());
+                               } else if(rhs.type_ == FLOAT) {
+                                   return Value(*(float*)content_ - rhs.getFloatVal());
+                               } else {
+                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                               }
+                           }
+                    break;
+                case BOOLEAN:{
+                                 if(rhs.type_ == BOOLEAN){
+                                    return Value((int)(*(bool*)content_ - rhs.getBoolVal()));
+                                 } else {
+                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                 }
+                             }
+                    break;
+                case BIGINT:
+                case VARCHAR: 
+                case DOUBLE:
+                case NULL_TYPE:
+                case INVALID:
+                default :
+                     assert(0 && "OPERATOR NOT SUPPORTED FOR THIS TYPE!");
+            }
+            return Value(NULL_TYPE);
+        } 
+
         Value(const std::string& str){
             size_ = str.size(); 
             //content_ = new char[size_];
@@ -349,141 +399,34 @@ class Value {
             if(!content_) return 0.0f;
             return *reinterpret_cast<double*>(content_);
         }
-        // We assume that the user of these operators has already checked for the types to be equal.
-        // If both values are not of the same type always return false.
-        // The use of switch cases is redundent and can be replaced with generics or 
-        // returning a void* and comparing bytes using the size_ parameter.
-        //
-        //
-        // return true of lhs (this) == rhs else return false.
         bool operator==(const Value &rhs) const { 
-            if(isNull() && rhs.isNull()) return true;
-            if(type_ != rhs.type_) return false;
-            // not the best solution to our current problem.
-            switch (type_) {
-                case VARCHAR: 
-                    return getStringVal() == rhs.getStringVal();
-                case BOOLEAN:
-                    return getBoolVal()   == rhs.getBoolVal();
-                case INT:
-                    return getIntVal()    == rhs.getIntVal();
-                case BIGINT:
-                    return getBigIntVal() == rhs.getBigIntVal();
-                case FLOAT:
-                    return getFloatVal()  == rhs.getFloatVal();
-                case DOUBLE:
-                    return getDoubleVal() == rhs.getDoubleVal();
-                default :
-                    return false;
-            }
+            int cmp = value_cmp(*this, rhs);
+            return cmp == 0;
         }
 
         bool operator!=(const Value &rhs) const { 
-            if(isNull() && rhs.isNull()) return false;
-            if(type_ != rhs.type_) return true;
-            // not the best solution to our current problem.
-            switch (type_) {
-                case VARCHAR: 
-                    return getStringVal() != rhs.getStringVal();
-                case BOOLEAN:
-                    return getBoolVal()   != rhs.getBoolVal();
-                case INT:
-                    return getIntVal()    != rhs.getIntVal();
-                case BIGINT:
-                    return getBigIntVal() != rhs.getBigIntVal();
-                case FLOAT:
-                    return getFloatVal()  != rhs.getFloatVal();
-                case DOUBLE:
-                    return getDoubleVal() != rhs.getDoubleVal();
-                default :
-                    return false;
-            }
+            int cmp = value_cmp(*this, rhs);
+            return cmp != 0;
         }
 
-        // return true of lhs (this) < rhs else return false.
         bool operator<(const Value &rhs) const { 
-            if(!checkSameType(type_, rhs.type_)) return false;
-            // not the best solution to our current problem.
-            switch (type_) {
-                case VARCHAR: 
-                    return getStringVal() < rhs.getStringVal();
-                case BOOLEAN:
-                    return getBoolVal()   < rhs.getBoolVal();
-                case INT:
-                    return getIntVal()    < rhs.getIntVal();
-                case BIGINT:
-                    return getBigIntVal() < rhs.getBigIntVal();
-                case FLOAT:
-                    return getFloatVal()  < rhs.getFloatVal();
-                case DOUBLE:
-                    return getDoubleVal() < rhs.getDoubleVal();
-                default :
-                    return false;
-            }
+            int cmp = value_cmp(*this, rhs);
+            return cmp < 0;
         }
 
         bool operator<=(const Value &rhs) const { 
-            if(!checkSameType(type_, rhs.type_)) return false;
-            // not the best solution to our current problem.
-            switch (type_) {
-                case VARCHAR: 
-                    return getStringVal() <= rhs.getStringVal();
-                case BOOLEAN:
-                    return getBoolVal()   <= rhs.getBoolVal();
-                case INT:
-                    return getIntVal()    <= rhs.getIntVal();
-                case BIGINT:
-                    return getBigIntVal() <= rhs.getBigIntVal();
-                case FLOAT:
-                    return getFloatVal()  <= rhs.getFloatVal();
-                case DOUBLE:
-                    return getDoubleVal() <= rhs.getDoubleVal();
-                default :
-                    return false;
-            }
+            int cmp = value_cmp(*this, rhs);
+            return cmp <= 0;
         }
 
-        // return true of lhs (this) > rhs else return false.
         bool operator>(const Value &rhs) const { 
-            if(type_ != rhs.type_) return false;
-            // not the best solution to our current problem.
-            switch (type_) {
-                case VARCHAR: 
-                    return getStringVal() > rhs.getStringVal();
-                case BOOLEAN:
-                    return getBoolVal()   > rhs.getBoolVal();
-                case INT:
-                    return getIntVal()    > rhs.getIntVal();
-                case BIGINT:
-                    return getBigIntVal() > rhs.getBigIntVal();
-                case FLOAT:
-                    return getFloatVal()  > rhs.getFloatVal();
-                case DOUBLE:
-                    return getDoubleVal() > rhs.getDoubleVal();
-                default :
-                    return false;
-            }
+            int cmp = value_cmp(*this, rhs);
+            return cmp > 0;
         }
 
         bool operator>=(const Value &rhs) const { 
-            if(type_ != rhs.type_) return false;
-            // not the best solution to our current problem.
-            switch (type_) {
-                case VARCHAR: 
-                    return getStringVal() >= rhs.getStringVal();
-                case BOOLEAN:
-                    return getBoolVal()   >= rhs.getBoolVal();
-                case INT:
-                    return getIntVal()    >= rhs.getIntVal();
-                case BIGINT:
-                    return getBigIntVal() >= rhs.getBigIntVal();
-                case FLOAT:
-                    return getFloatVal()  >= rhs.getFloatVal();
-                case DOUBLE:
-                    return getDoubleVal() >= rhs.getDoubleVal();
-                default :
-                    return false;
-            }
+            int cmp = value_cmp(*this, rhs);
+            return cmp >= 0;
         }
 
         void setValue(int val){
@@ -521,21 +464,30 @@ class Value {
             }
             return *this;
         }
-        /*
-        Value& operator+=(const Value& rhs) {
-            if(!checkSameType(this->type_, rhs.type_)) return *this;
-            switch (type_) {
-                case INT:
-                    setValue(getIntVal()+rhs.getIntVal());
-                case BIGINT:
-                    setValue(getBigIntVal()+rhs.getBigIntVal());
-                case FLOAT:
-                    setValue(getFloatVal()+rhs.getFloatVal());
-                case DOUBLE:
-                    setValue(getDoubleVal()+rhs.getDoubleVal());
-                default :
-                    ;
-            }
-            return *this;
-        }*/
 };
+
+// -1 ==> lhs < rhs, 0 eq, 1 ==> lhs > rhs
+int value_cmp(Value lhs, Value rhs) {
+    assert(!lhs.isNull() && !rhs.isNull()); // can't compare null values.
+    if(lhs.content_  && !rhs.content_ ) return 1;
+    if(rhs.content_  && !lhs.content_ ) return -1;
+    if(!rhs.content_ && !lhs.content_ ) return 0;
+
+    if(lhs.size_ != rhs.size_){
+        assert(0 && "INVALID COMPARISON");
+    }
+    Value v = lhs - rhs;
+    int diff = 0;
+    if(v.type_ == FLOAT){
+        float fval = v.getFloatVal();
+        if(fabsf(fval) > EPS){
+            if(fval < 0.0) diff = -1;
+            else diff = 1;
+        }
+    } else if(v.type_ == INT){
+        diff = v.getIntVal();
+    } else {
+        assert(0 && "Type comparison not supported yet!");
+    }
+    return diff;
+}
