@@ -121,8 +121,8 @@ struct ProductOperation: AlgebraOperation {
 struct JoinOperation: AlgebraOperation {
     public:
         JoinOperation(QueryCTX& ctx, AlgebraOperation* lhs, AlgebraOperation* rhs, 
-            ExpressionNode* filter): 
-            AlgebraOperation(JOIN, ctx), lhs_(lhs), rhs_(rhs), filter_(filter)
+            ExpressionNode* filter, JoinType type): 
+            AlgebraOperation(JOIN, ctx), lhs_(lhs), rhs_(rhs), filter_(filter), join_type_(type)
         {}
         ~JoinOperation()
         {
@@ -140,6 +140,7 @@ struct JoinOperation: AlgebraOperation {
         AlgebraOperation* lhs_ = nullptr;
         AlgebraOperation* rhs_ = nullptr;
         ExpressionNode* filter_;
+        JoinType join_type_ = INNER_JOIN;
 };
 
 struct InsertionOperation: AlgebraOperation {
@@ -511,9 +512,10 @@ class AlgebraEngine {
                 auto op = reinterpret_cast<FilterOperation*>(*root);
                 if(op->child_ && op->child_->type_ == PRODUCT){
                   auto product = reinterpret_cast<ProductOperation*>(op->child_);
-                  auto join_node = new JoinOperation(product->ctx_, product->lhs_, product->rhs_, op->filter_);
+                  auto join_node = new JoinOperation(product->ctx_, product->lhs_, product->rhs_, op->filter_, INNER_JOIN);
                   // TODO: fix memory leak of the filter and the product nodes.
-                  op->child_ = join_node;
+                  //op->child_ = join_node;
+                  *root = join_node;
                   replaceFilteredProductWithJoin(root);
                 }  else if(op->child_){
                   replaceFilteredProductWithJoin(&op->child_);
@@ -551,53 +553,43 @@ class AlgebraEngine {
           }
         }
 
-        AlgebraOperation* createSelectStatementExpression(QueryCTX& ctx, SelectStatementData* data){
+        AlgebraOperation* createSelectStatementExpression(QueryCTX& ctx, SelectStatementData* data) {
             if(!isValidSelectStatementData(data))
                 return nullptr;
 
             std::vector<ExpressionNode*> splitted_where;
             if(data->where_){
-              // split conjunctive predicates.
-              splitted_where = split_by_and(data->where_);
-            }
-            // transform join .. on into a regular cross join and append the join condition to the where clause.
-            // not optimal but does the job.
-            // TODO: don't do that and create join operations instead.
-            // TODO: check that fields used inside the ON clause are scoped only to the two tables being joined.
-            for(int i = 0; i < data->joined_tables_.size(); ++i) {
-                std::vector<ExpressionNode*> splitted_on;
-                splitted_on = split_by_and(data->joined_tables_[i].condition_);
-                for(int j = 0; j < splitted_on.size(); ++j)
-                    splitted_where.push_back(splitted_on[j]);
+                // split conjunctive predicates.
+                splitted_where = split_by_and(data->where_);
             }
             // collect data about which tables did we access for each splitted predicate from the previous step.
             std::vector<std::pair<std::vector<std::string>, ExpressionNode*>> tables_per_filter;
             for(int i = 0; i < splitted_where.size(); ++i){
-              std::vector<std::string> table_access;
-              std::unordered_map<std::string, bool> f;
-              accessed_tables(splitted_where[i], table_access, catalog_);
-              std::vector<std::string> ta;
-              for(auto &s: table_access){
-                  bool used_in_query = false;
-                  for(int j = 0; j < data->table_names_.size(); ++j){
-                    if(data->table_names_[j] == s) {
-                        used_in_query = true;
-                        break;
+                std::vector<std::string> table_access;
+                std::unordered_map<std::string, bool> f;
+                accessed_tables(splitted_where[i], table_access, catalog_);
+                std::vector<std::string> ta;
+                for(auto &s: table_access){
+                    bool used_in_query = false;
+                    for(int j = 0; j < data->table_names_.size(); ++j){
+                        if(data->table_names_[j] == s) {
+                            used_in_query = true;
+                            break;
+                        }
                     }
-                  }
-                if(!f.count(s) && used_in_query){
-                  ta.push_back(s);
-                  f[s] = 1;
+                    if(!f.count(s) && used_in_query){
+                        ta.push_back(s);
+                        f[s] = 1;
+                    }
                 }
-              }
-              tables_per_filter.push_back({ta, splitted_where[i]});
+                tables_per_filter.push_back({ta, splitted_where[i]});
             }
 
             // sort predicates by the least accessed number of tables.
             sort(tables_per_filter.begin(), tables_per_filter.end(),
                     [](std::pair<std::vector<std::string>, ExpressionNode*> lhs,
                         std::pair<std::vector<std::string>, ExpressionNode*> rhs) {
-                        return lhs.first.size() < rhs.first.size();
+                    return lhs.first.size() < rhs.first.size();
                     });
 
 
@@ -611,58 +603,85 @@ class AlgebraEngine {
             // initialize 1 scanner for each accessed table.
             std::unordered_map<std::string, AlgebraOperation*> table_scanner;
             for(int i = 0; i < data->tables_.size(); ++i){
-              AlgebraOperation* scan = new ScanOperation(ctx, data->tables_[i], data->table_names_[i]);
-              table_scanner[data->table_names_[i]] = scan;
+                AlgebraOperation* scan = new ScanOperation(ctx, data->tables_[i], data->table_names_[i]);
+                table_scanner[data->table_names_[i]] = scan;
+            }
+
+            // handle filters with 1 table access.
+            for(int i = 0; i < splitted_where.size(); ++i){ 
+                if(tables_per_filter[i].first.size() != 1) continue;
+                table_scanner[tables_per_filter[i].first[0]] = new FilterOperation(ctx, 
+                        table_scanner[tables_per_filter[i].first[0]], 
+                        tables_per_filter[i].second, 
+                        data->fields_, data->field_names_, catalog_);
             }
 
             AlgebraOperation* result = nullptr;
-            for(int i = 0; i < splitted_where.size(); ++i){
-              if(tables_per_filter[i].first.size() == 0) continue; // 0 tables skip
-              if(tables_per_filter[i].first.size() == 1) { // 1 table access,  wrap it in its filter.
-                table_scanner[tables_per_filter[i].first[0]] = new FilterOperation(ctx, 
-                    table_scanner[tables_per_filter[i].first[0]], 
-                    tables_per_filter[i].second, 
-                    data->fields_, data->field_names_, catalog_);
-                continue;
-              } 
-              
-              // loop over all tables that was accessed with in filter number 'i'
-              for(int j = 0; j < tables_per_filter[i].first.size(); ++j) {
-                  std::string t = tables_per_filter[i].first[j];
-                if(result == nullptr) {
-                  result = table_scanner[t];
-                } else if(table_scanner.count(t)){
-                  result =  new ProductOperation(ctx, table_scanner[t], result); 
-                } else {
-                  continue;
-                }
-                table_scanner.erase(t);
-              }
-
-              result = new FilterOperation(ctx, 
-                  result, 
-                  tables_per_filter[i].second, 
-                  data->fields_, data->field_names_, catalog_);
+            // join tables that where explicitly joined by a 'join ... on' operator.
+            for(int i = 0; i < data->joined_tables_.size(); ++i) {
+                // TODO: check that fields used inside the ON clause are scoped only to the two tables being joined.
+                JoinedTablesData join_data = data->joined_tables_[i];
+                assert(
+                    data->table_names_.size() > join_data.lhs_idx_ && 
+                    data->table_names_.size() > join_data.rhs_idx_
+                );
+                std::string lhs_name = data->table_names_[join_data.lhs_idx_];
+                std::string rhs_name = data->table_names_[join_data.rhs_idx_];
+                assert(table_scanner.count(lhs_name) && table_scanner.count(rhs_name));
+                auto join_op = new JoinOperation(
+                                        ctx,
+                                        table_scanner[lhs_name], 
+                                        table_scanner[rhs_name],
+                                        join_data.condition_,
+                                        join_data.type_
+                                     );
+                // lhs scanner eats rhs scanner and becomes a join node for latter use.
+                // TODO: maybe there is a better way.
+                table_scanner.erase(rhs_name);
+                table_scanner[lhs_name] = join_op;
             }
-              replaceFilteredProductWithJoin(&result);
+
+            // handle filters with 2 or more table access.
+            for(int i = 0; i < splitted_where.size(); ++i){
+                if(tables_per_filter[i].first.size() < 2) continue;
+                // loop over all tables that was accessed with in filter number 'i'
+                for(int j = 0; j < tables_per_filter[i].first.size(); ++j) {
+                    std::string t = tables_per_filter[i].first[j];
+                    if(result == nullptr) {
+                        result = table_scanner[t];
+                    } else if(table_scanner.count(t)){
+                        result =  new ProductOperation(ctx, table_scanner[t], result); 
+                    } else {
+                        continue;
+                    }
+                    table_scanner.erase(t);
+                }
+
+                result = new FilterOperation(ctx, 
+                        result, 
+                        tables_per_filter[i].second, 
+                        data->fields_, data->field_names_, catalog_);
+            }
+            replaceFilteredProductWithJoin(&result);
 
 
             // remaining table outside of filters.
-              for(std::string t : data->table_names_) {
-                  if(!table_scanner.count(t)) continue;
-                  if(result == nullptr)
-                      result = table_scanner[t];
-                  else
-                      result =  new ProductOperation(ctx, table_scanner[t], result);
-              }
-            // handle filters with zero table access.
+            for(std::string t : data->table_names_) {
+                if(!table_scanner.count(t)) continue;
+                if(result == nullptr)
+                    result = table_scanner[t];
+                else
+                    result =  new ProductOperation(ctx, table_scanner[t], result);
+            }
+
+            // handle filters with 0 table access. (can't be pushed down).
             for(int i = 0; i < splitted_where.size(); ++i){
-              if(tables_per_filter[i].first.size() == 0){
-                result = new FilterOperation(ctx, 
-                    result, 
-                    tables_per_filter[i].second, 
-                    data->fields_, data->field_names_, catalog_);
-              }
+                if(tables_per_filter[i].first.size() == 0){
+                    result = new FilterOperation(ctx, 
+                            result, 
+                            tables_per_filter[i].second, 
+                            data->fields_, data->field_names_, catalog_);
+                }
             }
 
 
@@ -671,7 +690,7 @@ class AlgebraEngine {
                 result = new AggregationOperation(ctx, result, data->aggregates_, data->group_by_);
                 // TODO: make a specific having operator and executor.
                 if(data->having_)
-                  result = new FilterOperation(ctx, result, data->having_, data->fields_, data->field_names_, catalog_);
+                    result = new FilterOperation(ctx, result, data->having_, data->fields_, data->field_names_, catalog_);
             }
             if(data->fields_.size())
                 result = new ProjectionOperation(ctx, result, data->fields_);
