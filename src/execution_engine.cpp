@@ -1,6 +1,7 @@
 #pragma once
 #include "catalog.cpp"
 #include "executor.cpp"
+#include "filter_executor.cpp"
 #include "parser.cpp"
 #include "expression.cpp"
 #include "algebra_engine.cpp"
@@ -472,6 +473,7 @@ class InsertionExecutor : public Executor {
         ~InsertionExecutor()
         {}
 
+        // TODO: Not used anymore, delete this before release.
         Value evaluate(ASTNode* item){
             if(item->category_ != FIELD && item->category_ != SCOPED_FIELD){
                 std::cout << "[ERROR] Item type is not supported!" << std::endl;
@@ -593,7 +595,7 @@ class InsertionExecutor : public Executor {
             for(int i = 0; i < statement->values_.size(); ++i){
               ExpressionNode* val_exp = statement->values_[i];
               int idx = table_->colExist(statement->fields_[i]); 
-              vals_[idx] = evaluate_expression(ctx_, val_exp, eval);
+              vals_[idx] = evaluate_expression(ctx_, val_exp, this);
             }
           }
 
@@ -637,242 +639,9 @@ class InsertionExecutor : public Executor {
         InsertStatementData* statement = nullptr;
         int select_idx_ = -1;
         std::vector<Value> vals_  {};
+        // TODO: Not used anymore, delete this before release.
         std::function<Value(ASTNode*)>
             eval = std::bind(&InsertionExecutor::evaluate, this, std::placeholders::_1);
-};
-
-
-class FilterExecutor : public Executor {
-    public:
-        FilterExecutor(Executor* child, TableSchema* output_schema, ExpressionNode* filter, 
-                std::vector<ExpressionNode*>& fields, 
-                std::vector<std::string>& field_names,
-                QueryCTX& ctx,
-                int query_idx,
-                int parent_query_idx
-                )
-            : Executor(FILTER_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child), filter_(filter), 
-              fields_(fields), field_names_(field_names)
-        {}
-        ~FilterExecutor()
-        {
-            delete child_executor_;
-        }
-
-        Value evaluate(ASTNode* item){
-            if(item->category_ == SUB_QUERY){
-                auto sub_query = reinterpret_cast<SubQueryNode*>(item);
-                bool used_with_exists = sub_query->used_with_exists_;
-                Executor* sub_query_executor = ctx_.executors_call_stack_[sub_query->idx_]; 
-                sub_query_executor->init();
-                if(sub_query_executor->error_status_){
-                    std::cout << "[ERROR] could not initialize sub-query" << std::endl;
-                    error_status_ = 1;
-                    return Value();
-                }
-                std::vector<Value> tmp = sub_query_executor->next();
-                if(tmp.size() == 0 && sub_query_executor->finished_) {
-                    if(used_with_exists) return Value(false);
-                    return Value();
-                }
-
-                if(sub_query_executor->error_status_) {
-                    std::cout << "[ERROR] could not execute sub-query" << std::endl;
-                    error_status_ = 1;
-                    return Value();
-                }
-                if(used_with_exists) return Value(tmp.size() != 0);
-                if(tmp.size() != 1) {
-                    std::cout << "[ERROR] sub-query should return exactly 1 column" << std::endl;
-                    error_status_ = 1;
-                    return Value();
-                }
-                return tmp[0];
-            }
-
-            if(item->category_ != FIELD && item->category_ != SCOPED_FIELD){
-                std::cout << "[ERROR] Item type is not supported!" << std::endl;
-                error_status_ = 1;
-                return Value();
-            }
-
-            std::string field = item->token_.val_;
-            int idx = -1;
-            if(item->category_ == SCOPED_FIELD){
-                TableSchema* schema_ptr = output_schema_;
-                int cur_query_idx = query_idx_;
-                int cur_query_parent = parent_query_idx_;
-                int idx = -1;
-                 while(true){
-                    if(!schema_ptr && cur_query_parent != -1){
-                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
-                        schema_ptr = parent_query->output_schema_;
-                        cur_query_idx = parent_query->query_idx_;
-                        cur_query_parent = parent_query->parent_query_idx_;
-                        continue;
-                    } else if(!schema_ptr){
-                        std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
-                        error_status_ = 1;
-                        return Value();
-                    }
-                    std::string table = schema_ptr->getTableName();
-                    table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
-                    std::string col = table;col += "."; col+= field;
-                    idx = schema_ptr->colExist(col);
-
-                    if(idx < 0 && cur_query_parent != -1){
-                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
-                        schema_ptr = parent_query->output_schema_;
-                        cur_query_idx = parent_query->query_idx_;
-                        cur_query_parent = ctx_.executors_call_stack_[cur_query_idx]->parent_query_idx_;
-                        continue;
-                    }
-                    Executor* cur_exec = nullptr;
-                    if(cur_query_idx == query_idx_){
-                      cur_exec = this;
-                    } else {
-                      cur_exec = ctx_.executors_call_stack_[cur_query_idx];
-
-                      while(cur_exec && cur_exec->type_ != SEQUENTIAL_SCAN_EXECUTOR && cur_exec->type_ != PRODUCT_EXECUTOR){
-                        cur_exec = cur_exec->child_executor_;
-                      }
-                    }
-                    if(!cur_exec){
-                        std::cout << "[ERROR] Invalid scoped filter operation"<< std::endl;
-                        error_status_ = 1;
-                        return Value();
-                    }
-                    std::vector<Value> cur_output  = cur_exec->output_;
-
-                    if(idx < 0 || idx >= cur_output.size()) {
-                        std::cout << "[ERROR] Invalid scoped field name for filtering " << col << std::endl;
-                        error_status_ = 1;
-                        return Value();
-                    }
-                    return cur_output[idx];
-                 }
-            } else {
-                TableSchema* schema_ptr = output_schema_;
-                int cur_query_idx = query_idx_;
-                int cur_query_parent = parent_query_idx_;
-                int idx = -1;
-                while(true){
-                    if(!schema_ptr && cur_query_parent != -1){
-                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
-                        schema_ptr = parent_query->output_schema_;
-                        cur_query_idx = parent_query->query_idx_;
-                        cur_query_parent = parent_query->parent_query_idx_;
-                        continue;
-                    } else if(!schema_ptr){
-                        std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
-                        error_status_ = 1;
-                        return Value();
-                    }
-                    int num_of_matches = 0;
-                    auto columns = schema_ptr->getColumns();
-                    for(size_t i = 0; i < columns.size(); ++i){
-                        std::vector<std::string> splittedStr = strSplit(columns[i].getName(), '.');
-                        if(splittedStr.size() != 2) {
-                            std::cout << "[ERROR] Invalid schema " << std::endl;
-                            error_status_ = 1;
-                            return Value();
-                        }
-                        if(field == splittedStr[1]){
-                            num_of_matches++;
-                            idx = i;
-                        }
-                    }
-                    if(num_of_matches > 1){
-                        std::cout << "[ERROR] Ambiguous field name: " << field << std::endl;
-                        error_status_ = 1;
-                        return Value();
-                    }
-                    // if it doesn't match any fields check for renames.
-                    if(idx < 0){
-                        for(int i = 0; i < field_names_.size(); i++){
-                            if(field == field_names_[i]) 
-                                return evaluate_expression(ctx_, fields_[i], eval);
-                        }
-                    }
-                    // can't find the field in current context,
-                    // search for it in context of the parent till the top level query.
-                    if(num_of_matches == 0 && cur_query_parent != -1){
-                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
-                        schema_ptr = parent_query->output_schema_;
-                        cur_query_idx = parent_query->query_idx_;
-                        cur_query_parent = ctx_.executors_call_stack_[cur_query_idx]->parent_query_idx_;
-                        continue;
-                    }
-                    Executor* cur_exec = nullptr;
-                    if(cur_query_idx == query_idx_){
-                      cur_exec  = this;
-                    } else {
-                      Executor* cur_exec = ctx_.executors_call_stack_[cur_query_idx];
-
-                      while(cur_exec != nullptr && cur_exec->type_ != FILTER_EXECUTOR){
-                          cur_exec = cur_exec->child_executor_;
-                      }
-                    }
-                    if(!cur_exec){
-                        std::cout << "[ERROR] Invalid filter operation"<< std::endl;
-                        error_status_ = 1;
-                        return Value();
-                    }
-
-                    std::vector<Value> cur_output  = cur_exec->output_;
-
-                    if(idx < 0 || idx >= cur_output.size()) {
-                        std::string prefix = AGG_FUNC_IDENTIFIER_PREFIX;
-                        if(field.rfind(prefix, 0) == 0)
-                            std::cout << "[ERROR] aggregate functions should not be used in here"<< std::endl;
-                        else 
-                            std::cout << "[ERROR] Invalid field name for filter " << field << std::endl;
-                        error_status_ = 1;
-                        return Value();
-                    }
-                    return cur_output[idx];
-                }
-            }
-        } 
-
-        void init() {
-            error_status_ = 0;
-            finished_ = 0;
-            output_ = {};
-            if(child_executor_) {
-                child_executor_->init();
-            }
-        }
-
-
-        std::vector<Value> next() {
-            while(true){
-                if(error_status_ || finished_)  return {};
-                if(child_executor_) {
-                    output_ = child_executor_->next();
-                    error_status_ = child_executor_->error_status_;
-                    finished_ = child_executor_->finished_;
-                } else {
-                    finished_ = true;
-                }
-
-                if(child_executor_ && ((finished_ || error_status_) && output_.size() == 0)) return {};
-
-                Value exp = evaluate_expression(ctx_, filter_, eval).getBoolVal();
-                if(exp != false && !exp.isNull()){
-                    if(child_executor_){
-                        return output_;
-                    }
-                    return {exp};
-                }
-            }
-        }
-    private:
-        ExpressionNode* filter_ = nullptr;
-        std::vector<ExpressionNode*> fields_ = {};
-        std::vector<std::string> field_names_ = {};
-        std::function<Value(ASTNode*)>
-            eval = std::bind(&FilterExecutor::evaluate, this, std::placeholders::_1);
 };
 
 class AggregationExecutor : public Executor {
@@ -888,6 +657,7 @@ class AggregationExecutor : public Executor {
             delete child_executor_;
         }
 
+        // TODO: Not used anymore, delete this before release.
         Value evaluate(ASTNode* item){
             if(item->category_ != FIELD && item->category_ != SCOPED_FIELD){
                 std::cout << "[ERROR] Item type is not supported!" << std::endl;
@@ -1006,7 +776,7 @@ class AggregationExecutor : public Executor {
                 for(int i = 0; i < aggregates_.size(); i++){
                     ExpressionNode* exp = aggregates_[i]->exp_;
                     if(exp){
-                        Value val = evaluate_expression(ctx_, exp, eval);
+                        Value val = evaluate_expression(ctx_, exp, this);
                         if(aggregates_[i]->distinct_){
                             if(distinct_counters_[i].count(val.toString())) continue;
                             distinct_counters_[i].insert(val.toString());
@@ -1020,7 +790,7 @@ class AggregationExecutor : public Executor {
                                             ++output_[idx];
                                             break;
                                         }
-                                        Value val = evaluate_expression(ctx_, exp, eval);
+                                        Value val = evaluate_expression(ctx_, exp, this);
                                         if(!val.isNull()){
                                             ++output_[idx];
                                         }
@@ -1029,7 +799,7 @@ class AggregationExecutor : public Executor {
                         case AVG:
                         case SUM:
                                    {
-                                       Value val = evaluate_expression(ctx_, exp, eval);
+                                       Value val = evaluate_expression(ctx_, exp, this);
                                        if(output_[idx].isNull() 
                                                && !val.isNull()) output_[idx] = Value(0);
                                        if(val.type_ == INT) {
@@ -1041,7 +811,7 @@ class AggregationExecutor : public Executor {
                                    break;
                         case MIN:
                                    {
-                                       Value val = evaluate_expression(ctx_, exp, eval);
+                                       Value val = evaluate_expression(ctx_, exp, this);
                                        if(val.type_ == INT) {
                                            if(counter->getIntVal() == 1) output_[idx] = val;
                                            if(output_[idx].isNull() || output_[idx] > val) 
@@ -1052,7 +822,7 @@ class AggregationExecutor : public Executor {
                                    break;
                         case MAX:
                                    {
-                                       Value val = evaluate_expression(ctx_, exp, eval);
+                                       Value val = evaluate_expression(ctx_, exp, this);
                                        if(val.type_ == INT) {
                                            if(counter->getIntVal() == 1) output_[idx] = val;
                                            if(output_[idx].isNull() || output_[idx] < val) 
@@ -1111,6 +881,7 @@ class AggregationExecutor : public Executor {
         // second value is the set of values that has been parameters to that function so far.
         std::unordered_map<int, std::set<std::string>> distinct_counters_; 
         std::unordered_map<std::string, std::vector<Value>>::iterator it_;
+        // TODO: Not used anymore, delete this before release.
         std::function<Value(ASTNode*)>
             eval = std::bind(&AggregationExecutor::evaluate, this, std::placeholders::_1);
 };
@@ -1125,6 +896,7 @@ class ProjectionExecutor : public Executor {
             delete child_executor_;
         }
 
+        // TODO: Not used anymore, delete this before release.
         Value evaluate(ASTNode* item){
             if(item->category_ == SUB_QUERY){
                 auto sub_query = reinterpret_cast<SubQueryNode*>(item);
@@ -1301,7 +1073,7 @@ class ProjectionExecutor : public Executor {
                         tmp_output.push_back(val);
                     }
                 } else {
-                    tmp_output.push_back(evaluate_expression(ctx_, fields_[i], eval));
+                    tmp_output.push_back(evaluate_expression(ctx_, fields_[i], this));
                 }
             }
             return tmp_output;
@@ -1309,6 +1081,7 @@ class ProjectionExecutor : public Executor {
     private:
         // child_executor_ is optional in case of projection for example : select 1 + 1 should work without a from clause.
         std::vector<ExpressionNode*> fields_ {};
+        // TODO: Not used anymore, delete this before release.
         std::function<Value(ASTNode*)>
             eval = std::bind(&ProjectionExecutor::evaluate, this, std::placeholders::_1);
 };
@@ -1347,6 +1120,9 @@ class SortExecutor : public Executor {
             std::sort(tuples_.begin(), tuples_.end(), 
                     [&order_by](std::vector<Value>& lhs, std::vector<Value>& rhs){
                         for(int i = 0; i < order_by.size(); i++){
+                            if(lhs[order_by[i]].isNull() && !rhs[order_by[i]].isNull()) return true;
+                            if(!lhs[order_by[i]].isNull()&& rhs[order_by[i]].isNull()) return false;
+                            if(lhs[order_by[i]].isNull() && rhs[order_by[i]].isNull()) return false;
                             if(lhs[order_by[i]] != rhs[order_by[i]]) {
                                 return lhs[order_by[i]] < rhs[order_by[i]];
                             }
