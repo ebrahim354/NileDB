@@ -92,7 +92,6 @@ class ProductExecutor : public Executor {
         Executor* right_child_ = nullptr;
 };
 
-#define HASH_KEY_PREFIX "HASH_KEY_PREFIX"
 
 class JoinExecutor : public Executor {
     public:
@@ -121,6 +120,7 @@ class JoinExecutor : public Executor {
             prev_key_ = "";
             duplicated_idx_ = -1;
             hashed_left_child_.clear();
+            non_visited_left_keys_.clear();
             right_child_fields_.clear();
             left_child_fields_.clear();
             // find out which attributes to use as keys for the hash table.
@@ -146,19 +146,20 @@ class JoinExecutor : public Executor {
                 error_status_ = 1;
                 return;
             }
-            // should at least have one field on each side or the join does not make any sense.
-            /*
+            // should at least have one field on each side or hash join does not make any sense.
+            // getting to this point without a key on each side means that hash join was picked wrongly,
+            // and a nested loop join was more appropriate.
+            assert(left_child_fields_.size() != 0 && right_child_fields_.size() != 0);
             if(left_child_fields_.size() == 0 || right_child_fields_.size() == 0){
                 error_status_ = 1;
                 return;
-            }*/
+            }
             // build the hash table.
             while(!left_child_->finished_ && !left_child_->error_status_){
                 std::vector<Value> left_output = left_child_->next();
                 if(left_output.size() == 0) continue;
                 // build the hash key and assume non-unique keys.
-                //std::string key = "";
-                std::string key = HASH_KEY_PREFIX;
+                std::string key = "";
                 for(int i = 0; i < left_child_fields_.size(); ++i){
                     int idx = left_child_fields_[i]; 
                     if(idx >= left_output.size()){
@@ -167,15 +168,21 @@ class JoinExecutor : public Executor {
                     }
                     key += left_output[idx].toString();
                 }
-                if(hashed_left_child_.count(key)) hashed_left_child_[key].push_back(left_output);
-                else hashed_left_child_[key] = {left_output};
+                if(hashed_left_child_.count(key)) 
+                    hashed_left_child_[key].push_back(left_output);
+                else {
+                    hashed_left_child_[key] = {left_output};
+                    non_visited_left_keys_.insert(key);
+                }
             }
         }
 
+        // TODO: implement merg an nested loop joines, 
+        // hash join is not good for cases of none equality conditions, and full outer joins.
         std::vector<Value> next() {
             if(error_status_ || finished_)  return {};
 
-            while(true){
+            while(!right_child_->finished_){
                 if(duplicated_idx_ != -1){
                     duplicated_idx_++;
                     // no need to change the right output.
@@ -184,22 +191,23 @@ class JoinExecutor : public Executor {
                     }
                     if(duplicated_idx_+1 >= hashed_left_child_[prev_key_].size())
                         duplicated_idx_ = -1;
-                    finished_ = right_child_->finished_ && duplicated_idx_ == -1;
+                    //finished_ = right_child_->finished_ && duplicated_idx_ == -1;
                     Value v = evaluate_expression(ctx_, filter_, this);
                     if(!v.isNull() && v.getBoolVal() == true)
                         return output_;
                     continue;
                 }
 
+                std::vector<Value> right_output;
                 while(true){
-                    std::vector<Value> right_output = right_child_->next();
+                    right_output = right_child_->next();
                     if(right_output.size() == 0) {
-                        finished_ = true;
-                        return {};
+                        //finished_ = true;
+                        //return {};
+                        break;
                     }
                     // build the hash key. 
-                    //std::string key = "";
-                    std::string key = HASH_KEY_PREFIX;
+                    std::string key = "";
                     for(int i = 0; i < right_child_fields_.size(); ++i){
                         int idx = right_child_fields_[i]; 
                         if(idx >= right_output.size()){
@@ -208,8 +216,17 @@ class JoinExecutor : public Executor {
                         }
                         key += right_output[idx].toString();
                     }
-                    if(!hashed_left_child_.count(key))
+                    if(!hashed_left_child_.count(key) && (join_type_ == RIGHT_JOIN || join_type_ == FULL_JOIN)){
+                        int start = output_.size()-right_output.size();
+                        for(int i = 0; i < output_.size(); ++i){
+                            output_[i] = (i < start) ? Value(NULL_TYPE) : right_output[i-start];
+                        }
+                        return output_;
+                    } else if(!hashed_left_child_.count(key)){
                         continue;
+                    }
+                    // this key is now visited so no need to count it for left joins.
+                    if(non_visited_left_keys_.count(key)) non_visited_left_keys_.erase(key);
 
                     for(int i = 0;i < right_output.size(); ++i)
                         output_[i+(output_.size() - right_output.size())] = right_output[i];
@@ -224,12 +241,38 @@ class JoinExecutor : public Executor {
                     }
                     break;
                 }
-
-                finished_ = right_child_->finished_ && duplicated_idx_ == -1;
+                if(right_output.size() == 0) break;
+                // if this is an outer join don't finish yet, 
+                // we still need to look at the non visited left keys.
+                // finished_ = right_child_->finished_ && duplicated_idx_ == -1;
                 Value v = evaluate_expression(ctx_, filter_, this);
                 if(!v.isNull() && v.getBoolVal() == true)
                     return output_;
             }
+            // we got out of the loop but this is not an outer join,
+            // or it is an outer join but all keys were visited, then we are done.
+            if((join_type_ != LEFT_JOIN && join_type_!= FULL_JOIN) || non_visited_left_keys_.size() == 0) {
+                finished_ = true;
+                return {};
+            }
+            std::string key = *(non_visited_left_keys_.begin());
+
+            int duplications = hashed_left_child_[key].size();
+            if(duplicated_idx_ == -1)
+                duplicated_idx_ = 0;
+            for(int i = 0; i < hashed_left_child_[key][duplicated_idx_].size(); ++i){
+                output_[i] = hashed_left_child_[key][duplicated_idx_][i];
+            }
+            // TODO: redundent should be done onle once not on every iteration.
+            for(int i = hashed_left_child_[key][duplicated_idx_].size(); i < output_.size(); ++i) {
+                output_[i] = Value(NULL_TYPE);
+            }
+            duplicated_idx_++;
+            if(duplicated_idx_ == duplications){
+                non_visited_left_keys_.erase(key);
+                duplicated_idx_ = -1;
+            }
+            return output_;
         }
     private:
         Executor* left_child_ = nullptr;
@@ -246,6 +289,8 @@ class JoinExecutor : public Executor {
         std::vector<int> right_child_fields_;
         ExpressionNode* filter_ = nullptr;
         std::unordered_map<std::string, std::vector<std::vector<Value>>> hashed_left_child_;
+        // tracks left keys that didn't find a match and can be used for left and full outer joins.
+        std::set<std::string> non_visited_left_keys_; 
 };
 
 class UnionExecutor : public Executor {
