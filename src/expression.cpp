@@ -366,7 +366,8 @@ Value evaluate_expression(
                           Value cur = evaluate_expression(ctx, u->cur_, this_exec, true, eval_sub_query);
                           if(cur.isNull()) return cur;
                           if(u->token_.type_ == TokenType::MINUS){
-                              return Value(cur.getIntVal()*-1);
+                              cur *= Value(-1);
+                              return Value(cur);
                           }
                           return cur;
                       } 
@@ -414,11 +415,23 @@ Value evaluate_expression(
                       }
         case FLOAT_CONSTANT:
                       {
-                          return Value(str_to_float(expression->token_.val_));
+                          errno = 0;
+                          float val = str_to_float(expression->token_.val_);
+                          if(!errno) return Value(val);
+
+                          errno = 0;
+                          double dval = str_to_double(expression->token_.val_);
+                          assert(errno == 0);
+                          return Value(dval);
                       }
         case INTEGER_CONSTANT: 
                       {
-                          return Value(str_to_int(expression->token_.val_));
+                          errno = 0;
+                          long long val = str_to_ll(expression->token_.val_);
+                          assert(errno == 0);
+                          if(val < INT_MAX && val > INT_MIN)
+                              return Value((int) val);
+                          return Value(val);
                       }
         case NULL_CONSTANT: 
                       {

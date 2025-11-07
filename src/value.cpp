@@ -6,6 +6,8 @@
 #include "utils.cpp"
 
 #define EPS 1e-6
+#define INT32_MX 2147483647
+#define INT32_MN -2147483648
 class Value;
 int value_cmp(Value lhs, Value rhs);
 
@@ -43,7 +45,7 @@ class Value {
             this->type_ = rhs.type_;
         } 
 
-        Value& operator=(const Value& rhs){
+        Value& operator=(const Value& rhs) {
             this->size_ = rhs.size_;
             if(!rhs.isNull()){
                 //delete[] this->content_;
@@ -56,47 +58,118 @@ class Value {
             return *this;
         } 
 
-        Value& operator+=(const Value& rhs){
+        bool cast_up() {
+            if(type_ == INT){
+                long val = *(int*)content_;
+                free(content_);
+                size_ = 8;
+                content_ = (char*) malloc(size_);
+                *(long*)content_ = val;
+                type_ = BIGINT;
+                return true;
+            } 
+            if(type_ == FLOAT){
+                double val = *(float*)content_;
+                free(content_);
+                size_ = 8;
+                content_ = (char*) malloc(size_);
+                *(double*)content_ = val;
+                return true;
+            } 
+            assert(0);
+            return false;
+        }
+
+
+        Value& operator+=(const Value& rhs) {
             if(rhs.isNull() ||  isNull()) {
                 type_ = NULL_TYPE;
                 return *this;
             } 
-            switch (type_) {
-                case INT : {
-                               if(rhs.type_ == INT) {
-                                   assert(size_ == 4 && rhs.size_ == 4);
-                                   *(int*)content_ += rhs.getIntVal();
-                               } else if(rhs.type_ == FLOAT) {
-                                   assert(size_ == 4 && rhs.size_ == 4);
-                                   float val = *(int*)content_;
-                                   val += rhs.getFloatVal();
-                                   *(float*)content_ = val; 
-                                   type_ = FLOAT;
-                               } else {
-                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+            for(;;){
+                switch (type_) {
+                    // TODO: check for overflows, underflows in double, bigint.
+                    case DOUBLE:{
+                                    if(rhs.type_ == INT || rhs.type_ == BIGINT) {
+                                        *(double*)content_ += rhs.type_ == INT ? rhs.getIntVal() : rhs.getBigIntVal();
+                                    } else if(rhs.type_ == FLOAT) {
+                                        *(double*)content_ += rhs.getFloatVal();
+                                    } else if(rhs.type_ == DOUBLE){
+                                        *(double*)content_ += rhs.getDoubleVal();
+                                    } else {
+                                        assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                    }
+                                }
+                                return *this;
+                    case BIGINT:{
+                                    if(rhs.type_ == INT) {
+                                        *(long*)content_ += rhs.getIntVal();
+                                    } else if(rhs.type_ == FLOAT || rhs.type_ == DOUBLE) {
+                                        double val = getBigIntVal();
+                                        val += rhs.type_ == FLOAT ? rhs.getFloatVal() : rhs.getDoubleVal();
+                                        *(double*)content_ = val; 
+                                        type_ = DOUBLE;
+                                    } else if(rhs.type_ == BIGINT) {
+                                        *(long*)content_ += rhs.getBigIntVal();
+                                    } else {
+                                        assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                    }
+                                }
+                                return *this;
+                    case INT : {
+                                   if(rhs.type_ == INT) {
+                                       long res = (long) getIntVal() + (long) rhs.getIntVal();
+                                       if(res > INT32_MX || res < INT32_MN) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(int*)content_ = (int) res; 
+                                   } else if(rhs.type_ == FLOAT) {
+                                       float res = (float) getIntVal() + rhs.getFloatVal();
+                                       if(isinf(res) || isnan(res)) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(float*)content_ = (float) res; 
+                                       type_ = FLOAT;
+                                   } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
+                                       cast_up();
+                                       continue;
+                                   } else {
+                                       assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                   }
                                }
-                           }
-                    break;
-                case FLOAT:{
-                               if(rhs.type_ == INT) {
-                                   assert(size_ == 4 && rhs.size_ == 4);
-                                   *(float*)content_ += rhs.getIntVal();
-                               } else if(rhs.type_ == FLOAT) {
-                                   assert(size_ == 4 && rhs.size_ == 4);
-                                   *(float*)content_ += rhs.getFloatVal();
-                               } else {
-                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                               return *this;
+                    case FLOAT:{
+                                   if(rhs.type_ == INT) {
+                                       float res = getFloatVal() + rhs.getIntVal();
+                                       if(isinf(res) || isnan(res)) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(float*)content_ = res;
+                                   } else if(rhs.type_ == FLOAT) {
+                                       float res = getFloatVal() + rhs.getFloatVal();
+                                       if(isinf(res) || isnan(res)) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(float*)content_ = rhs.getFloatVal();
+                                   } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
+                                       cast_up();
+                                       continue;
+                                   } else {
+                                       assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                   }
                                }
-                           }
-                    break;
-                case BIGINT:
-                case VARCHAR: 
-                case BOOLEAN:
-                case DOUBLE:
-                case NULL_TYPE:
-                case INVALID:
-                default :
-                     assert(0 && "OPERATOR NOT SUPPORTED FOR THIS TYPE!");
+                               return *this;
+                    case VARCHAR: 
+                    case BOOLEAN:
+                    case NULL_TYPE:
+                    case INVALID:
+                    default :
+                               assert(0 && "OPERATOR NOT SUPPORTED FOR THIS TYPE!");
+                }
             }
             return *this;
         } 
@@ -106,42 +179,90 @@ class Value {
                 type_ = NULL_TYPE;
                 return *this;
             } 
-            switch (type_) {
-                case INT : {
-                               if(rhs.type_ == INT) {
-                                   assert(size_ == 4 && rhs.size_ == 4);
-                                   *(int*)content_ -= rhs.getIntVal();
-                               } else if(rhs.type_ == FLOAT) {
-                                   assert(size_ == 4 && rhs.size_ == 4);
-                                   float val = *(int*)content_;
-                                   val -= rhs.getFloatVal();
-                                   *(float*)content_ = val; 
-                                   type_ = FLOAT;
-                               } else {
-                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+            for(;;){
+                switch (type_) {
+                    // TODO: check for overflows, underflows in double, bigint.
+                    case DOUBLE:{
+                                    if(rhs.type_ == INT || rhs.type_ == BIGINT) {
+                                        *(double*)content_ -= rhs.type_ == INT ? rhs.getIntVal() : rhs.getBigIntVal();
+                                    } else if(rhs.type_ == FLOAT) {
+                                        *(double*)content_ -= rhs.getFloatVal();
+                                    } else if(rhs.type_ == DOUBLE){
+                                        *(double*)content_ -= rhs.getDoubleVal();
+                                    } else {
+                                        assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                    }
+                                }
+                                return *this;
+                    case BIGINT:{
+                                    if(rhs.type_ == INT) {
+                                        *(long*)content_ -= rhs.getIntVal();
+                                    } else if(rhs.type_ == FLOAT || rhs.type_ == DOUBLE) {
+                                        double val = getBigIntVal();
+                                        val -= rhs.type_ == FLOAT ? rhs.getFloatVal() : rhs.getDoubleVal();
+                                        *(double*)content_ = val; 
+                                        type_ = DOUBLE;
+                                    } else if(rhs.type_ == BIGINT) {
+                                        *(long*)content_ -= rhs.getBigIntVal();
+                                    } else {
+                                        assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                    }
+                                }
+                                return *this;
+                    case INT : {
+                                   if(rhs.type_ == INT) {
+                                       long res = (long) getIntVal() - (long) rhs.getIntVal();
+                                       if(res > INT32_MX || res < INT32_MN) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(int*)content_ = (int) res; 
+                                   } else if(rhs.type_ == FLOAT) {
+                                       float res = (float) getIntVal() - rhs.getFloatVal();
+                                       if(isinf(res) || isnan(res)) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(float*)content_ = (float) res; 
+                                       type_ = FLOAT;
+                                   } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
+                                       cast_up();
+                                       continue;
+                                   } else {
+                                       assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                   }
                                }
-                           }
-                    break;
-                case FLOAT:{
-                               if(rhs.type_ == INT) {
-                                   assert(size_ == 4 && rhs.size_ == 4);
-                                   *(float*)content_ -= rhs.getIntVal();
-                               } else if(rhs.type_ == FLOAT) {
-                                   assert(size_ == 4 && rhs.size_ == 4);
-                                   *(float*)content_ -= rhs.getFloatVal();
-                               } else {
-                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                               return *this;
+                    case FLOAT:{
+                                   if(rhs.type_ == INT) {
+                                       float res = getFloatVal() - rhs.getIntVal();
+                                       if(isinf(res) || isnan(res)) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(float*)content_ = res;
+                                   } else if(rhs.type_ == FLOAT) {
+                                       float res = getFloatVal() - rhs.getFloatVal();
+                                       if(isinf(res) || isnan(res)) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(float*)content_ = rhs.getFloatVal();
+                                   } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
+                                       cast_up();
+                                       continue;
+                                   } else {
+                                       assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                   }
                                }
-                           }
-                    break;
-                case BIGINT:
-                case VARCHAR: 
-                case BOOLEAN:
-                case DOUBLE:
-                case NULL_TYPE:
-                case INVALID:
-                default :
-                     assert(0 && "OPERATOR NOT SUPPORTED FOR THIS TYPE!");
+                               return *this;
+                    case VARCHAR: 
+                    case BOOLEAN:
+                    case NULL_TYPE:
+                    case INVALID:
+                    default :
+                               assert(0 && "OPERATOR NOT SUPPORTED FOR THIS TYPE!");
+                }
             }
             return *this;
         } 
@@ -151,42 +272,90 @@ class Value {
                 type_ = NULL_TYPE;
                 return *this;
             } 
-            switch (type_) {
-                case INT : {
-                               if(rhs.type_ == INT) {
-                                   assert(size_ == 4 && rhs.size_ == 4);
-                                   *(int*)content_ *= rhs.getIntVal();
-                               } else if(rhs.type_ == FLOAT) {
-                                   assert(size_ == 4 && rhs.size_ == 4);
-                                   float val = *(int*)content_;
-                                   val *= rhs.getFloatVal();
-                                   *(float*)content_ = val; 
-                                   type_ = FLOAT;
-                               } else {
-                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+            for(;;){
+                switch (type_) {
+                    // TODO: check for overflows, underflows in double, bigint.
+                    case DOUBLE:{
+                                    if(rhs.type_ == INT || rhs.type_ == BIGINT) {
+                                        *(double*)content_ *= rhs.type_ == INT ? rhs.getIntVal() : rhs.getBigIntVal();
+                                    } else if(rhs.type_ == FLOAT) {
+                                        *(double*)content_ *= rhs.getFloatVal();
+                                    } else if(rhs.type_ == DOUBLE){
+                                        *(double*)content_ *= rhs.getDoubleVal();
+                                    } else {
+                                        assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                    }
+                                }
+                                return *this;
+                    case BIGINT:{
+                                    if(rhs.type_ == INT) {
+                                        *(long*)content_ *= rhs.getIntVal();
+                                    } else if(rhs.type_ == FLOAT || rhs.type_ == DOUBLE) {
+                                        double val = getBigIntVal();
+                                        val *= rhs.type_ == FLOAT ? rhs.getFloatVal() : rhs.getDoubleVal();
+                                        *(double*)content_ = val; 
+                                        type_ = DOUBLE;
+                                    } else if(rhs.type_ == BIGINT) {
+                                        *(long*)content_ *= rhs.getBigIntVal();
+                                    } else {
+                                        assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                    }
+                                }
+                                return *this;
+                    case INT : {
+                                   if(rhs.type_ == INT) {
+                                       long res = (long) getIntVal() * (long) rhs.getIntVal();
+                                       if(res > INT32_MX || res < INT32_MN) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(int*)content_ = (int) res; 
+                                   } else if(rhs.type_ == FLOAT) {
+                                       float res = (float) getIntVal() * rhs.getFloatVal();
+                                       if(isinf(res) || isnan(res)) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(float*)content_ = (float) res; 
+                                       type_ = FLOAT;
+                                   } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
+                                       cast_up();
+                                       continue;
+                                   } else {
+                                       assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                   }
                                }
-                           }
-                    break;
-                case FLOAT:{
-                               if(rhs.type_ == INT) {
-                                   assert(size_ == 4 && rhs.size_ == 4);
-                                   *(float*)content_ *= rhs.getIntVal();
-                               } else if(rhs.type_ == FLOAT) {
-                                   assert(size_ == 4 && rhs.size_ == 4);
-                                   *(float*)content_ *= rhs.getFloatVal();
-                               } else {
-                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                               return *this;
+                    case FLOAT:{
+                                   if(rhs.type_ == INT) {
+                                       float res = getFloatVal() * rhs.getIntVal();
+                                       if(isinf(res) || isnan(res)) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(float*)content_ = res;
+                                   } else if(rhs.type_ == FLOAT) {
+                                       float res = getFloatVal() * rhs.getFloatVal();
+                                       if(isinf(res) || isnan(res)) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(float*)content_ = rhs.getFloatVal();
+                                   } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
+                                       cast_up();
+                                       continue;
+                                   } else {
+                                       assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                   }
                                }
-                           }
-                    break;
-                case BIGINT:
-                case VARCHAR: 
-                case BOOLEAN:
-                case DOUBLE:
-                case NULL_TYPE:
-                case INVALID:
-                default :
-                     assert(0 && "OPERATOR NOT SUPPORTED FOR THIS TYPE!");
+                               return *this;
+                    case VARCHAR: 
+                    case BOOLEAN:
+                    case NULL_TYPE:
+                    case INVALID:
+                    default :
+                               assert(0 && "OPERATOR NOT SUPPORTED FOR THIS TYPE!");
+                }
             }
             return *this;
         } 
@@ -196,49 +365,109 @@ class Value {
                 type_ = NULL_TYPE;
                 return *this;
             } 
-            switch (type_) {
-                case INT : {
-                               if(rhs.type_ == INT) {
-                                   int rhs_int = rhs.getIntVal();
-                                   assert(size_ == 4 && rhs.size_ == 4 && rhs_int != 0);
-                                   *(int*)content_ /= rhs_int;
-                               } else if(rhs.type_ == FLOAT) {
-                                   float rhs_float = rhs.getFloatVal();
-                                   assert(size_ == 4 && rhs.size_ == 4 && rhs_float != 0.0);
-                                   float val = *(int*)content_;
-                                   val /= rhs_float; 
-                                   *(float*)content_ = val; 
-                                   type_ = FLOAT;
-                               } else {
-                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+            for(;;){
+                switch (type_) {
+                    // TODO: check for overflows, underflows in double, bigint.
+                    case DOUBLE:{
+                                    if(rhs.type_ == INT || rhs.type_ == BIGINT) {
+                                        long val = rhs.type_ == INT ? rhs.getIntVal() : rhs.getBigIntVal();
+                                        assert(val != 0 && "division by 0");
+                                        *(double*)content_ /= val;
+                                    } else if(rhs.type_ == FLOAT) {
+                                        float val = rhs.getFloatVal(); 
+                                        assert(val != 0 && "division by 0");
+                                        *(double*)content_ /= val; 
+                                    } else if(rhs.type_ == DOUBLE){
+                                        double val = rhs.getDoubleVal(); 
+                                        assert(val != 0 && "division by 0");
+                                        *(double*)content_ /= val;
+                                    } else {
+                                        assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                    }
+                                }
+                                return *this;
+                    case BIGINT:{
+                                    if(rhs.type_ == INT) {
+                                        long val = rhs.getIntVal();
+                                        assert(val != 0 && "division by 0");
+                                        *(long*)content_ /= val; 
+                                    } else if(rhs.type_ == FLOAT || rhs.type_ == DOUBLE) {
+                                        double val = getBigIntVal();
+                                        double denom = rhs.type_ == FLOAT ? rhs.getFloatVal() : rhs.getDoubleVal();
+                                        assert(denom != 0 && "division by 0");
+                                        val /= denom;
+                                        *(double*)content_ = val; 
+                                        type_ = DOUBLE;
+                                    } else if(rhs.type_ == BIGINT) {
+                                        long val = rhs.getBigIntVal();
+                                        assert(val != 0 && "division by 0");
+                                        *(long*)content_ /= val;
+                                    } else {
+                                        assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                    }
+                                }
+                                return *this;
+                    case INT : {
+                                   if(rhs.type_ == INT) {
+                                       assert(rhs.getIntVal() != 0 && "division by 0");
+                                       long res = (long) getIntVal() / (long) rhs.getIntVal();
+                                       if(res > INT32_MX || res < INT32_MN) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(int*)content_ = (int) res; 
+                                   } else if(rhs.type_ == FLOAT) {
+                                       assert(rhs.getFloatVal() != 0 && "division by 0");
+                                       float res = (float) getIntVal() / rhs.getFloatVal();
+                                       if(isinf(res) || isnan(res)) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(float*)content_ = (float) res; 
+                                       type_ = FLOAT;
+                                   } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
+                                       cast_up();
+                                       continue;
+                                   } else {
+                                       assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                   }
                                }
-                           }
-                    break;
-                case FLOAT:{
-                               if(rhs.type_ == INT) {
-                                   int rhs_int = rhs.getIntVal();
-                                   assert(size_ == 4 && rhs.size_ == 4 && rhs_int != 0);
-                                   *(float*)content_ /= rhs_int;
-                               } else if(rhs.type_ == FLOAT) {
-                                   float rhs_float = rhs.getFloatVal();
-                                   assert(size_ == 4 && rhs.size_ == 4 && rhs_float != 0.0);
-                                   *(float*)content_ /= rhs_float;
-                               } else {
-                                   assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                               return *this;
+                    case FLOAT:{
+                                   if(rhs.type_ == INT) {
+                                       assert(rhs.getIntVal() != 0 && "division by 0");
+                                       float res = getFloatVal() / rhs.getIntVal();
+                                       if(isinf(res) || isnan(res)) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(float*)content_ = res;
+                                   } else if(rhs.type_ == FLOAT) {
+                                       assert(rhs.getFloatVal() != 0 && "division by 0");
+                                       float res = getFloatVal() / rhs.getFloatVal();
+                                       if(isinf(res) || isnan(res)) {
+                                           cast_up();
+                                           continue;
+                                       }
+                                       *(float*)content_ = rhs.getFloatVal();
+                                   } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
+                                       cast_up();
+                                       continue;
+                                   } else {
+                                       assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                   }
                                }
-                           }
-                    break;
-                case BIGINT:
-                case VARCHAR: 
-                case BOOLEAN:
-                case DOUBLE:
-                case NULL_TYPE:
-                case INVALID:
-                default :
-                     assert(0 && "OPERATOR NOT SUPPORTED FOR THIS TYPE!");
+                               return *this;
+                    case VARCHAR: 
+                    case BOOLEAN:
+                    case NULL_TYPE:
+                    case INVALID:
+                    default :
+                               assert(0 && "OPERATOR NOT SUPPORTED FOR THIS TYPE!");
+                }
             }
             return *this;
-        } 
+        }
 
         Value operator-(Value rhs) {
             assert(size_ == rhs.size_);
@@ -246,6 +475,36 @@ class Value {
                 return Value(NULL_TYPE);
             } 
             switch (type_) {
+                    // TODO: check for overflows, underflows in double, bigint.
+                    case DOUBLE:{
+                                    if(rhs.type_ == INT || rhs.type_ == BIGINT) {
+                                        return Value(
+                                                getDoubleVal() - (
+                                                        rhs.type_ == INT ? 
+                                                        rhs.getIntVal() : rhs.getBigIntVal()
+                                                        )
+                                                );
+                                    } else if(rhs.type_ == FLOAT) {
+                                        return Value(getDoubleVal() - rhs.getFloatVal());
+                                    } else if(rhs.type_ == DOUBLE){
+                                        return Value(getDoubleVal() - rhs.getDoubleVal());
+                                    } else {
+                                        assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                    }
+                                }
+                    case BIGINT:{
+                                    if(rhs.type_ == INT) {
+                                        return Value(getBigIntVal() - rhs.getIntVal());
+                                    } else if(rhs.type_ == FLOAT || rhs.type_ == DOUBLE) {
+                                        double val = getBigIntVal();
+                                        val -= rhs.type_ == FLOAT ? rhs.getFloatVal() : rhs.getDoubleVal();
+                                        return Value(val);
+                                    } else if(rhs.type_ == BIGINT) {
+                                        return Value(getBigIntVal() - rhs.getBigIntVal());
+                                    } else {
+                                        assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                                    }
+                                }
                 case INT : {
                                if(rhs.type_ == INT) {
                                    return Value(*(int*)content_ - rhs.getIntVal());
@@ -275,9 +534,7 @@ class Value {
                                  }
                              }
                     break;
-                case BIGINT:
                 case VARCHAR: 
-                case DOUBLE:
                 case NULL_TYPE:
                 case INVALID:
                 default :
@@ -473,19 +730,25 @@ int value_cmp(Value lhs, Value rhs) {
     if(rhs.content_  && !lhs.content_ ) return -1;
     if(!rhs.content_ && !lhs.content_ ) return 0;
 
+    if((lhs.type_ == BIGINT || lhs.type_ == DOUBLE) && (rhs.type_ == FLOAT || rhs.type_ == INT))
+        rhs.cast_up();
+
+    if((rhs.type_ == BIGINT || rhs.type_ == DOUBLE) && (lhs.type_ == FLOAT || lhs.type_ == INT))
+        lhs.cast_up();
+
     if(lhs.size_ != rhs.size_){
         assert(0 && "INVALID COMPARISON");
     }
     Value v = lhs - rhs;
     int diff = 0;
-    if(v.type_ == FLOAT){
-        float fval = v.getFloatVal();
-        if(fabsf(fval) > EPS){
-            if(fval < 0.0) diff = -1;
+    if(v.type_ == FLOAT || v.type_ == DOUBLE){
+        double dval = (v.type_ == FLOAT ? v.getFloatVal() : v.getDoubleVal());
+        if(fabs(dval) > EPS){
+            if(dval < 0.0) diff = -1;
             else diff = 1;
         }
-    } else if(v.type_ == INT){
-        diff = v.getIntVal();
+    } else if(v.type_ == INT || v.type_ == BIGINT){
+        diff = v.type_ == INT ? v.getIntVal() : v.getBigIntVal();
     } else {
         assert(0 && "Type comparison not supported yet!");
     }

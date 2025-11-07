@@ -597,9 +597,22 @@ Value Parser::constVal(QueryCTX& ctx){
         case TokenType::STR_CONSTANT:
             return Value(token.val_);
         case TokenType::FLOATING_CONSTANT:
-            return Value(str_to_float(token.val_));
+        {
+            errno = 0;
+            float val = str_to_float(token.val_);
+            if(!errno) return Value(val);
+            errno = 0;
+            double dval = str_to_float(token.val_);
+            assert(errno == 0);
+            return Value(dval);
+        }
         case TokenType::NUMBER_CONSTANT:
-            return Value(str_to_int(token.val_));
+        {
+            long long val = str_to_ll(token.val_);
+            if(val < LONG_MAX && val > LONG_MIN)
+                return Value((int) val);
+            return Value(val);
+        }
         case TokenType::TRUE:
             return Value(true);
         case TokenType::FALSE:

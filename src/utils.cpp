@@ -1,6 +1,7 @@
 #pragma once
 
 #include <sstream>
+#include <climits>
 #include <string>
 #include <vector>
 
@@ -47,7 +48,12 @@ bool areDigits(std::string& nums, int* floating_sign = nullptr){
     return (are_digits && nums.size() > 0);
 }
 
-int str_to_int(std::string& s){
+long long str_to_ll(std::string& s) {
+    return strtoll(s.c_str(), NULL, 10);
+}
+/*
+long long str_to_ll(std::string& s){
+    return strtoll(s.c_str(), NULL, 10);
     int start = 0;
     if(s.size() > 0 && s[0] == '-') start = 1;
     if(!areDigits(s)) return 0;
@@ -55,8 +61,15 @@ int str_to_int(std::string& s){
         if (s[i] > '9' || s[i] < '0') 
             return 0;
     return (s[0] == '-' ? -stoi(s) : stoi(s));
-}
+}*/
 
+float str_to_float(std::string& s) {
+    return strtof(s.c_str(), NULL);
+}
+double str_to_double(std::string& s) {
+    return strtod(s.c_str(), NULL);
+}
+/*
 float str_to_float(std::string& s){
     int start = 0;
     if(s.size() > 0 && s[0] == '-') start = 1;
@@ -68,27 +81,7 @@ float str_to_float(std::string& s){
             return 0;
     }
     return (s[0] == '-' ? -(stof(s)) : stof(s));
-}
-
-std::string compareStr(std::string& a, std::string& b, std::string& cmp){
-    if(areDigits(a) && areDigits(b)){
-        if(cmp == ">" && str_to_int(a) > str_to_int(b)) return "1";
-        else if(cmp == ">") return "0";
-
-        if(cmp == "<" && str_to_int(a) < str_to_int(b)) return "1";
-        else if(cmp == "<") return "0";
-
-        if(cmp == ">=" && str_to_int(a) >= str_to_int(b)) return "1";
-        else if(cmp == ">=") return "0";
-
-        if(cmp == "<=" && str_to_int(a) <= str_to_int(b)) {
-            return "1";
-        }
-        else if(cmp == "<=") return "0";
-    }
-    return "0";
-}
-
+}*/
 
 std::string removeExt(std::string n, int s){
 	while(s--){
@@ -111,7 +104,7 @@ std::string doubleToStr(double d){
     return s;
 }
 
-std::string intToStr(int t){
+std::string intToStr(long long t){
     if(t == 0) return "0";
     std::string str = "";
     if(t < 0)  {
