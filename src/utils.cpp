@@ -97,12 +97,6 @@ int strToInt(std::string str){
 	return tmp;
 }
 
-std::string doubleToStr(double d){
-    std::ostringstream ss;
-    ss << d;
-    std::string s(ss.str());
-    return s;
-}
 
 std::string intToStr(long long t){
     if(t == 0) return "0";
@@ -122,15 +116,31 @@ std::string intToStr(long long t){
 	return str;
 }
 
+std::string doubleToStr(double d){
+    long long caster = d;
+    if(d == caster) return intToStr(caster);
+    std::string temp =  std::to_string(d);
+    while(temp[temp.size() - 1] == '0') temp.pop_back();
+    return temp;
+    /*
+    std::ostringstream ss;
+    ss << d;
+    std::string s(ss.str());
+    return s;*/
+}
+
 std::string floatToStr(float f){
     int caster = f;
-    //if(f == caster) return intToStr(caster);
-    return intToStr(caster);
+    if(f == caster) return intToStr(caster);
+    std::string temp =  std::to_string(f);
+    while(temp[temp.size() - 1] == '0') temp.pop_back();
+    return temp;
+    /*
     std::ostringstream ss;
     ss << std::fixed;
     ss << f;
     std::string s(ss.str());
-    return s;
+    return s;*/
 }
 
 

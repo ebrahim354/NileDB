@@ -956,7 +956,7 @@ class AggregationExecutor : public Executor {
                                        Value val = evaluate_expression(ctx_, exp, this);
                                        if(output_[idx].isNull() 
                                                && !val.isNull()) output_[idx] = Value(0);
-                                       if(val.type_ == INT) {
+                                       if(!val.isNull()) {
                                            output_[idx] += val;
                                        }
                                        else if(val.isNull())
@@ -966,8 +966,7 @@ class AggregationExecutor : public Executor {
                         case MIN:
                                    {
                                        Value val = evaluate_expression(ctx_, exp, this);
-                                       if(val.type_ == INT) {
-                                           if(counter->getIntVal() == 1) output_[idx] = val;
+                                       if(!val.isNull()) {
                                            if(output_[idx].isNull() || output_[idx] > val) 
                                                output_[idx] = val;
                                            //output_[idx] = std::min<Value>(output_[idx], val);
@@ -977,8 +976,7 @@ class AggregationExecutor : public Executor {
                         case MAX:
                                    {
                                        Value val = evaluate_expression(ctx_, exp, this);
-                                       if(val.type_ == INT) {
-                                           if(counter->getIntVal() == 1) output_[idx] = val;
+                                       if(!val.isNull()) {
                                            if(output_[idx].isNull() || output_[idx] < val) 
                                                output_[idx] = val;
                                            //output_[idx] = std::max<Value>(output_[i], val);
@@ -1005,7 +1003,7 @@ class AggregationExecutor : public Executor {
             output_ = it_->second;
             for(int i = 0; i < aggregates_.size(); i++){
                 int idx = (i + output_.size() - aggregates_.size())- 1;
-                if(aggregates_[i]->type_ == AVG && output_[output_.size()-1].getIntVal() != 0){
+                if(aggregates_[i]->type_ == AVG && output_[output_.size()-1].getIntVal() != 0) {
                     if(output_[idx].isNull() || output_[output_.size() - 1].isNull()) output_[idx] = Value(NULL_TYPE);
                     else {
                         float denom = (float) output_[output_.size()-1].getIntVal();
@@ -1015,7 +1013,8 @@ class AggregationExecutor : public Executor {
                             output_[idx] = Value(NULL_TYPE);
                             continue;
                         }
-                        output_[idx] = Value( (float)output_[idx].getIntVal()/ denom);
+                        std::cout << output_[idx].toString() << " " << denom << "\n";
+                        output_[idx] /= Value(denom);
                     }
                 }
             }
@@ -1325,7 +1324,10 @@ class DistinctExecutor : public Executor {
                 error_status_ = child_executor_->error_status_;
                 finished_ = child_executor_->finished_;
                 std::string stringified_tuple = "";
-                for(size_t i = 0; i < tuple.size(); i++) stringified_tuple += tuple[i].toString();
+                for(size_t i = 0; i < tuple.size(); i++) {
+                    stringified_tuple += ",";
+                    stringified_tuple += tuple[i].toString();
+                }
                 if(hashed_tuples_.count(stringified_tuple)) continue; // duplicated tuple => skip it.
                 hashed_tuples_[stringified_tuple] =  1;
                 output_ = tuple;
