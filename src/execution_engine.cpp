@@ -27,7 +27,103 @@ struct IndexHeader;
  */
 
 
+/*
+class NestedLoopJoinExecutor : public Executor {
+    public:
+        NestedLoopJoinExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs, ExpressionNode* filter, JoinType type)
+            : Executor(PRODUCT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs), filter_(filter), join_type_(type)
+        {}
+        ~NestedLoopJoinExecutor()
+        {
+        */
+// TODO: rename to nested loop join and allow the AlgebraEngine to choose between this one and the hash join executor.
+class JoinExecutor : public Executor {
+    public:
+        JoinExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs, ExpressionNode* filter, JoinType type)
+            : Executor(PRODUCT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs), filter_(filter), join_type_(type)
+        {}
+        ~JoinExecutor()
+        {
+            delete left_child_;  
+            delete right_child_;
+            delete output_schema_;
+        }
 
+        void init() {
+            error_status_ = 0;
+            finished_ = 0;
+            if(!left_child_ || !right_child_){
+                error_status_ = true;
+                return;
+            }
+            left_child_->init();
+            right_child_->init();
+            error_status_ = left_child_->error_status_ || right_child_->error_status_;
+            finished_ = left_child_->finished_;
+            output_.resize(left_child_->output_schema_->getColumns().size() + right_child_->output_schema_->getColumns().size()); 
+            if(!finished_){
+                left_output_ = left_child_->next();
+                if(left_output_.size() == 0 && left_child_->finished_) finished_ = true;
+            }
+        }
+
+        std::vector<Value> next() {
+            if(error_status_ || finished_)  return {};
+
+            while(true){
+                std::vector<Value> right_output = right_child_->next();
+                if(right_child_->finished_){
+                    if(!left_output_visited_ && (join_type_ == LEFT_JOIN || join_type_ == FULL_JOIN)){
+                        left_output_visited_ = true;
+                        for(int i = 0; i < left_output_.size(); ++i)
+                            output_[i] = left_output_[i];
+                        for(int i = left_output_.size(); i < output_.size(); ++i)
+                            output_[i] = Value(NULL_TYPE);
+                        return output_;
+                    }
+                    left_output_ = left_child_->next();
+                    left_output_visited_ = false;
+                    if(left_child_->finished_){
+                        finished_ = true;
+                        return {};
+                    }
+                    right_child_->init();
+                    right_child_have_reset_ = true;
+                    right_output = right_child_->next();
+                } 
+                if(right_output.size() == 0) {
+                    finished_ = true;
+                    return {};
+                }
+
+                for(int i = 0; i < left_output_.size(); ++i)
+                    output_[i] = left_output_[i];
+                for(int i = 0;i < right_output.size(); ++i)
+                    output_[i+(output_.size() - right_output.size())] = right_output[i];
+
+                finished_ = left_child_->finished_;
+                Value v = evaluate_expression(ctx_, filter_, this);
+                if(!v.isNull() && v.getBoolVal() == true){
+                    left_output_visited_ = true;
+                    return output_;
+                }
+                if((join_type_ == RIGHT_JOIN || join_type_ == FULL_JOIN) && !right_child_have_reset_) {
+                    for(int i = 0; i < left_output_.size(); ++i)
+                        output_[i] = Value(NULL_TYPE);
+                    return output_;
+                }
+                //return output_;
+            }
+        }
+    private:
+        Executor* left_child_ = nullptr;
+        std::vector<Value> left_output_;
+        Executor* right_child_ = nullptr;
+        ExpressionNode* filter_ = nullptr;
+        JoinType join_type_ = INNER_JOIN;
+        bool right_child_have_reset_ = false;
+        bool left_output_visited_ = false;
+};
 
 class ProductExecutor : public Executor {
     public:
@@ -93,12 +189,12 @@ class ProductExecutor : public Executor {
 };
 
 
-class JoinExecutor : public Executor {
+class HashJoinExecutor : public Executor {
     public:
-        JoinExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs, ExpressionNode* filter, JoinType type)
+        HashJoinExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs, ExpressionNode* filter, JoinType type)
             : Executor(JOIN_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs), filter_(filter), join_type_(type)
         {}
-        ~JoinExecutor()
+        ~HashJoinExecutor()
         {
             delete left_child_;  
             delete right_child_;
@@ -177,7 +273,7 @@ class JoinExecutor : public Executor {
             }
         }
 
-        // TODO: implement merg an nested loop joines, 
+        // TODO: implement merg and nested loop joines, 
         // hash join is not good for cases of none equality conditions, and full outer joins.
         std::vector<Value> next() {
             if(error_status_ || finished_)  return {};
