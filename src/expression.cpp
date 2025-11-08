@@ -43,7 +43,8 @@ Value coalesce_func(std::vector<Value> vals){
 
 //TODO: should be moved the the catalog class.
 std::unordered_map<std::string, std::function<Value(std::vector<Value>)>> reserved_functions = 
-{{"ABS", abs_func}, {"COALESCE", coalesce_func}, {"NULLIF", nullif_func}};
+//{{"ABS", abs_func}, {"COALESCE", coalesce_func}, {"NULLIF", nullif_func}};
+{{"ABS", abs_func}, {"COALESCE", coalesce_func}};
 
 
 Value evaluate_expression(
@@ -69,7 +70,7 @@ Value evaluate_expression(
                 for(auto& [when, then] : case_ex->when_then_pairs_){
                     Value evaluated_when = evaluate_expression(ctx, when, this_exec, true, eval_sub_query);
                     if(evaluated_when.isNull()) continue;
-                    if(case_ex->initial_value_ && !initial_value.isNull() &&evaluated_when == initial_value){
+                    if(case_ex->initial_value_ && !initial_value.isNull() && evaluated_when == initial_value){
                         return evaluate_expression(ctx, then, this_exec, true, eval_sub_query);
                     }
                     else if(!case_ex->initial_value_ && evaluated_when.getBoolVal()) 
@@ -84,11 +85,13 @@ Value evaluate_expression(
                 assert(nullif_ex->lhs_ && nullif_ex->rhs_); // if you are here they must not be null pointers.
 
                 Value lhs_val = evaluate_expression(ctx, nullif_ex->lhs_, this_exec, true, eval_sub_query);
+                // lhs is already null no need to check the rhs.
+                if(lhs_val.isNull()) return Value(NULL_TYPE); 
                 Value rhs_val = evaluate_expression(ctx, nullif_ex->rhs_, this_exec, true, eval_sub_query);
 
-                if(lhs_val == rhs_val)
-                    return Value(NULL_TYPE);
-                return lhs_val;
+                if(rhs_val.isNull() || lhs_val != rhs_val)
+                    return lhs_val;
+                return Value(NULL_TYPE);
             }
         case IN  : 
             {
