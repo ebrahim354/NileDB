@@ -97,7 +97,7 @@ Value evaluate_expression(
             {
                 InNode* in = reinterpret_cast<InNode*>(expression);
                 Value val = evaluate_expression(ctx, in->val_, this_exec, false, eval_sub_query);
-                if(val.isNull()) return val;
+                //if(val.isNull()) return val;
                 bool answer = false;
                 bool null_ret = false;
                 for(int i = 0; i < in->list_.size(); ++i){
@@ -136,7 +136,7 @@ Value evaluate_expression(
                                 break;
                             }
                         }
-                    } else if(tmp.isNull()) {
+                    } else if(tmp.isNull() || val.isNull()) {
                         null_ret = true;
                     }
                     else if(val == tmp) {

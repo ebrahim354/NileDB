@@ -909,7 +909,7 @@ class AggregationExecutor : public Executor {
                 // build the search key for the hash table.
                 std::string hash_key = "PREFIX_"; // prefix to ensure we have at least one entry in the hash table.
                 for(int i = 0; i < group_by_.size(); i++){
-                    Value cur = evaluate(group_by_[i]);
+                    Value cur = evaluate_expression(ctx_, group_by_[i], this);
                     hash_key += cur.toString();
                 }
 

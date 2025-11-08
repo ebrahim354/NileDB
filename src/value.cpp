@@ -668,6 +668,7 @@ class Value {
                     return getStringVal(); 
                 case BOOLEAN:
                     return getBoolVal() ? "true" : "false";
+                    //return getBoolVal() ? "1" : "0";
                 case INT:
                     return intToStr(getIntVal());
                 case BIGINT:
