@@ -1292,10 +1292,10 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
         i = nullif_expression(ctx, expression_ctx);
     if(!i && expression_ctx)
         i = type_cast(ctx , expression_ctx);
-    if(!i && expression_ctx)
-        i = scalar_func(ctx , expression_ctx);
     if(!i && expression_ctx && expression_ctx->id_ != 0)
         i = agg_func(ctx , expression_ctx);
+    if(!i && expression_ctx)
+        i = scalar_func(ctx , expression_ctx);
     if(!i)
         i = scoped_field(ctx);
     if(!i)
@@ -1623,7 +1623,7 @@ void Parser::selectStatement(QueryCTX& ctx, int parent_idx){
 
     if(ctx.matchTokenType(TokenType::HAVING)){
         ++ctx;
-        statement->having_ = expression(ctx,statement->idx_, 0);
+        statement->having_ = expression(ctx,statement->idx_, 1);
         if(!statement->having_) {
             ctx.error_status_ = Error::EXPECTED_EXPRESSION_IN_HAVING_CLAUSE;
             return;

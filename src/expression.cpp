@@ -401,7 +401,7 @@ Value evaluate_expression(
                               return Value(res);
                           } 
                           if(val.type_ == FLOAT && cast->type_ == INT) {
-                              int res = (int)  val.getFloatVal();
+                              int res = (int)  round(val.getFloatVal());
                               return Value(res);
                           } 
                           assert(0  && "TYPE CASTING NOT SUPPORTED YET!");

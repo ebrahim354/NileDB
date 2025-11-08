@@ -872,7 +872,7 @@ class AggregationExecutor : public Executor {
             error_status_ = 0;
             aggregated_values_.clear();
             for(int i = 0; i < aggregates_.size(); ++i) {
-                if(aggregates_[i]->distinct_) distinct_counters_[i] = std::set<std::string>();
+                if(aggregates_[i]->distinct_) distinct_counters_["PREFIX_"][i] = std::set<std::string>();
             }
 
 
@@ -902,6 +902,9 @@ class AggregationExecutor : public Executor {
                         break;
                     }
                 } 
+                for(int i = 0; i < child_output.size(); i++){
+                    output_[i] = child_output[i];
+                }
 
                 // build the search key for the hash table.
                 std::string hash_key = "PREFIX_"; // prefix to ensure we have at least one entry in the hash table.
@@ -910,9 +913,22 @@ class AggregationExecutor : public Executor {
                     hash_key += cur.toString();
                 }
 
-
                 // if the hash key exists we need to load it first.
                 if(aggregated_values_.count(hash_key)){
+                    output_ = aggregated_values_[hash_key];
+                } else if(hash_key != "PREFIX_"){
+                    for(int i = 0; i < aggregates_.size(); ++i) {
+                        if(aggregates_[i]->distinct_) distinct_counters_[hash_key][i] = std::set<std::string>();
+                    }
+
+                    int total_size = output_schema_->getCols().size() + 1;
+                    aggregated_values_[hash_key] = std::vector<Value> (total_size, Value(NULL_TYPE));
+
+                    int agg_base_idx = total_size - (1+aggregates_.size());
+                    for(int i = 0;i < aggregates_.size(); ++i) {
+                        if(aggregates_[i]->type_ == COUNT)
+                            aggregated_values_[hash_key][i+agg_base_idx] = Value(0); // count can't be null.
+                    }
                     output_ = aggregated_values_[hash_key];
                 }
 
@@ -932,8 +948,8 @@ class AggregationExecutor : public Executor {
                     if(exp){
                         Value val = evaluate_expression(ctx_, exp, this);
                         if(aggregates_[i]->distinct_){
-                            if(distinct_counters_[i].count(val.toString())) continue;
-                            distinct_counters_[i].insert(val.toString());
+                            if(distinct_counters_[hash_key][i].count(val.toString())) continue;
+                            distinct_counters_[hash_key][i].insert(val.toString());
                         }
                     }
                     int idx = base_size+i;
@@ -991,6 +1007,7 @@ class AggregationExecutor : public Executor {
                 aggregated_values_[hash_key] = output_;
                 if(!child_executor_) break;
             }
+            if(aggregated_values_.size() > 1) aggregated_values_.erase("PREFIX_");
             it_ = aggregated_values_.begin();
         }
 
@@ -1008,12 +1025,11 @@ class AggregationExecutor : public Executor {
                     else {
                         float denom = (float) output_[output_.size()-1].getIntVal();
                         if(aggregates_[i]->distinct_) 
-                            denom = distinct_counters_[i].size();
+                            denom = distinct_counters_[it_->first][i].size();
                         if(denom == 0) { // maybe too much checking?
                             output_[idx] = Value(NULL_TYPE);
                             continue;
                         }
-                        std::cout << output_[idx].toString() << " " << denom << "\n";
                         output_[idx] /= Value(denom);
                     }
                 }
@@ -1030,9 +1046,12 @@ class AggregationExecutor : public Executor {
         std::unordered_map<std::string, std::vector<Value>> aggregated_values_;
         // this hash table holds a set of values for each aggregate function 
         // if that function uses the distinct keyword inside the clause e.g: count(distinct a).
+        // the mapping string is the hashed_key that is generated from the group by clause,
+        // and each key has it's own distinct couter map inside of it, and each map has two values,
         // first value is the index of the function inside of the aggregates_ array,
         // second value is the set of values that has been parameters to that function so far.
-        std::unordered_map<int, std::set<std::string>> distinct_counters_; 
+        // TODO: pick a better structure to implement this functionality
+        std::unordered_map<std::string, std::unordered_map<int, std::set<std::string>>> distinct_counters_; 
         std::unordered_map<std::string, std::vector<Value>>::iterator it_;
         // TODO: Not used anymore, delete this before release.
         std::function<Value(ASTNode*)>
