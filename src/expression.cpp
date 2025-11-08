@@ -120,11 +120,15 @@ Value evaluate_expression(
 
                             if(sub_query_executor->error_status_) {
                                 std::cout << "[ERROR] could not execute sub-query" << std::endl;
+                                this_exec->error_status_ = 1;
+                                //ctx.error_status_ = 1; // TODO: better error handling.
                                 return Value();
                             }
 
                             if(sub_query_output.size() != 1) {
                                 std::cout << "[ERROR] sub-query should return exactly 1 column" << std::endl;
+                                this_exec->error_status_ = 1;
+                                //ctx.error_status_ = 1; // TODO: better error handling.
                                 return Value();
                             }
                             if(sub_query_output[0].isNull()){

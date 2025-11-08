@@ -1399,24 +1399,28 @@ ASTNode* Parser::in(QueryCTX& ctx, ExpressionNode* expression_ctx){
         if(negated) ++ctx;
         ++ctx;
         if(!ctx.matchTokenType(TokenType::LP)) 
-          return nullptr;
+            return nullptr;
         ++ctx;
+        if(ctx.matchTokenType(TokenType::RP)){  // empty list: select 1 in ();
+            ++ctx;
+            return new InNode(val, {}, negated);
+        }
         std::vector<ASTNode*> args;
         while(1){
-          ASTNode* eq = equality(ctx, expression_ctx);
-          if(!eq){
-            ctx.error_status_ = Error::EXPECTED_EXPRESSION;
-            return nullptr;
-          }
-          args.push_back(eq);
-          if(ctx.matchTokenType(TokenType::COMMA)){
-            ++ctx;
-            continue;
-          }
-          break;
+            ASTNode* eq = equality(ctx, expression_ctx);
+            if(!eq){
+                ctx.error_status_ = Error::EXPECTED_EXPRESSION;
+                return nullptr;
+            }
+            args.push_back(eq);
+            if(ctx.matchTokenType(TokenType::COMMA)){
+                ++ctx;
+                continue;
+            }
+            break;
         }
         if(!args.size() && !ctx.matchTokenType(TokenType::RP)) 
-          return nullptr;
+            return nullptr;
         ++ctx;
         return new InNode(val, args, negated);
     }

@@ -544,7 +544,6 @@ class Value {
         }
 
         Value operator-(Value rhs) {
-            assert(size_ == rhs.size_);
             if(rhs.isNull() ||  isNull()) {
                 return Value(NULL_TYPE);
             } 
@@ -609,6 +608,17 @@ class Value {
                              }
                     break;
                 case VARCHAR: 
+                    {
+                        if(rhs.type_ == VARCHAR) {
+                            int n = std::min(size_, rhs.size_);
+                            return Value(strncmp(content_, rhs.content_, n));
+                        } else if(rhs.type_ == INT || rhs.type_ == FLOAT || rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
+                            return Value(Value(strtod(content_, NULL)) - rhs);
+                        } else {
+                            assert(0 && "NOT SUPPORTED TYPE CONVERSION");
+                        }
+                    } 
+                    break;
                 case NULL_TYPE:
                 case INVALID:
                 default :
@@ -811,9 +821,6 @@ int value_cmp(Value lhs, Value rhs) {
     if((rhs.type_ == BIGINT || rhs.type_ == DOUBLE) && (lhs.type_ == FLOAT || lhs.type_ == INT))
         lhs.cast_up();
 
-    if(lhs.size_ != rhs.size_){
-        assert(0 && "INVALID COMPARISON");
-    }
     Value v = lhs - rhs;
     int diff = 0;
     if(v.type_ == FLOAT || v.type_ == DOUBLE){
