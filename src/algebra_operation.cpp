@@ -34,4 +34,5 @@ struct AlgebraOperation {
         int query_idx_ = -1;
         int query_parent_idx_ = -1;
         bool distinct_ = false;
+                                        
 };

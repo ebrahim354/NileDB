@@ -9,6 +9,8 @@
 #include <cmath>
 
 struct ExpressionNode;
+struct ASTNode;
+void accessed_tables(ASTNode* expression ,std::vector<std::string>& tables, Catalog* catalog, bool only_one);
 
 
 // The grammer rules are defined as structures, each struct is following the name convention: CategoryNameNode,
@@ -420,13 +422,35 @@ struct SelectStatementData : QueryData {
     std::vector<std::string> tables_ = {};
     std::vector<JoinedTablesData> joined_tables_ = {};
     std::vector<AggregateFuncNode*> aggregates_;  
+    std::vector<int> order_by_list_ = {};
+    std::vector<ASTNode*> group_by_ = {}; 
     bool has_star_ = false;
     ExpressionNode* where_ = nullptr;
     ExpressionNode* having_ = nullptr;
-    std::vector<int> order_by_list_ = {};
-    std::vector<ASTNode*> group_by_ = {}; 
     bool distinct_ = false;
+
 };
+
+bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* catalog) {
+    if(!query || !catalog) assert(0 && "invalid input");
+    std::vector<std::string> tables;
+    for(int i = 0; i < query->fields_.size(); ++i){
+        accessed_tables(query->fields_[i],tables, catalog, true);
+    }
+    for(int i = 0; i < query->aggregates_.size(); ++i){
+        accessed_tables(query->aggregates_[i], tables, catalog, true);
+    }
+    accessed_tables(query->where_, tables, catalog, true);
+    accessed_tables(query->having_, tables, catalog, true);
+    for(int i = 0; i < query->group_by_.size(); ++i){
+        accessed_tables(query->group_by_[i], tables, catalog, true);
+    }
+    for(int i = 0; i < tables.size(); ++i){
+        if (std::find(query->table_names_.begin(), query->table_names_.end(), tables[i]) == query->table_names_.end())
+            return true; // did not find table -> query is corelated
+    }
+    return false;
+}
 
 struct Intersect : QueryData {
     Intersect(int parent_idx, QueryData* lhs, Intersect* rhs, bool all): 
@@ -527,6 +551,8 @@ struct UpdateStatementData : QueryData {
     ExpressionNode* value_ = nullptr;
     ExpressionNode* where_ = nullptr;
 };
+
+
 
 class Parser {
     public:
@@ -804,6 +830,7 @@ void Parser::inner_join(QueryCTX& ctx, int query_idx) {
         // TODO: replace with error message.
         return;
     }
+    // TODO: put a check on the to make sure they are only scoped to the specified tables.
     query->joined_tables_.push_back(t);
 }
 
@@ -832,6 +859,7 @@ void Parser::outer_join(QueryCTX& ctx, int query_idx) {
         // TODO: replace with error message.
         return;
     }
+    // TODO: put a check on the to make sure they are only scoped to the specified tables.
     query->joined_tables_.push_back(t);
 }
 
@@ -1255,6 +1283,7 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
         if(!sub_query) {
             return nullptr;
         }
+        sub_query->is_corelated_ = is_corelated_subquery(ctx, sub_query, catalog_);
         SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
         if(!ctx.matchTokenType(TokenType::RP)){
             return nullptr;
@@ -1268,6 +1297,7 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
         int sub_query_id = ctx.queries_call_stack_.size();
         selectStatement(ctx, expression_ctx->query_idx_);
         SelectStatementData* sub_query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[sub_query_id]);
+        sub_query->is_corelated_ = is_corelated_subquery(ctx, sub_query, catalog_);
         if(!sub_query) {
             return nullptr;
         }

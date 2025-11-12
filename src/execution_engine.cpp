@@ -30,7 +30,7 @@ struct IndexHeader;
 class NestedLoopJoinExecutor : public Executor {
     public:
         NestedLoopJoinExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs, ExpressionNode* filter, JoinType type)
-            : Executor(PRODUCT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs), filter_(filter), join_type_(type)
+            : Executor(NESTED_LOOP_JOIN_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs), filter_(filter), join_type_(type)
         {}
         ~NestedLoopJoinExecutor()
         {
@@ -182,7 +182,7 @@ class ProductExecutor : public Executor {
 class HashJoinExecutor : public Executor {
     public:
         HashJoinExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs, ExpressionNode* filter, JoinType type)
-            : Executor(JOIN_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs), filter_(filter), join_type_(type)
+            : Executor(HASH_JOIN_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs), filter_(filter), join_type_(type)
         {}
         ~HashJoinExecutor()
         {
@@ -1348,6 +1348,56 @@ class DistinctExecutor : public Executor {
         std::unordered_map<std::string, int> hashed_tuples_;
 };
 
+class SubQueryExecutor : public Executor {
+    public:
+        SubQueryExecutor(Executor* child_executor, TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx): 
+            Executor(SUB_QUERY_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child_executor)
+        {}
+        ~SubQueryExecutor()
+        {
+            delete child_executor_;
+        }
+
+        void init() {
+            finished_ = 0;
+            error_status_ = 0;
+            it_ = tuple_list_.begin();
+            if(!cached_)
+                child_executor_->init();
+        }
+
+        std::vector<Value> next() {
+            if(finished_ || error_status_) return {};
+            if(!cached_){
+                std::vector<Value> tuple = child_executor_->next();
+                if(tuple.size() == 0) {
+                    cached_ = true;
+                    finished_ = true;
+                    return {};
+                }
+                error_status_ = child_executor_->error_status_;
+                finished_ = child_executor_->finished_;
+                tuple_list_.push_back(tuple);
+                output_ = tuple;
+            } else {
+                if(it_ == tuple_list_.end()) {
+                    error_status_ = child_executor_->error_status_;
+                    finished_ = child_executor_->finished_;
+                    return {};
+                }
+                output_ = *it_;
+                ++it_;
+            }
+            return output_;
+        }
+
+    private:
+        // TODO: replace this with a tempory table.
+        std::list<std::vector<Value>> tuple_list_; 
+        std::list<std::vector<Value>>::iterator it_; 
+        bool cached_ = false;
+};
+
 
 
 class ExecutionEngine {
@@ -1507,10 +1557,17 @@ class ExecutionEngine {
                     return false;
                 }
                 if(cur_plan->distinct_){
-                    DistinctExecutor* distinct = new DistinctExecutor(created_physical_plan, created_physical_plan->output_schema_, ctx, cur_plan->query_idx_, cur_plan->query_parent_idx_);
-                    ctx.executors_call_stack_.push_back(distinct);
-                } else 
-                    ctx.executors_call_stack_.push_back(created_physical_plan);
+                    created_physical_plan = new DistinctExecutor(created_physical_plan, created_physical_plan->output_schema_, ctx, cur_plan->query_idx_, cur_plan->query_parent_idx_);
+                }
+
+                if(created_physical_plan->query_idx_ > 0 &&
+                        created_physical_plan->query_idx_ < ctx.queries_call_stack_.size() &&
+                        !ctx.queries_call_stack_[created_physical_plan->query_idx_]->is_corelated_
+                  ){
+                    std::cout << "not corelated query: " << created_physical_plan->query_idx_ << "\n";
+                    created_physical_plan = new SubQueryExecutor(created_physical_plan, created_physical_plan->output_schema_, ctx, cur_plan->query_idx_, cur_plan->query_parent_idx_);
+                }
+                ctx.executors_call_stack_.push_back(created_physical_plan);
             }
 
             std::cout << "[INFO] executing physical plan" << std::endl;

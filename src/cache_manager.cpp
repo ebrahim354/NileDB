@@ -226,6 +226,7 @@ void CacheManager::flushAllPages() {
             pages_[i].page_id_.fid_ == INVALID_PAGE_ID.fid_;
         if (invalid_page) continue;
         Page *page_to_be_flushed = &pages_[i];
+        if(page_to_be_flushed->is_dirty_ == false) continue;
         disk_manager_->writePage(page_to_be_flushed->page_id_, page_to_be_flushed->data_);
         page_to_be_flushed->is_dirty_ = false;
     }

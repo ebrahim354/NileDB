@@ -14,8 +14,11 @@ enum ExecutorType {
     SORT_EXECUTOR,
     DISTINCT_EXECUTOR,
     PRODUCT_EXECUTOR,
-    // TODO: implement sort joins and index based joins.
-    JOIN_EXECUTOR, // only in-memory hash joins for now. 
+
+    NESTED_LOOP_JOIN_EXECUTOR, 
+    HASH_JOIN_EXECUTOR, // only in-memory hash joins for now. 
+
+    SUB_QUERY_EXECUTOR, // used as a cache for non-corelated subqueries.
 
     UNION_EXECUTOR,
     EXCEPT_EXECUTOR,
@@ -42,8 +45,10 @@ std::string exec_type_to_string(ExecutorType t){
             return "DISTINCT";
         case PRODUCT_EXECUTOR: 
             return "PRODUCT";
-        case JOIN_EXECUTOR: 
-            return "JOIN";
+        case HASH_JOIN_EXECUTOR: 
+            return "HASH JOIN";
+        case NESTED_LOOP_JOIN_EXECUTOR: 
+            return "NESTED LOOP JOIN";
         case UNION_EXECUTOR:
             return "UNION";
         case EXCEPT_EXECUTOR:
