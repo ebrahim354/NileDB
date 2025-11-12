@@ -27,22 +27,12 @@ struct IndexHeader;
  */
 
 
-/*
 class NestedLoopJoinExecutor : public Executor {
     public:
         NestedLoopJoinExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs, ExpressionNode* filter, JoinType type)
             : Executor(PRODUCT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs), filter_(filter), join_type_(type)
         {}
         ~NestedLoopJoinExecutor()
-        {
-        */
-// TODO: rename to nested loop join and allow the AlgebraEngine to choose between this one and the hash join executor.
-class JoinExecutor : public Executor {
-    public:
-        JoinExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs, ExpressionNode* filter, JoinType type)
-            : Executor(PRODUCT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs), filter_(filter), join_type_(type)
-        {}
-        ~JoinExecutor()
         {
             delete left_child_;  
             delete right_child_;
@@ -1603,7 +1593,7 @@ class ExecutionEngine {
                         TableSchema* new_output_schema = new TableSchema(tname, schema->getTable(), columns, true);
                         SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
 
-                        //IndexScanExecutor* scan = new IndexScanExecutor(catalog_->getIndexesOfTable(tname)[0].index_, new_output_schema, ctx, query_idx, parent_query_idx);
+                        // IndexScanExecutor* scan = new IndexScanExecutor(catalog_->getIndexesOfTable(tname)[4].index_, new_output_schema, ctx, query_idx, parent_query_idx);
                         return scan;
                     } break;
                 case PRODUCT: 
@@ -1623,6 +1613,7 @@ class ExecutionEngine {
                 case JOIN: 
                     {
                         auto op = reinterpret_cast<JoinOperation*>(logical_plan);
+                        JoinAlgorithm join_algo = op->join_algo_;
                         Executor* lhs = buildExecutionPlan(ctx, op->lhs_, query_idx, parent_query_idx);
                         Executor* rhs = buildExecutionPlan(ctx, op->rhs_, query_idx, parent_query_idx);
                         std::vector<Column> lhs_columns = lhs->output_schema_->getColumns();
@@ -1631,8 +1622,19 @@ class ExecutionEngine {
                             lhs_columns.push_back(rhs_columns[i]);
 
                         TableSchema* join_output_schema = new TableSchema("TMP_JOIN_TABLE", nullptr, lhs_columns, true);
-                        auto join = new JoinExecutor(join_output_schema, ctx, query_idx, parent_query_idx, lhs, rhs, op->filter_, op->join_type_);
-                        return join;
+                        if(join_algo == NESTED_LOOP_JOIN){
+                            return new NestedLoopJoinExecutor(join_output_schema,
+                                    ctx, query_idx, parent_query_idx,
+                                    lhs, rhs, 
+                                    op->filter_, op->join_type_);
+
+                        } else {
+                            return new HashJoinExecutor(join_output_schema,
+                                        ctx, query_idx, parent_query_idx,
+                                        lhs, rhs, 
+                                        op->filter_, op->join_type_);
+
+                        }
                     } break;
                 case AL_UNION: 
                 case AL_EXCEPT: 

@@ -454,7 +454,6 @@ Value evaluate_expression(
 
 
 // assumes top level ands only.
-// returns a "read only" vector of expressions.
 std::vector<ExpressionNode*> split_by_and(ExpressionNode* expression) {
   ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(expression);
   if(!ex) return {};

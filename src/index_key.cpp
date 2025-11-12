@@ -135,8 +135,20 @@ int index_key_cmp(IndexKey lhs,IndexKey rhs) {
     char* header = lhs.get_header_ptr();
     char* rhs_header = rhs.get_header_ptr();
     while(header != lhs.get_payload_ptr()){
+        if(*header != 0 && *rhs_header == 0) // rhs is null.
+            return 1;
+        if(*header == 0 && *rhs_header != 0) // lhs is null.
+            return -1;
+        if(*header == 0 && *rhs_header == 0) {// both are null.
+            header++;
+            rhs_header++;
+            continue; 
+        }
+
         if((*header >= 13 && *rhs_header < 13) || (*header < 13 && *rhs_header >= 13)) assert(0 && "INVALID COMPARISON");
-        if(*header < 13 && *header != *rhs_header) assert(0 && "TODO: SUPPORT NUMERIC CASTING.");
+        if(*header < 13 && *header != *rhs_header) {
+            assert(0 && "TODO: SUPPORT NUMERIC CASTING.");
+        }
         int diff = 0;
         int advance = 0;
         switch(*header){

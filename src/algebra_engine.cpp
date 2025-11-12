@@ -118,11 +118,19 @@ struct ProductOperation: AlgebraOperation {
         AlgebraOperation* rhs_ = nullptr;
 };
 
+enum JoinAlgorithm {
+    NESTED_LOOP_JOIN,
+    HASH_JOIN
+};
+
 struct JoinOperation: AlgebraOperation {
     public:
         JoinOperation(QueryCTX& ctx, AlgebraOperation* lhs, AlgebraOperation* rhs, 
-            ExpressionNode* filter, JoinType type): 
-            AlgebraOperation(JOIN, ctx), lhs_(lhs), rhs_(rhs), filter_(filter), join_type_(type)
+            ExpressionNode* filter, JoinType type, JoinAlgorithm join_algo): 
+            AlgebraOperation(JOIN, ctx), lhs_(lhs), rhs_(rhs),
+            filter_(filter), 
+            join_type_(type),
+            join_algo_(join_algo)
         {}
         ~JoinOperation()
         {
@@ -132,7 +140,8 @@ struct JoinOperation: AlgebraOperation {
         void print(int prefix_space_cnt) {
             for(int i = 0; i < prefix_space_cnt; ++i)
                 std::cout << " ";
-          std::cout << "join operation\n"; 
+          std::cout << "join operation: "; 
+          std::cout << (join_algo_ == NESTED_LOOP_JOIN ? "NESTED_LOOP_JOIN" : "HASH_JOIN") << "\n";
           lhs_->print(prefix_space_cnt + 1);
           rhs_->print(prefix_space_cnt + 1);
         }
@@ -141,6 +150,7 @@ struct JoinOperation: AlgebraOperation {
         AlgebraOperation* rhs_ = nullptr;
         ExpressionNode* filter_;
         JoinType join_type_ = INNER_JOIN;
+        JoinAlgorithm join_algo_ = NESTED_LOOP_JOIN;
 };
 
 struct InsertionOperation: AlgebraOperation {
@@ -512,7 +522,17 @@ class AlgebraEngine {
                 auto op = reinterpret_cast<FilterOperation*>(*root);
                 if(op->child_ && op->child_->type_ == PRODUCT){
                   auto product = reinterpret_cast<ProductOperation*>(op->child_);
-                  auto join_node = new JoinOperation(product->ctx_, product->lhs_, product->rhs_, op->filter_, INNER_JOIN);
+
+                  JoinAlgorithm join_algorithm = NESTED_LOOP_JOIN;
+                  if(is_hashable_condition(op->filter_)) 
+                      join_algorithm = HASH_JOIN;
+
+                  auto join_node = new JoinOperation(product->ctx_,
+                          product->lhs_,
+                          product->rhs_,
+                          op->filter_,
+                          INNER_JOIN, join_algorithm);
+
                   // TODO: fix memory leak of the filter and the product nodes.
                   //op->child_ = join_node;
                   *root = join_node;
@@ -551,6 +571,38 @@ class AlgebraEngine {
             default: 
               return;
           }
+        }
+
+        // hashable only if(for now) elements from each table are on one side 
+        bool is_hashable_condition(ASTNode* ex) {
+            while(ex){
+                CategoryType cat = ex->category_;
+                switch(cat) {
+                    case EXPRESSION:{
+                                        ex = ((ExpressionNode*)ex)->cur_;
+                                    }
+                                    continue;
+                    case AND:{
+                                auto ptr = ((AndNode*)ex);
+                                if(ptr->next_ == nullptr) {
+                                    ex = ptr->cur_;
+                                    continue;
+                                }
+                                return false;
+                             }
+                    case EQUALITY:{
+                                      ASTNode* left  = ((EqualityNode*)ex)->cur_;
+                                      ASTNode* right = ((EqualityNode*)ex)->next_;
+                                      std::vector<std::string> left_fields, right_fields;
+                                      accessed_fields(left , left_fields);
+                                      accessed_fields(right, right_fields);
+                                      if(left_fields.size() == 1 && right_fields.size() == 1) return true;
+                                  }
+                    default:
+                        return false;
+                }
+            }
+            return false;
         }
 
         AlgebraOperation* createSelectStatementExpression(QueryCTX& ctx, SelectStatementData* data) {
@@ -628,12 +680,16 @@ class AlgebraEngine {
                 std::string lhs_name = data->table_names_[join_data.lhs_idx_];
                 std::string rhs_name = data->table_names_[join_data.rhs_idx_];
                 assert(table_scanner.count(lhs_name) && table_scanner.count(rhs_name));
+                // parse the condition to decide the join algorithm.
+                JoinAlgorithm join_algorithm = NESTED_LOOP_JOIN;
+                if(is_hashable_condition(join_data.condition_)) join_algorithm = HASH_JOIN;
                 auto join_op = new JoinOperation(
                                         ctx,
                                         table_scanner[lhs_name], 
                                         table_scanner[rhs_name],
                                         join_data.condition_,
-                                        join_data.type_
+                                        join_data.type_,
+                                        join_algorithm
                                      );
                 // lhs scanner eats rhs scanner and becomes a join node for latter use.
                 // TODO: maybe there is a better way.
