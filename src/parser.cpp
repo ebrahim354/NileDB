@@ -10,7 +10,7 @@
 
 struct ExpressionNode;
 struct ASTNode;
-void accessed_tables(ASTNode* expression ,std::vector<std::string>& tables, Catalog* catalog, bool only_one);
+void accessed_fields(ASTNode* expression ,std::vector<std::string>& fields, bool only_one);
 
 
 // The grammer rules are defined as structures, each struct is following the name convention: CategoryNameNode,
@@ -431,23 +431,63 @@ struct SelectStatementData : QueryData {
 
 };
 
+std::pair<std::string, std::string> split_scoped_field(std::string& field) {
+    std::string table = "";
+    std::string col = "";
+    bool parsing_table = true;
+    for(int i = 0; i < field.size(); ++i){
+        if(field[i] == '.') {
+            parsing_table = false;
+            continue;
+        }
+        if(parsing_table) table += field[i];
+        else col += field[i];
+    }
+    if(parsing_table) // this field is not scoped.
+        return {col, table};
+    else 
+        return {table, col};
+}
+
 bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* catalog) {
     if(!query || !catalog) assert(0 && "invalid input");
-    std::vector<std::string> tables;
+    std::vector<std::string> fields;
     for(int i = 0; i < query->fields_.size(); ++i){
-        accessed_tables(query->fields_[i],tables, catalog, true);
+        accessed_fields(query->fields_[i],fields, true);
     }
     for(int i = 0; i < query->aggregates_.size(); ++i){
-        accessed_tables(query->aggregates_[i], tables, catalog, true);
+        accessed_fields(query->aggregates_[i], fields, true);
     }
-    accessed_tables(query->where_, tables, catalog, true);
-    accessed_tables(query->having_, tables, catalog, true);
+    accessed_fields(query->where_, fields, true);
+    accessed_fields(query->having_, fields, true);
     for(int i = 0; i < query->group_by_.size(); ++i){
-        accessed_tables(query->group_by_[i], tables, catalog, true);
+        accessed_fields(query->group_by_[i], fields, true);
     }
-    for(int i = 0; i < tables.size(); ++i){
-        if (std::find(query->table_names_.begin(), query->table_names_.end(), tables[i]) == query->table_names_.end())
-            return true; // did not find table -> query is corelated
+    for(int i = 0; i < fields.size(); ++i){
+        auto table_field = split_scoped_field(fields[i]);
+        std::string table = table_field.first;
+        std::string cur_field   = table_field.second;
+
+        if(table.size()) {  // the field is scoped.
+            TableSchema* schema = catalog->getTableSchema(table);
+            assert(schema != nullptr);
+            if(!schema->isValidCol(fields[i])){
+                return true; // the table does not contain this column => corelated.
+            }
+
+        } else { // the field is not scoped.
+            std::vector<std::string> possible_tables = catalog->getTablesByField(cur_field);
+            bool table_matched = false;
+            for(int j = 0; j < possible_tables.size(); ++j){
+                if(std::find(query->table_names_.begin(), query->table_names_.end(), possible_tables[j]) 
+                        != query->table_names_.end()
+                 ) {
+                    table_matched = true;
+                    break;
+                }
+            }
+            if(!table_matched) return true; // no table matched the field is this scope => corelated.
+        }
     }
     return false;
 }
@@ -1284,6 +1324,7 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
             return nullptr;
         }
         sub_query->is_corelated_ = is_corelated_subquery(ctx, sub_query, catalog_);
+        std::cout << "is corelated: " << sub_query->is_corelated_ << "\n";
         SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
         if(!ctx.matchTokenType(TokenType::RP)){
             return nullptr;
@@ -1297,10 +1338,11 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
         int sub_query_id = ctx.queries_call_stack_.size();
         selectStatement(ctx, expression_ctx->query_idx_);
         SelectStatementData* sub_query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[sub_query_id]);
-        sub_query->is_corelated_ = is_corelated_subquery(ctx, sub_query, catalog_);
         if(!sub_query) {
             return nullptr;
         }
+        sub_query->is_corelated_ = is_corelated_subquery(ctx, sub_query, catalog_);
+        std::cout << "(IN)is corelated: " << sub_query->is_corelated_ << "\n";
         SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
         return sub_query_node;
     }
