@@ -9,10 +9,10 @@
 // read only Iterator for index pages.
 class IndexIterator {
     public:
-        IndexIterator(CacheManager *cm, PageID page_id, int entry_idx): 
+        IndexIterator(CacheManager *cm, PageID page_id, int entry_idx = -1): 
             cache_manager_(cm),
             cur_page_id_(page_id),
-            entry_idx_(-1)
+            entry_idx_(entry_idx)
         {
             if(cur_page_id_ != INVALID_PAGE_ID){
                 cur_raw_page_ = cache_manager_->fetchPage(cur_page_id_);
@@ -29,17 +29,34 @@ class IndexIterator {
             if(cur_page_) cache_manager_->unpinPage(cur_page_id_, false);
         }
 
+        bool isNull() {
+            return (cur_page_ == nullptr || 
+                    cur_raw_page_ == nullptr || 
+                    cur_page_id_ == INVALID_PAGE_ID);
+        }
+
         bool hasNext() {
+            if(isNull()) return false;
             // invalid current page.
             if(cur_page_id_ == INVALID_PAGE_ID || !cur_page_) return false;
             if(cur_page_->get_next_page_number() == INVALID_PAGE_NUM && entry_idx_ + 1 >= cur_page_->get_num_of_slots()) 
               return false;
             return true;
-
+        }
+        void assign_to_null_page() {
+            cur_page_ = nullptr;
+            cur_raw_page_ = nullptr;
+            cur_page_id_ = INVALID_PAGE_ID;
+            entry_idx_ = -1;
         }
         // 0 in case of no more records.
         int advance(){
-            if(!hasNext()) return 0;
+            if(isNull()) return 0;
+            if(!hasNext()) {
+                clear();           
+                assign_to_null_page();
+                return 0;
+            }
             PageID next_page_id = cur_page_id_;
             next_page_id.page_num_ = cur_page_->get_next_page_number();
             if (entry_idx_ + 1 >= cur_page_->get_num_of_slots() && next_page_id.isValidPage()) {
@@ -57,14 +74,14 @@ class IndexIterator {
         }
 
         IndexKey getCurKey(){
-            if(entry_idx_ > cur_page_->get_num_of_slots()) return IndexKey();
+            if(isNull() || entry_idx_ > cur_page_->get_num_of_slots()) return IndexKey();
             char* cur_data = nullptr;
             std::pair<IndexKey, RecordID> cur_entry = cur_page_->getPointer(entry_idx_);
             return cur_entry.first;
         }
 
         RecordID getCurRecordID(){
-            if(entry_idx_ > cur_page_->get_num_of_slots()) return RecordID(INVALID_PAGE_ID, -1);
+            if(isNull() || entry_idx_ > cur_page_->get_num_of_slots()) return RecordID(INVALID_PAGE_ID, -1);
             char* cur_data = nullptr;
             std::pair<IndexKey, RecordID> cur_entry = cur_page_->getPointer(entry_idx_);
             if(!cur_entry.first.data_) return RecordID(INVALID_PAGE_ID, -1);
@@ -72,6 +89,7 @@ class IndexIterator {
         }
 
         Record getCurRecordCpy(){
+            if(isNull()) return Record(nullptr, 0);
             char* cur_data = nullptr;
             uint32_t rsize = 0;
             RecordID rid = getCurRecordID();
@@ -91,6 +109,7 @@ class IndexIterator {
 
         // TODO: Fix copy pasta.
         Record* getCurRecordCpyPtr(){
+            if(isNull()) return nullptr; 
             char* cur_data = nullptr;
             uint32_t rsize = 0;
             RecordID rid = getCurRecordID();
@@ -108,6 +127,9 @@ class IndexIterator {
             return  new Record(cur_data, rsize);
         }
 
+        bool operator==(IndexIterator& rhs) {
+            return (cur_page_id_ == rhs.cur_page_id_ && entry_idx_ == rhs.entry_idx_);
+        }
 
     private:
         CacheManager *cache_manager_ = nullptr;

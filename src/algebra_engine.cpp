@@ -6,6 +6,10 @@
 #include <set>
 
 
+enum ScanType {
+    SEQ_SCAN,
+    INDEX_SCAN,
+};
 
 struct ScanOperation: AlgebraOperation {
     public:
@@ -19,10 +23,17 @@ struct ScanOperation: AlgebraOperation {
         void print(int prefix_space_cnt) {
             for(int i = 0; i < prefix_space_cnt; ++i)
                 std::cout << " ";
-          std::cout << "Scan operation, name: " << table_name_ << " rename: " << table_rename_ << std::endl;
+            std::cout << "Scan operation, name: " << table_name_ << " rename: " << table_rename_;
+            std::cout << " type: " << (scan_type_ == SEQ_SCAN ? "SEQ_SCAN " : "INDEX_SCAN ");
+            if(filter_)
+                std::cout << "filter: " << filter_->token_.val_;
+            std::cout << "\n";
         }
-        std::string table_name_{};
-        std::string table_rename_{};
+        std::string table_name_   = {};
+        std::string table_rename_ = {};
+        std::string index_name_   = {};
+        ScanType scan_type_       = SEQ_SCAN;
+        ASTNode* filter_   = nullptr;
 };
 
 struct UnionOperation: AlgebraOperation {
@@ -605,6 +616,56 @@ class AlgebraEngine {
             return false;
         }
 
+         bool match_index(ScanOperation* cur_scan, ASTNode* ex, std::string tname) {
+            while(ex){
+                CategoryType cat = ex->category_;
+                switch(cat) {
+                    case EXPRESSION:{
+                                        ex = ((ExpressionNode*)ex)->cur_;
+                                    }
+                                    continue;
+                    case AND:{
+                                auto ptr = ((AndNode*)ex);
+                                if(ptr->next_ == nullptr) {
+                                    ex = ptr->cur_;
+                                    continue;
+                                }
+                                return false;
+                             }
+                    case EQUALITY:{
+                                      ASTNode* left  = ((EqualityNode*)ex)->cur_;
+                                      ASTNode* right = ((EqualityNode*)ex)->next_;
+                                      if(left->category_ != FIELD && left->category_ != SCOPED_FIELD
+                                              && right->category_ != FIELD && right->category_ != SCOPED_FIELD)
+                                          return false;
+                                      std::vector<std::string> key;
+                                      accessed_fields(left , key);
+                                      accessed_fields(right, key);
+                                      if(key.size() != 1) return false;
+                                      std::vector<IndexHeader> indexes = catalog_->getIndexesOfTable(tname);
+                                      int key_idx = catalog_->getTableSchema(tname)->colExist(key[0]);
+                                      assert(key_idx != -1);
+                                      for(int i = 0; i < indexes.size(); ++i) {
+                                          assert(indexes[i].fields_numbers_.size() > 0);
+                                          // TODO: support multi-field keys.
+                                          if(indexes[i].fields_numbers_[0].idx_ == key_idx) {
+                                              cur_scan->scan_type_ = INDEX_SCAN;
+                                              std::cout << "------ " << indexes[i].index_name_ << "\n";
+                                              cur_scan->index_name_ = indexes[i].index_name_;
+                                              cur_scan->filter_ = ex;
+                                              return true;
+                                          }
+                                      }
+                                      return false;
+                                  }
+                    default:
+                        return false;
+                }
+            }
+            return false;
+        }
+
+
         AlgebraOperation* createSelectStatementExpression(QueryCTX& ctx, SelectStatementData* data) {
             if(!isValidSelectStatementData(data))
                 return nullptr;
@@ -662,9 +723,14 @@ class AlgebraEngine {
             // handle filters with 1 table access.
             for(int i = 0; i < splitted_where.size(); ++i){ 
                 if(tables_per_filter[i].first.size() != 1) continue;
-                table_scanner[tables_per_filter[i].first[0]] = new FilterOperation(ctx, 
-                        table_scanner[tables_per_filter[i].first[0]], 
-                        tables_per_filter[i].second, 
+                std::string cur_table = tables_per_filter[i].first[0];
+                ExpressionNode* cur_filter = tables_per_filter[i].second;
+                AlgebraOperation* scan = table_scanner[cur_table];
+                // if this filter matched an index we don't need to create a filter operator.
+                if(scan->type_ == SCAN && match_index((ScanOperation*)scan, cur_filter, cur_table)) continue;
+                table_scanner[cur_table] = new FilterOperation(ctx, 
+                        table_scanner[cur_table], 
+                        cur_filter, 
                         data->fields_, data->field_names_, catalog_);
             }
 

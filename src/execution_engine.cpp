@@ -564,32 +564,73 @@ class SeqScanExecutor : public Executor {
 class IndexScanExecutor : public Executor {
     public:
         // TODO: change BTreeIndex type to be a generic ( just Index ) that might be a btree or hash index.
-        IndexScanExecutor(BTreeIndex* index, TableSchema* table, QueryCTX& ctx, int query_idx, int parent_query_idx)
+        IndexScanExecutor(IndexHeader index, ASTNode* filter,
+                TableSchema* table, QueryCTX& ctx, int query_idx, int parent_query_idx)
             : Executor(INDEX_SCAN_EXECUTOR, table, ctx, query_idx, parent_query_idx, nullptr), 
             table_(table), 
-            index_(index),
-            it_ (index_->begin())
+            index_header_(index),
+            filter_(filter),
+            start_it_(index.index_->begin()),
+            end_it_(index.index_->end())
         {}
         ~IndexScanExecutor()
         {
             delete table_;
         }
 
+        void assign_iterators() {
+            ASTNode* ptr = filter_;
+            CategoryType cat = ptr->category_;
+            switch(cat) {
+                case EQUALITY:{
+                                  ASTNode* left  = ((EqualityNode*)ptr)->cur_;
+                                  ASTNode* right = ((EqualityNode*)ptr)->next_;
+                                  Value val;
+                                  std::vector<std::string> key;
+                                  accessed_fields(left , key);
+                                  int size_before = key.size();
+                                  bool key_in_left = (size_before != 0);
+                                  accessed_fields(right, key);
+
+                                  assert(size_before == key.size());
+
+                                  if(key_in_left)
+                                      val = evaluate_expression(ctx_, right, this);
+                                  else
+                                      val = evaluate_expression(ctx_, left, this);
+                                  std::vector<Value> key_vals = {val};
+                                  IndexKey search_key = temp_index_key_from_values(key_vals);
+                                  search_key.sort_order_ = create_sort_order_bitmap(index_header_.fields_numbers_);
+                                  start_it_ = index_header_.index_->begin(search_key);
+                                  end_it_ = start_it_;
+                                  while(end_it_.getCurKey() == search_key){
+                                    int advanced = end_it_.advance();
+                                    if(!advanced) break;
+                                  }
+                                  return;
+                              }
+                default:
+                              assert(0 && "NOT SUPPORTED INDEX SCAN CONDITION!");
+            }
+        }
+
         void init() {
             error_status_ = 0;
             finished_ = 0;
             output_.resize(output_schema_->numOfCols());
-            it_.clear();
-            it_ = index_->begin();
+
+            start_it_.clear();
+            end_it_.clear();
+            assign_iterators();
         }
 
         std::vector<Value> next() {
             // no more records.
-            if(!it_.advance()) {
+            if(start_it_ == end_it_) {
                 finished_ = 1;
                 return {};
             };
-            Record* r = it_.getCurRecordCpyPtr();
+            Record* r = start_it_.getCurRecordCpyPtr();
             if(!r){
                 error_status_ = 1;
                 return {};
@@ -600,12 +641,15 @@ class IndexScanExecutor : public Executor {
                 error_status_ = 1;
                 return {};
             }
+            start_it_.advance();
             return output_;
         }
     private:
         TableSchema* table_ = nullptr;
-        BTreeIndex* index_ = nullptr;
-        IndexIterator it_;
+        IndexHeader index_header_ = {};
+        ASTNode* filter_ = nullptr;
+        IndexIterator start_it_;
+        IndexIterator end_it_;
 };
 
 class InsertionExecutor : public Executor {
@@ -1648,9 +1692,16 @@ class ExecutionEngine {
                         }
 
                         TableSchema* new_output_schema = new TableSchema(tname, schema->getTable(), columns, true);
-                        SeqScanExecutor* scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
-
-                        // IndexScanExecutor* scan = new IndexScanExecutor(catalog_->getIndexesOfTable(tname)[4].index_, new_output_schema, ctx, query_idx, parent_query_idx);
+                        Executor* scan = nullptr;
+                        if(op->scan_type_ == SEQ_SCAN){
+                            scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
+                        } else {
+                            scan = new IndexScanExecutor(catalog_->getIndexHeader(op->index_name_),
+                                    op->filter_,
+                                    new_output_schema,
+                                    ctx, query_idx,
+                                    parent_query_idx);
+                        }
                         return scan;
                     } break;
                 case PRODUCT: 

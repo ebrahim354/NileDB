@@ -993,7 +993,7 @@ class BTreeIndex {
         }
 
         // for range queries
-        IndexIterator Begin(const IndexKey &key) {
+        IndexIterator begin(const IndexKey &key) {
             if (isEmpty()) {
                 return IndexIterator(nullptr, INVALID_PAGE_ID, 0);
             }
@@ -1023,10 +1023,14 @@ class BTreeIndex {
             auto *tmp = reinterpret_cast<BTreeLeafPage *>(root);
             int pos = tmp->GetPos(key);
             std::cout << "size: " << tmp->get_num_of_slots() << std::endl;
+            std::cout << "pos: " << pos << std::endl;
+            if(pos >= tmp->get_num_of_slots()) {
+                cache_manager_->unpinPage(root->GetPageId(fid_), false);
+                return IndexIterator(nullptr, INVALID_PAGE_ID, 0);
+            }
             auto it = IndexIterator(cache_manager_, root->GetPageId(fid_), pos);
-
-            //root_page->RUnlatch();
             cache_manager_->unpinPage(root->GetPageId(fid_), false);
+            //root_page->RUnlatch();
             return it;
         }
 

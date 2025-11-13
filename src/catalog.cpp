@@ -37,8 +37,9 @@
 #define INDEX_META_TABLE "NDB_INDEX_META"
 
 
-struct IndexHeader{
+struct  IndexHeader{
     BTreeIndex* index_;
+    std::string index_name_;
     std::vector<NumberedIndexField> fields_numbers_;
 };
 
@@ -233,7 +234,12 @@ class Catalog {
             TableSchema* index_keys      = tables_[INDEX_KEYS_TABLE];
 
             BTreeIndex* index = new BTreeIndex(cache_manager_, nfid, INVALID_PAGE_ID, index_meta_data);
-            indexes_.insert({index_name, {index , cols}});
+            IndexHeader header = {
+                .index_ = index,
+                .index_name_ = index_name, 
+                .fields_numbers_ = cols
+            };
+            indexes_.insert({index_name, header});
 
             if(indexes_of_table_.count(table_name))
                 indexes_of_table_[table_name].push_back(index_name);
@@ -390,7 +396,7 @@ class Catalog {
                 // save results into memory.
                 PageID root_page_id = {.fid_ = fid, .page_num_ = root_page_num};
                 BTreeIndex* index_ptr = new BTreeIndex(cache_manager_, fid, root_page_id, indexes_meta_schema);
-                indexes_.insert({index_name, {.index_ = index_ptr}});
+                indexes_.insert({index_name, {.index_ = index_ptr, .index_name_ = index_name}});
                 if(indexes_of_table_.count(table_name))
                     indexes_of_table_[table_name].push_back(index_name);
                 else 
@@ -428,6 +434,12 @@ class Catalog {
             }
             delete it_keys;
             return 1;
+        }
+        IndexHeader getIndexHeader(std::string& iname) {
+            if(indexes_.count(iname)) return indexes_[iname];
+            std::cout << iname << std::endl;
+            assert(0 && "index should exist");
+            return {};
         }
 
         // TODO: implement delete and alter table.
