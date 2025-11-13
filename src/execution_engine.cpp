@@ -582,33 +582,60 @@ class IndexScanExecutor : public Executor {
             ASTNode* ptr = filter_;
             CategoryType cat = ptr->category_;
             switch(cat) {
-                case EQUALITY:{
-                                  ASTNode* left  = ((EqualityNode*)ptr)->cur_;
-                                  ASTNode* right = ((EqualityNode*)ptr)->next_;
-                                  Value val;
-                                  std::vector<std::string> key;
-                                  accessed_fields(left , key);
-                                  int size_before = key.size();
-                                  bool key_in_left = (size_before != 0);
-                                  accessed_fields(right, key);
+                case EQUALITY:
+                case COMPARISON:{
+                                    ASTNode* left  = nullptr; 
+                                    ASTNode* right = nullptr; 
+                                    if(cat == EQUALITY){
+                                        left  = ((EqualityNode*)ptr)->cur_;
+                                        right = ((EqualityNode*)ptr)->next_;
+                                    } else if(cat == COMPARISON) {
+                                        left  = ((ComparisonNode*)ptr)->cur_;
+                                        right = ((ComparisonNode*)ptr)->next_;
+                                    }
+                                    Value val;
+                                    std::vector<std::string> key;
+                                    accessed_fields(left , key);
+                                    int size_before = key.size();
+                                    bool key_in_left = (size_before != 0);
+                                    accessed_fields(right, key);
 
-                                  assert(size_before == key.size());
-
-                                  if(key_in_left)
-                                      val = evaluate_expression(ctx_, right, this);
-                                  else
-                                      val = evaluate_expression(ctx_, left, this);
-                                  std::vector<Value> key_vals = {val};
-                                  IndexKey search_key = temp_index_key_from_values(key_vals);
-                                  search_key.sort_order_ = create_sort_order_bitmap(index_header_.fields_numbers_);
-                                  start_it_ = index_header_.index_->begin(search_key);
-                                  end_it_ = start_it_;
-                                  while(end_it_.getCurKey() == search_key){
-                                    int advanced = end_it_.advance();
-                                    if(!advanced) break;
-                                  }
-                                  return;
-                              }
+                                    if(key_in_left)
+                                        val = evaluate_expression(ctx_, right, this);
+                                    else
+                                        val = evaluate_expression(ctx_, left, this);
+                                    std::vector<Value> key_vals = {val};
+                                    IndexKey search_key = temp_index_key_from_values(key_vals);
+                                    search_key.sort_order_ = create_sort_order_bitmap(index_header_.fields_numbers_);
+                                    if(cat == EQUALITY){
+                                        start_it_ = index_header_.index_->begin(search_key);
+                                        end_it_ = start_it_;
+                                        while(end_it_.getCurKey() == search_key){
+                                            int advanced = end_it_.advance();
+                                            if(!advanced) break;
+                                        }
+                                    } else if(cat == COMPARISON){
+                                        TokenType op = ptr->token_.type_;
+                                        if(!key_in_left){
+                                            if(op == TokenType::LT) op = TokenType::GT;
+                                            if(op == TokenType::GT) op = TokenType::LT;
+                                            if(op == TokenType::LTE) op = TokenType::GTE;
+                                            if(op == TokenType::GTE) op = TokenType::LTE;
+                                        }
+                                        if(op == TokenType::LT || op == TokenType::LTE) {
+                                            start_it_ = index_header_.index_->begin();
+                                            end_it_ = index_header_.index_->begin(search_key);
+                                        } else if(op == TokenType::GT || op == TokenType::GTE){
+                                            start_it_ = index_header_.index_->begin(search_key);
+                                            end_it_.assign_to_null_page(); 
+                                        } else {
+                                            assert(0 && "COMPARISON HAS INVALID OPERATOR");
+                                        }
+                                        if(op == TokenType::LTE && end_it_.getCurKey() == search_key) end_it_.advance();
+                                        if(op == TokenType::GT)  start_it_.advance();
+                                    }
+                                    return;
+                                }
                 default:
                               assert(0 && "NOT SUPPORTED INDEX SCAN CONDITION!");
             }

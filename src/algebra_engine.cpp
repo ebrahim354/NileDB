@@ -632,9 +632,17 @@ class AlgebraEngine {
                                 }
                                 return false;
                              }
-                    case EQUALITY:{
-                                      ASTNode* left  = ((EqualityNode*)ex)->cur_;
-                                      ASTNode* right = ((EqualityNode*)ex)->next_;
+                    case EQUALITY:
+                    case COMPARISON:{
+                                      ASTNode* left  = nullptr; 
+                                      ASTNode* right = nullptr; 
+                                      if(cat == EQUALITY){
+                                          left  = ((EqualityNode*)ex)->cur_;
+                                          right = ((EqualityNode*)ex)->next_;
+                                      } else if(COMPARISON){
+                                          left  = ((ComparisonNode*)ex)->cur_;
+                                          right = ((ComparisonNode*)ex)->next_;
+                                      }
                                       if(left->category_ != FIELD && left->category_ != SCOPED_FIELD
                                               && right->category_ != FIELD && right->category_ != SCOPED_FIELD)
                                           return false;
@@ -646,7 +654,6 @@ class AlgebraEngine {
                                       int key_idx = catalog_->getTableSchema(tname)->colExist(key[0]);
                                       assert(key_idx != -1);
                                       for(int i = 0; i < indexes.size(); ++i) {
-                                          assert(indexes[i].fields_numbers_.size() > 0);
                                           // TODO: support multi-field keys.
                                           if(indexes[i].fields_numbers_[0].idx_ == key_idx) {
                                               cur_scan->scan_type_ = INDEX_SCAN;

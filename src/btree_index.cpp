@@ -1026,7 +1026,7 @@ class BTreeIndex {
             std::cout << "pos: " << pos << std::endl;
             if(pos >= tmp->get_num_of_slots()) {
                 cache_manager_->unpinPage(root->GetPageId(fid_), false);
-                return IndexIterator(nullptr, INVALID_PAGE_ID, 0);
+                return IndexIterator(nullptr, INVALID_PAGE_ID, -1);
             }
             auto it = IndexIterator(cache_manager_, root->GetPageId(fid_), pos);
             cache_manager_->unpinPage(root->GetPageId(fid_), false);

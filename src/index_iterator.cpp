@@ -30,9 +30,11 @@ class IndexIterator {
         }
 
         bool isNull() {
-            return (cur_page_ == nullptr || 
+            bool invalid = (cur_page_ == nullptr || 
                     cur_raw_page_ == nullptr || 
                     cur_page_id_ == INVALID_PAGE_ID);
+            if(invalid) return true;
+            return (entry_idx_ >= cur_page_->get_num_of_slots());
         }
 
         bool hasNext() {
