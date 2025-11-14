@@ -734,7 +734,8 @@ class AlgebraEngine {
                 ExpressionNode* cur_filter = tables_per_filter[i].second;
                 AlgebraOperation* scan = table_scanner[cur_table];
                 // if this filter matched an index we don't need to create a filter operator.
-                if(scan->type_ == SCAN && match_index((ScanOperation*)scan, cur_filter, cur_table)) continue;
+                if(scan->type_ == SCAN && ((ScanOperation*)scan)->scan_type_ == SEQ_SCAN &&
+                        match_index((ScanOperation*)scan, cur_filter, cur_table)) continue;
                 table_scanner[cur_table] = new FilterOperation(ctx, 
                         table_scanner[cur_table], 
                         cur_filter, 

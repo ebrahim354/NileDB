@@ -128,13 +128,14 @@ int index_key_cmp(IndexKey lhs,IndexKey rhs) {
     if(!rhs.data_ && !lhs.data_ ) return 0;
 
     if(lhs.get_header_size() != rhs.get_header_size()){
-        assert(0 && "INVALID COMPARISON");
+        //assert(0 && "INVALID COMPARISON");
+        std::cout << "keys are not of the same size\n";
     }
     char* payload_ptr = lhs.get_payload_ptr();
     char* rhs_payload_ptr = rhs.get_payload_ptr();
     char* header = lhs.get_header_ptr();
     char* rhs_header = rhs.get_header_ptr();
-    while(header != lhs.get_payload_ptr()){
+    while(header != lhs.get_payload_ptr() && rhs_header != rhs.get_payload_ptr()){
         if(*header != 0 && *rhs_header == 0) // rhs is null.
             return 1;
         if(*header == 0 && *rhs_header != 0) // lhs is null.

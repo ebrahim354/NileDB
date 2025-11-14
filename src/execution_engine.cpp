@@ -617,7 +617,8 @@ class IndexScanExecutor : public Executor {
                                         }
                                     } else if(cat == COMPARISON){
                                         TokenType op = ptr->token_.type_;
-                                        if(!key_on_left){
+                                        // if both true they cancel each other to false using xor.
+                                        if(!key_on_left^index_header_.fields_numbers_[0].desc_){
                                             if(op == TokenType::LT) op = TokenType::GT;
                                             else if(op == TokenType::GT) op = TokenType::LT;
                                             else if(op == TokenType::LTE) op = TokenType::GTE;
