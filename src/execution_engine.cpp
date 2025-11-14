@@ -597,10 +597,11 @@ class IndexScanExecutor : public Executor {
                                     std::vector<std::string> key;
                                     accessed_fields(left , key);
                                     int size_before = key.size();
-                                    bool key_in_left = (size_before != 0);
+                                    bool key_on_left = (size_before != 0);
                                     accessed_fields(right, key);
+                                    assert(key.size() == 1);
 
-                                    if(key_in_left)
+                                    if(key_on_left)
                                         val = evaluate_expression(ctx_, right, this);
                                     else
                                         val = evaluate_expression(ctx_, left, this);
@@ -616,11 +617,12 @@ class IndexScanExecutor : public Executor {
                                         }
                                     } else if(cat == COMPARISON){
                                         TokenType op = ptr->token_.type_;
-                                        if(!key_in_left){
+                                        if(!key_on_left){
                                             if(op == TokenType::LT) op = TokenType::GT;
-                                            if(op == TokenType::GT) op = TokenType::LT;
-                                            if(op == TokenType::LTE) op = TokenType::GTE;
-                                            if(op == TokenType::GTE) op = TokenType::LTE;
+                                            else if(op == TokenType::GT) op = TokenType::LT;
+                                            else if(op == TokenType::LTE) op = TokenType::GTE;
+                                            else if(op == TokenType::GTE) op = TokenType::LTE;
+                                            else assert(0);
                                         }
                                         if(op == TokenType::LT || op == TokenType::LTE) {
                                             start_it_ = index_header_.index_->begin();
@@ -631,8 +633,8 @@ class IndexScanExecutor : public Executor {
                                         } else {
                                             assert(0 && "COMPARISON HAS INVALID OPERATOR");
                                         }
-                                        if(op == TokenType::LTE && end_it_.getCurKey() == search_key) end_it_.advance();
-                                        if(op == TokenType::GT)  start_it_.advance();
+                                        if(op == TokenType::LTE && end_it_.getCurKey() == search_key  ) end_it_.advance();
+                                        if(op == TokenType::GT  && start_it_.getCurKey() == search_key)  start_it_.advance();
                                     }
                                     return;
                                 }
