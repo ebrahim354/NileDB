@@ -569,13 +569,13 @@ class IndexScanExecutor : public Executor {
             : Executor(INDEX_SCAN_EXECUTOR, table, ctx, query_idx, parent_query_idx, nullptr), 
             table_(table), 
             index_header_(index),
-            filter_(filter),
-            start_it_(index.index_->begin()),
-            end_it_(index.index_->end())
+            filter_(filter)
         {}
         ~IndexScanExecutor()
         {
             delete table_;
+            start_it_.clear();
+            end_it_.clear();
         }
 
         void assign_iterators() {
@@ -610,7 +610,7 @@ class IndexScanExecutor : public Executor {
                                     search_key.sort_order_ = create_sort_order_bitmap(index_header_.fields_numbers_);
                                     if(cat == EQUALITY){
                                         start_it_ = index_header_.index_->begin(search_key);
-                                        end_it_ = start_it_;
+                                        end_it_ = index_header_.index_->begin(search_key);
                                         while(end_it_.getCurKey() == search_key){
                                             int advanced = end_it_.advance();
                                             if(!advanced) break;
@@ -662,6 +662,7 @@ class IndexScanExecutor : public Executor {
             };
             Record* r = start_it_.getCurRecordCpyPtr();
             if(!r){
+                std::cout << "Could not translate record\n";
                 error_status_ = 1;
                 return {};
             }
@@ -678,8 +679,8 @@ class IndexScanExecutor : public Executor {
         TableSchema* table_ = nullptr;
         IndexHeader index_header_ = {};
         ASTNode* filter_ = nullptr;
-        IndexIterator start_it_;
-        IndexIterator end_it_;
+        IndexIterator start_it_{};
+        IndexIterator end_it_{};
 };
 
 class InsertionExecutor : public Executor {
@@ -1435,13 +1436,17 @@ class SubQueryExecutor : public Executor {
         void init() {
             finished_ = 0;
             error_status_ = 0;
-            it_ = tuple_list_.begin();
-            if(!cached_)
+            if(!cached_){
                 child_executor_->init();
+            } else {
+                it_ = tuple_list_.begin();
+            }
         }
 
         std::vector<Value> next() {
-            if(finished_ || error_status_) return {};
+            if(finished_ || error_status_) {
+                return {};
+            }
             if(!cached_){
                 std::vector<Value> tuple = child_executor_->next();
                 if(tuple.size() == 0) {
@@ -1462,6 +1467,7 @@ class SubQueryExecutor : public Executor {
                 output_ = *it_;
                 ++it_;
             }
+            if(finished_) cached_ = true;
             return output_;
         }
 

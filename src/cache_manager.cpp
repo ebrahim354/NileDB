@@ -29,10 +29,11 @@ class CacheManager {
             delete replacer_;
         }
 
-        void show() {
+        void show(bool hide_unpinned = false) {
             std::cout << "free list size: " << free_list_.size() << std::endl;
             std::cout << "pages contents: " << std::endl;
             for (size_t i = 0; i < pool_size_; i++) {
+                if(hide_unpinned && pages_[i].pin_count_ == 0) continue;
                 std::cout << "page number: " << i << " " << *pages_[i].data_ << " pinCnt: " << pages_[i].pin_count_
                     << " isDirty: " << pages_[i].is_dirty_ << " page_id: " << fid_to_fname[pages_[i].page_id_.fid_]
                     << " " << pages_[i].page_id_.page_num_ << std::endl;
@@ -167,6 +168,7 @@ bool CacheManager::unpinPage(PageID page_id, bool is_dirty) {
         frame = res->second;
     }
     if (res == page_table_.end() || frame == -1 || pages_[frame].pin_count_ <= 0) {
+        assert(0 && "unpin failed\n");
         return false;
     }
     if (is_dirty) {

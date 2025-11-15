@@ -864,6 +864,8 @@ void accessed_fields(ASTNode* expression ,std::vector<std::string>& fields, bool
                           }
         case FIELD:{
                        std::string field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
+                       std::string prefix = AGG_FUNC_IDENTIFIER_PREFIX; // skip aggregate functions.
+                       if(field.rfind(prefix, 0) == 0) return;
                        fields.push_back(field);
                        return;
                    }

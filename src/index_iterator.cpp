@@ -9,24 +9,27 @@
 // read only Iterator for index pages.
 class IndexIterator {
     public:
-        IndexIterator(CacheManager *cm, PageID page_id, int entry_idx = -1): 
+        IndexIterator(CacheManager *cm = nullptr, PageID page_id = INVALID_PAGE_ID, int entry_idx = -1): 
             cache_manager_(cm),
             cur_page_id_(page_id),
             entry_idx_(entry_idx)
         {
             if(cur_page_id_ != INVALID_PAGE_ID){
                 cur_raw_page_ = cache_manager_->fetchPage(cur_page_id_);
+                assert(cur_raw_page_ != nullptr);
                 if(cur_raw_page_) cur_page_ = reinterpret_cast<BTreeLeafPage*>(cur_raw_page_->data_);
 
             }
 
         }
         ~IndexIterator(){
-            clear();
+            //clear();
         }
 
         void clear() {
-            if(cur_page_) cache_manager_->unpinPage(cur_page_id_, false);
+            if(cur_page_) {
+                cache_manager_->unpinPage(cur_page_id_, false);
+            }
         }
 
         bool isNull() {
