@@ -70,6 +70,8 @@ Page* CacheManager::newPage(FileID fid){
     if (!free_list_.empty()) {
         new_frame = free_list_.back();
         free_list_.pop_back();
+        replacer_->RecordAccess(new_frame);
+        replacer_->SetEvictable(new_frame, false);
         new_page = &pages_[new_frame];
     }
     else if (new_frame == -1) {
@@ -77,18 +79,21 @@ Page* CacheManager::newPage(FileID fid){
         if (!res || new_frame == -1) {
             return nullptr;
         }
+
+        replacer_->RecordAccess(new_frame);
+        replacer_->SetEvictable(new_frame, false);
+
         Page *page_to_be_flushed = &pages_[new_frame];
         page_table_.erase(page_to_be_flushed->page_id_);
         if (page_to_be_flushed->is_dirty_) {
             disk_manager_->writePage(page_to_be_flushed->page_id_, page_to_be_flushed->data_);
         }
+        page_to_be_flushed->ResetMemory();
         new_page = page_to_be_flushed;
     } 
 
     assert(new_frame != -1);
 
-    replacer_->RecordAccess(new_frame);
-    replacer_->SetEvictable(new_frame, false);
 
     int err = disk_manager_->allocateNewPage(fid, new_page->data_, &new_page->page_id_);
     if(err) {
