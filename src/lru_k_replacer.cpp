@@ -46,7 +46,7 @@ class LRUKReplacer {
         size_t replacer_size_;
         size_t k_;
         std::mutex latch_;
-        // assume that it can grow to infinity for now but it's not true. max = 2^32 - 1(not sure 64 or 32).
+        // assume that it can grow to infinity for now but it's not true. max = 2^32 - 1
         size_t current_timestamp_{0};
         // we are using two maps pointing at each other because we need a lookup_ with the frame_id (lookup_),
         // and we need frames to be sorted naturally inside the frames_ map and the frames_.begin() is the next
@@ -71,7 +71,7 @@ class LRUKReplacer {
         std::map<std::array<size_t, 3>, size_t> frames_;
 };
 
-bool LRUKReplacer:: Evict(int32_t *frame_id) {
+bool LRUKReplacer::Evict(int32_t *frame_id) {
     const std::lock_guard<std::mutex> lock(latch_);
     if (cur_size_ == 0U) {
         return false;
@@ -94,7 +94,7 @@ void LRUKReplacer::RecordAccess(uint32_t frame_id) {
     const std::lock_guard<std::mutex> lock(latch_);
     //    std::cout << "Record access: " << frame_id << std::endl;
     if (frame_id < 0 || frame_id >= static_cast<uint32_t>(replacer_size_)) {
-        assert(1 && "invalid frame_id");
+        assert(0 && "invalid frame_id");
         return;
     }
     if (lookup_.count(frame_id) != 0U) {
@@ -107,7 +107,6 @@ void LRUKReplacer::RecordAccess(uint32_t frame_id) {
             lookup_[frame_id][1] = 1;
             lookup_[frame_id][2] = current_timestamp_;
         }
-
         frames_.insert({lookup_[frame_id], frame_id});
     } else {
         cur_size_++;
@@ -125,8 +124,9 @@ void LRUKReplacer::RecordAccess(uint32_t frame_id) {
 void LRUKReplacer::SetEvictable(uint32_t frame_id, bool set_evictable) {
     const std::lock_guard<std::mutex> lock(latch_);
     // std::cout << "set evictable: " << frame_id << " " << set_evictable << std::endl;
-    if (lookup_.count(frame_id) == 0U) {
-        assert(1 && "invalid frame_id");
+    if (!lookup_.count(frame_id)) {
+        std::cout << frame_id << "\n";
+        assert(0 && "invalid frame_id");
         return;
     }
     set_evictable = !set_evictable;

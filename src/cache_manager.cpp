@@ -12,6 +12,8 @@ class CacheManager {
     public:
         CacheManager (size_t pool_size, DiskManager *disk_manager, size_t replacer_k)
             : pool_size_(pool_size), disk_manager_(disk_manager) {
+                std::cout << "pool size: " << pool_size_ << "\n";
+                std::cout << "replacer k: " << replacer_k << "\n";
                 pages_ = new Page[pool_size_];
                 replacer_ = new LRUKReplacer(pool_size, replacer_k);
 
@@ -68,31 +70,30 @@ Page* CacheManager::newPage(FileID fid){
     if (!free_list_.empty()) {
         new_frame = free_list_.back();
         free_list_.pop_back();
-        replacer_->RecordAccess(new_frame);
-        replacer_->SetEvictable(new_frame, false);
         new_page = &pages_[new_frame];
-        new_page->ResetMemory();
     }
-    if (new_frame == -1) {
+    else if (new_frame == -1) {
         bool res = replacer_->Evict(&new_frame);
         if (!res || new_frame == -1) {
             return nullptr;
         }
-
-        replacer_->RecordAccess(new_frame);
-        replacer_->SetEvictable(new_frame, false);
-
         Page *page_to_be_flushed = &pages_[new_frame];
         page_table_.erase(page_to_be_flushed->page_id_);
         if (page_to_be_flushed->is_dirty_) {
             disk_manager_->writePage(page_to_be_flushed->page_id_, page_to_be_flushed->data_);
         }
-        page_to_be_flushed->ResetMemory();
         new_page = page_to_be_flushed;
-    }
+    } 
+
+    assert(new_frame != -1);
+
+    replacer_->RecordAccess(new_frame);
+    replacer_->SetEvictable(new_frame, false);
+
     int err = disk_manager_->allocateNewPage(fid, new_page->data_, &new_page->page_id_);
     if(err) {
-        std::cout << " could not allocate a new page " << fid_to_fname[fid] << std::endl;
+        replacer_->SetEvictable(new_frame, true);
+        std::cout << "could not allocate a new page " << fid_to_fname[fid] << std::endl;
         return nullptr;
     }
     page_table_.insert({new_page->page_id_, new_frame});
@@ -119,57 +120,36 @@ Page* CacheManager::fetchPage(PageID page_id){
         pages_[frame].pin_count_++;
         return &pages_[frame];
     }
-    if (!free_list_.empty()) {
-        char page_data[PAGE_SIZE]{};
-        int err_reading_page = disk_manager_->readPage(page_id, page_data);
-        // page id is not valid.
-        if(err_reading_page) {
-            //std::cout << "couldn't fetch page number : " << page_id.page_num_ 
-            // << " from the file: " << page_id.file_name_ << std::endl;
-            return nullptr;
-        }
 
+    char page_data[PAGE_SIZE]{};
+    int err_reading_page = disk_manager_->readPage(page_id, page_data);
+    if(err_reading_page) {
+        return nullptr;
+    }
+
+    if (!free_list_.empty()) {
         frame = free_list_.back();
         free_list_.pop_back();
-        replacer_->RecordAccess(frame);
-        replacer_->SetEvictable(frame, false);
-        page_table_.insert({page_id, frame});
-
-
-        memcpy(pages_[frame].data_, page_data, PAGE_SIZE);
-        pages_[frame].page_id_ = page_id;
-        pages_[frame].pin_count_ = 1;
-        pages_[frame].is_dirty_ = false;
-        return &pages_[frame];
     }
-    if (replacer_->Evict(&frame)) {
-        char page_data[PAGE_SIZE]{};
-        int err_reading_page = disk_manager_->readPage(page_id, page_data);
-        // page id is not valid.
-        if(err_reading_page) {
-            //std::cout << "couldn't fetch page number : " << page_id.page_num_ 
-            //   << " from the file: " << page_id.file_name_ << std::endl;
-            return nullptr;
-        }
-
-        replacer_->RecordAccess(frame);
-        replacer_->SetEvictable(frame, false);
-        page_table_.erase(pages_[frame].page_id_);
-        page_table_.insert({page_id, frame});
-
-        if (pages_[frame].is_dirty_) {
-            disk_manager_->writePage(pages_[frame].page_id_, pages_[frame].data_);
-            pages_[frame].ResetMemory();
-        }
-
-        memcpy(pages_[frame].data_, page_data, PAGE_SIZE);
-
-        pages_[frame].page_id_ = page_id;
-        pages_[frame].is_dirty_ = false;
-        pages_[frame].pin_count_ = 1;
-        return &pages_[frame];
+    else if (replacer_->Evict(&frame) && pages_[frame].is_dirty_) {
+        disk_manager_->writePage(pages_[frame].page_id_, pages_[frame].data_);
+        pages_[frame].ResetMemory();
     }
-    return nullptr;
+
+    assert(frame != -1);
+
+    replacer_->RecordAccess(frame);
+    replacer_->SetEvictable(frame, false);
+    page_table_.erase(pages_[frame].page_id_);
+    page_table_.insert({page_id, frame});
+
+
+    memcpy(pages_[frame].data_, page_data, PAGE_SIZE);
+
+    pages_[frame].page_id_ = page_id;
+    pages_[frame].is_dirty_ = false;
+    pages_[frame].pin_count_ = 1;
+    return &pages_[frame];
 }
 
 
@@ -226,8 +206,7 @@ void CacheManager::flushAllPages() {
             pages_[i].page_id_.fid_ == INVALID_PAGE_ID.fid_;
         if (invalid_page) continue;
         Page *page_to_be_flushed = &pages_[i];
-        // TODO: doesn't work => this means someone doesn't mark pages as dirty, fix this.
-        //if(page_to_be_flushed->is_dirty_ == false) continue; 
+        if(page_to_be_flushed->is_dirty_ == false) continue; 
         disk_manager_->writePage(page_to_be_flushed->page_id_, page_to_be_flushed->data_);
         page_to_be_flushed->is_dirty_ = false;
     }

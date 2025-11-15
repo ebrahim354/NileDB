@@ -52,7 +52,7 @@ class Catalog {
             // the fid of an fsm is always the fid of the table + 1.
             const FileID meta_data_fid = 0;
 
-            fid_to_fname[meta_data_fid] = META_DATA_FILE;
+            fid_to_fname[meta_data_fid]   = META_DATA_FILE;
             fid_to_fname[meta_data_fid+1] = META_DATA_FSM;
             // change the size after adding free space map support.
             PageID meta_fsm_pid = {.fid_ = meta_data_fid + 1, .page_num_ = 1};
@@ -372,13 +372,17 @@ class Catalog {
             // indexes_meta_data (text index_name, text table_name, int fid, int root_page_num).
             TableSchema* indexes_meta_schema = tables_[INDEX_META_TABLE];
             TableIterator* it_meta = indexes_meta_schema->getTable()->begin();
+            bool success = true;
 
             while(it_meta->advance()){
                 Record r = it_meta->getCurRecordCpy();
                 std::vector<Value> values;
                 int err = indexes_meta_schema->translateToValues(r, values);
                 assert(err == 0 && "Could not traverse the indexes schema.");
-                if(err) return 0;
+                if(err){
+                    success = false;
+                    break;
+                };
 
                 std::string index_name = values[0].getStringVal();
                 std::string table_name = values[1].getStringVal();
@@ -403,6 +407,7 @@ class Catalog {
                     indexes_of_table_[table_name] = {index_name};
             }
             delete it_meta;
+            if(!success) return false;
 
             // indexs_keys      (text index_name, int field_number_in_table, int field_number_in_index).
             // this table holds the data for all key mappings of all indexes of the system.
@@ -414,7 +419,10 @@ class Catalog {
                 std::vector<Value> values;
                 int err = index_keys_schema->translateToValues(r, values);
                 assert(err == 0 && "Could not traverse the indexes keys.");
-                if(err) return 0;
+                if(err) {
+                    success = false;
+                    break;
+                };
 
                 // we need field_number_in_index to know the order of the fields used to form keys.
                 std::string index_name = values[0].getStringVal();
@@ -433,7 +441,7 @@ class Catalog {
                 };
             }
             delete it_keys;
-            return 1;
+            return success;
         }
         IndexHeader getIndexHeader(std::string& iname) {
             if(indexes_.count(iname)) return indexes_[iname];

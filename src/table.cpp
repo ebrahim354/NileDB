@@ -80,7 +80,7 @@ class Table {
                         (cache_manager_->fetchPage(prev_page_id));
                     prev_page->setNextPageNumber(table_page->getPageNumber());
                     table_page->setPrevPageNumber(prev_page->getPageNumber());
-                    cache_manager_->flushPage(prev_page->page_id_);
+                    //cache_manager_->flushPage(prev_page->page_id_);
                     cache_manager_->unpinPage(prev_page->page_id_, true);
                 }
                 // if you are the first page and you just got created that means,
@@ -102,15 +102,17 @@ class Table {
             
             if(err) {
                 std::cout << " could not insert the record to the page " << std::endl;
+                cache_manager_->unpinPage(table_page->page_id_, true);
                 return 1;
             }
             err = free_space_map_->updateFreeSpace(table_page->page_id_.page_num_, table_page->getFreeSpaceSize());
             if(err){
                 std::cout << "could not update free space map" << std::endl;
+                cache_manager_->unpinPage(table_page->page_id_, true);
                 return 1;
             }
             // flush and unpin the page then return.
-            cache_manager_->flushPage(table_page->page_id_);
+            //cache_manager_->flushPage(table_page->page_id_);
             cache_manager_->unpinPage(table_page->page_id_, true);
             // should unlock the page (TODO).
             // note: locking and unlocking the page should be added before doing any multithreaded operations.
@@ -133,12 +135,16 @@ class Table {
             TableDataPage* table_page = reinterpret_cast<TableDataPage *>(cache_manager_->fetchPage(rid->page_id_));
             if(table_page == nullptr) return 1;
             int err = table_page->deleteRecord(rid->slot_number_);
-            if(err) return err;
+            if(err) {
+                cache_manager_->unpinPage(table_page->page_id_, true);
+                return err;
+            }
             int insert_err = table_page->insertRecord(new_record.getFixedPtr(0), new_record.getRecordSize(), &rid->slot_number_);
             // inserted no need to find a new page.
-            if(!insert_err) return 0;
-            // this page is not enough.
             cache_manager_->unpinPage(table_page->page_id_, true);
+            if(!insert_err) 
+                return 0;
+            // this page is not enough.
             // in some scenarios we may delete the old record and encounter any problem while inserting the new one,
             // this needs to be handled later with transactions or doing updates inside of the page to check for enough
             // space first without deleting the old record.

@@ -451,8 +451,6 @@ class BTreeIndex {
                 custom_stk.pop_front();
                 page_deque.pop_front();
             }
-
-            cache_manager_->flushAllPages(); // TODO: this is not the job of the index.
             return inserted;
         }
 

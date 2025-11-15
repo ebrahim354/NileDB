@@ -17,7 +17,7 @@ class NileDB {
         QueryProcessor* query_processor_ = nullptr;
         AlgebraEngine* algebra_engine_ = nullptr;
     public:
-        NileDB(size_t pool_size = 1024, size_t k=512)
+        NileDB(size_t pool_size = 64, size_t k=32)
         {
             cache_manager_ = new CacheManager(pool_size, disk_manager_, k);
             catalog_ = new Catalog(cache_manager_);
