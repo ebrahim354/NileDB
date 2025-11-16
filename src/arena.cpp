@@ -52,21 +52,33 @@ void memory_release(void* memory, u64 size) {
 #define ARENA_MAX         Megabytes(1)
 #define ARENA_COMMIT_SIZE Kilobytes(8)
 
+struct Arena;
+
+struct ArenaTemp {
+    Arena* arena_;
+    u64 pos_;
+};
+
 struct Arena {
         u8* buffer_      = nullptr;
         u64 max_         = 0;
         u64 alloc_pos_   = 0;
         u64 commit_pos_  = 0;
 
+        Arena() {}
+        ~Arena() { destroy(); }
 
-        Arena() {
+        void init() {
             max_ = ARENA_MAX;
             buffer_ = (u8*) memory_reserve(ARENA_MAX);
             assert(buffer_ != nullptr);
         }
 
-        ~Arena() {
+        void destroy() {
             memory_release(buffer_, max_);
+            u8* buffer_      = nullptr;
+            u64 alloc_pos_   = 0;
+            u64 commit_pos_  = 0;
         }
 
         void* alloc(size_t size) {
@@ -97,7 +109,7 @@ struct Arena {
             alloc_pos_ = size;
         }
 
-        void dealloc_to(u64 size, u64 pos) {
+        void dealloc_to(u64 pos) {
             if(pos > max_) pos = max_;
             if(pos < 0) pos = 0;
             alloc_pos_ = pos;
@@ -106,5 +118,18 @@ struct Arena {
         void clear() {
             dealloc(alloc_pos_);
         }
+
+        ArenaTemp start_temp_arena() {
+            return { 
+                .arena_ = this, 
+                .pos_   = alloc_pos_
+            };
+        }
+
+        void clear_temp_arena(ArenaTemp temp) {
+            dealloc_to(temp.pos_);
+        }
 };
+
+
 
