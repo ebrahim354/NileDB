@@ -12,7 +12,8 @@ class QueryProcessor{
 
         bool handleQuery(std::string& query, QueryResult* result){
             std::cout << "[INFO] Parsing query" << std::endl;
-            QueryCTX query_ctx(query.size());
+            QueryCTX query_ctx;
+            query_ctx.init(query.size());
             parser_->parse(query, query_ctx);
             if(!query_ctx.queries_call_stack_.size() || query_ctx.error_status_ != Error::NO_ERROR || query_ctx.cursor_ != query_ctx.tokens_.size()){
                 std::cout << (int)query_ctx.getCurrentToken().type_ << " " << query_ctx.cursor_ << " " << query_ctx.tokens_.size() << std::endl;

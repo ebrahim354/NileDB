@@ -75,6 +75,7 @@ struct Arena {
         }
 
         void destroy() {
+            if(!buffer_) return;
             memory_release(buffer_, max_);
             u8* buffer_      = nullptr;
             u64 alloc_pos_   = 0;

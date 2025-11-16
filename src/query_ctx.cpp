@@ -4,6 +4,7 @@
 #include "executor.cpp"
 #include "algebra_operation.cpp"
 #include "query_data.cpp"
+#include "arena.cpp"
 
 struct ExpressionNode;
 
@@ -12,14 +13,29 @@ struct ExpressionNode;
 
 // each query has its own context that is passed around the system.
 struct QueryCTX {
-    QueryCTX (int query_string_size) {
-        int avg_num_of_tokens = query_string_size / AVG_TOKEN_SIZE;
-        tokens_.reserve(avg_num_of_tokens);
-    }
+    QueryCTX () {}
     /* use it for debug only
     QueryCTX (QueryCTX& rhs){
         std::cout << "copy" << std::endl;
     }*/
+
+    // Delete copy constructor
+    QueryCTX(const QueryCTX&) = delete; 
+
+    // Delete copy assignment operator
+    QueryCTX& operator=(const QueryCTX&) = delete;
+
+    // Delete move constructor
+    QueryCTX(QueryCTX&&) = delete;
+
+    // Delete move assignment operator
+    QueryCTX& operator=(QueryCTX&&) = delete;
+
+    void init(int query_string_size) {
+        int avg_num_of_tokens = query_string_size / AVG_TOKEN_SIZE;
+        tokens_.reserve(avg_num_of_tokens);
+        arena_.init();
+    }
 
     inline bool matchTokenType(TokenType type){
         return (cursor_ < tokens_.size() && tokens_[cursor_].type_ == type);
@@ -55,6 +71,8 @@ struct QueryCTX {
     }
 
     void clean(){
+        arena_.destroy();
+        /*
         for(int i = 0; i < executors_call_stack_.size(); ++i)
             delete executors_call_stack_[i];
         for(int i = 0; i < operators_call_stack_.size(); ++i)
@@ -63,6 +81,7 @@ struct QueryCTX {
             delete set_operations_[i];
         for(int i = 0; i < queries_call_stack_.size(); ++i)
             delete queries_call_stack_[i];
+            */
         // TODO: clean specific pointers when dealing with set operations?
     }
 
@@ -71,6 +90,7 @@ struct QueryCTX {
     std::vector<QueryData*> set_operations_ = {};
     std::vector<AlgebraOperation*> operators_call_stack_ = {};
     std::vector<Executor*> executors_call_stack_ = {};
+    Arena arena_;
     uint32_t cursor_ = 0;
     Error error_status_ = Error::NO_ERROR;
     bool direct_execution_ = 0;    // directly execeute without translating to algebra, Usually set to true for DDL.

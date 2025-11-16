@@ -680,7 +680,7 @@ class AlgebraEngine {
             std::vector<ExpressionNode*> splitted_where;
             if(data->where_){
                 // split conjunctive predicates.
-                splitted_where = split_by_and(data->where_);
+                splitted_where = split_by_and(ctx, data->where_);
             }
             // collect data about which tables did we access for each splitted predicate from the previous step.
             std::vector<std::pair<std::vector<std::string>, ExpressionNode*>> tables_per_filter;

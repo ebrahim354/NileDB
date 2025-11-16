@@ -46,7 +46,9 @@ class NileDB {
                     query[i] += diff;
                 }
             }*/
-            return query_processor_->handleQuery(query, result);
+            bool res =  query_processor_->handleQuery(query, result);
+            cache_manager_->flushAllPages(); // TODO: delete this.
+            return res;
         }
         bool CMD(std::string command){
             if(command == "\\t"){

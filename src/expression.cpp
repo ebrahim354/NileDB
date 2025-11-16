@@ -454,7 +454,7 @@ Value evaluate_expression(
 
 
 // assumes top level ands only.
-std::vector<ExpressionNode*> split_by_and(ExpressionNode* expression) {
+std::vector<ExpressionNode*> split_by_and(QueryCTX& ctx, ExpressionNode* expression) {
   ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(expression);
   if(!ex) return {};
 
@@ -462,7 +462,9 @@ std::vector<ExpressionNode*> split_by_and(ExpressionNode* expression) {
   std::vector<ExpressionNode*> ret;
   while(ptr){
     // TODO: should be changed.
-    ExpressionNode* ex_copy = new ExpressionNode(ex->top_level_statement_, ex->query_idx_);
+    //ExpressionNode* ex_copy = new ExpressionNode(ex->top_level_statement_, ex->query_idx_);
+    ExpressionNode* ex_copy = nullptr; 
+    ALLOCATE_INIT(ctx.arena_, ex_copy, ExpressionNode, ex->top_level_statement_, ex->query_idx_);
     ex_copy->cur_ = ptr;
     ret.push_back(ex_copy);
     if(ptr->category_ != AND){

@@ -12,6 +12,14 @@ struct ExpressionNode;
 struct ASTNode;
 void accessed_fields(ASTNode* expression ,std::vector<std::string>& fields, bool only_one);
 
+#define ALLOCATE(arena, type) ((type *)((arena).alloc(sizeof(type))))
+#define ALLOCATE_INIT(arena, ptr, type, ...) \
+    do { \
+        ptr = ALLOCATE(arena, type); \
+        new(ptr) type(); \
+        ((type *)ptr)->init(__VA_ARGS__); \
+    } while(0)
+
 
 // The grammer rules are defined as structures, each struct is following the name convention: CategoryNameNode,
 // for example: the constant category the struct is named ConstantNode.
@@ -138,19 +146,36 @@ enum CategoryType {
 };
 
 struct ASTNode {
+    /*
     ASTNode(CategoryType ct, Token val = {}): 
         category_(ct), token_(val)
     {}
     virtual ~ASTNode(){};
+    */
+    void init(CategoryType ct,Token val = {}) {
+        category_ = ct; 
+        token_ = val;
+    }
+
     CategoryType category_;
     Token token_; 
 };
 
 struct AggregateFuncNode : ASTNode {
+    /*
     AggregateFuncNode(ExpressionNode* exp, AggregateFuncType type, int parent_id = 0): 
         ASTNode(AGG_FUNC), exp_(exp), type_(type), parent_id_(parent_id)
     {}
-    ~AggregateFuncNode();
+    ~AggregateFuncNode(){
+        delete exp_;
+    }
+    */
+    void init(ExpressionNode* exp, AggregateFuncType type, int parent_id = 0) {
+        category_ = AGG_FUNC; 
+        exp_ = exp;
+        type_ = type;
+        parent_id_ = parent_id;
+    }
     int parent_id_ = 0;
     ExpressionNode* exp_ = nullptr;
     AggregateFuncType type_;
@@ -158,7 +183,7 @@ struct AggregateFuncNode : ASTNode {
 };
 
 struct ExpressionNode : ASTNode {
-    ExpressionNode(QueryData* top_level_statement, int query_idx, ASTNode* val = nullptr): 
+    /*ExpressionNode(QueryData* top_level_statement, int query_idx, ASTNode* val = nullptr): 
         ASTNode(EXPRESSION), cur_(val), query_idx_(query_idx), top_level_statement_(top_level_statement)
     {}
     ~ExpressionNode(){
@@ -166,6 +191,13 @@ struct ExpressionNode : ASTNode {
         //delete cur_;
         // belongs to statement can't delete.
         // delete aggregate_func_;
+    }*/
+
+    void init(QueryData* top_level_statement, int query_idx, ASTNode* val = nullptr) {
+        category_ = EXPRESSION; 
+        cur_ = val;
+        query_idx_ = query_idx;
+        top_level_statement_ = top_level_statement;
     }
     int id_ = 0; // 0 means it's a single expression => usually used in a where clause and can't have aggregations.
     int query_idx_ = -1; // the index of the query that this expression belongs to, -1 means top level query
@@ -175,11 +207,9 @@ struct ExpressionNode : ASTNode {
                                                   // meaning that expressions with aggregate functions can't be nested.
 };
 
-AggregateFuncNode::~AggregateFuncNode(){
-    delete exp_;
-}
 
 struct CaseExpressionNode : ASTNode {
+    /*
     CaseExpressionNode(std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs, ExpressionNode* else_exp, ExpressionNode* initial_value):
         ASTNode(CASE_EXPRESSION), when_then_pairs_(when_then_pairs), else_(else_exp), initial_value_(initial_value)
     {}
@@ -190,6 +220,15 @@ struct CaseExpressionNode : ASTNode {
             delete when_then_pairs_[i].first;
             delete when_then_pairs_[i].second;
         }
+    }*/
+    void init (
+            std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs,
+            ExpressionNode* else_exp, 
+            ExpressionNode* initial_value) {
+        category_ = CASE_EXPRESSION;
+        when_then_pairs_ = when_then_pairs;
+        else_ = else_exp;
+        initial_value_ = initial_value;
     }
     ExpressionNode* initial_value_ = nullptr;
     std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs_; // should be evaluated in order.
@@ -197,12 +236,19 @@ struct CaseExpressionNode : ASTNode {
 };
 
 struct NullifExpressionNode : ASTNode {
+    /*
     NullifExpressionNode(ExpressionNode* lhs, ExpressionNode* rhs):
         ASTNode(NULLIF_EXPRESSION),
         lhs_(lhs),
         rhs_(rhs)
     {}
     ~NullifExpressionNode(){}
+    */
+    void init (ExpressionNode* lhs, ExpressionNode* rhs) {
+        category_ = NULLIF_EXPRESSION;
+        lhs_ = lhs;
+        rhs_ = rhs;
+    }
     ExpressionNode* lhs_ = nullptr;
     ExpressionNode* rhs_ = nullptr;
 };
@@ -210,18 +256,31 @@ struct NullifExpressionNode : ASTNode {
 
 // scoped field is a field of the format: tableName + "." + fieldName
 struct ScopedFieldNode : ASTNode {
+    /*
     ScopedFieldNode(Token f, ASTNode* table): ASTNode(SCOPED_FIELD, f), table_(table)
     {}
     ~ScopedFieldNode(){
         delete table_;
+    }*/
+    void init (Token f, ASTNode* table) {
+        category_ = SCOPED_FIELD; 
+        token_ = f;
+        table_ = table;
     }
+
     ASTNode* table_ = nullptr;
 };
 
 struct SubQueryNode : ASTNode {
+    /*
     SubQueryNode(int idx, int parent_idx): 
         ASTNode(SUB_QUERY), idx_(idx), parent_idx_(parent_idx)
-    {}
+    {}*/
+    void init (int idx, int parent_idx) {
+        category_ = SUB_QUERY;
+        idx_ = idx;
+        parent_idx_ = parent_idx;
+    }
     int idx_ = -1;
     int parent_idx_ = -1;
     bool used_with_exists_ = false;
@@ -229,84 +288,139 @@ struct SubQueryNode : ASTNode {
 
 struct TypeCastNode : ASTNode {
     // TODO: exp should be changed to an argument list of expressions. 
+    /*
     TypeCastNode(ExpressionNode* exp, Type new_type): 
         ASTNode(TYPE_CAST), exp_(exp), type_(new_type)
     {}
     ~TypeCastNode(){
         delete exp_;
+    }*/
+    void init (ExpressionNode* exp, Type new_type) {
+        category_ = TYPE_CAST;
+        exp_ = exp;
+        type_ = new_type;
     }
-    Type type_ = INVALID;
     ExpressionNode* exp_ = nullptr;
+    Type type_ = INVALID;
 };
 
 struct ScalarFuncNode : ASTNode {
+    /*
     ScalarFuncNode(std::vector<ExpressionNode*> arguments, std::string name, int parent_id = 0): 
         ASTNode(SCALAR_FUNC), args_(arguments), name_(name), parent_id_(parent_id)
     {}
     ~ScalarFuncNode(){
         for(int i = 0; i < args_.size(); ++i)
             delete args_[i];
+    }*/
+    void init (std::vector<ExpressionNode*> arguments, std::string name, int parent_id = 0) {
+        category_ = SCALAR_FUNC;
+        args_ = arguments;
+        name_ = name;
+        parent_id_ = parent_id;
     }
+
+    std::vector<ExpressionNode*> args_ = {};
     std::string name_;
     int parent_id_ = 0;
-    std::vector<ExpressionNode*> args_ = {};
 };
 
 
 struct UnaryNode : ASTNode {
+    /*
     UnaryNode(ASTNode* val, Token op={}): ASTNode(UNARY, op), cur_(val)
     {}
     ~UnaryNode(){
         delete cur_;
+    }*/
+    void init (ASTNode* val, Token op={}) {
+        category_ = UNARY;
+        token_ = op;
+        cur_ = val;
     }
+
     ASTNode* cur_ = nullptr;
 };
 
 struct FactorNode : ASTNode {
+    /*
     FactorNode(UnaryNode* lhs, FactorNode* rhs = nullptr, Token op={}): ASTNode(FACTOR, op), cur_(lhs), next_(rhs)
     {}
     ~FactorNode(){
         delete cur_;
         delete next_;
+    }*/
+    void init (UnaryNode* lhs, FactorNode* rhs = nullptr, Token op={}) {
+        category_ = FACTOR;
+        token_ = op;
+        cur_ = lhs;
+        next_ = rhs;
     }
+
     UnaryNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
 
 struct TermNode : ASTNode {
+    /*
     TermNode(FactorNode* lhs, TermNode* rhs = nullptr, Token op={}): ASTNode(TERM, op), cur_(lhs), next_(rhs)
     {}
     ~TermNode(){
         delete cur_;
         delete next_;
+    }*/
+    void init (FactorNode* lhs, TermNode* rhs = nullptr, Token op={}) {
+        category_ = TERM;
+        token_ = op;
+        cur_ = lhs;
+        next_ = rhs;
     }
+
     FactorNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
 
 struct ComparisonNode : ASTNode {
+    /*
     ComparisonNode(TermNode* lhs, ComparisonNode* rhs = nullptr, Token op={}): ASTNode(COMPARISON, op), cur_(lhs), next_(rhs)
     {}
     ~ComparisonNode(){
         delete cur_;
         delete next_;
+    }*/
+
+    void init (TermNode* lhs, ComparisonNode* rhs = nullptr, Token op={}) {
+        category_ = COMPARISON;
+        token_ = op;
+        cur_ = lhs;
+        next_ = rhs;
     }
     TermNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
 
 struct EqualityNode : ASTNode {
+/*
     EqualityNode(ComparisonNode* lhs, EqualityNode* rhs = nullptr, Token op={}): ASTNode(EQUALITY, op), cur_(lhs), next_(rhs)
     {}
     ~EqualityNode(){
         delete cur_;
         delete next_;
+    }*/
+
+    void init (ComparisonNode* lhs, EqualityNode* rhs = nullptr, Token op={}) {
+        category_ = EQUALITY;
+        token_ = op;
+        cur_ = lhs;
+        next_ = rhs;
     }
+
     ComparisonNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
 
 struct InNode : ASTNode {
+    /*
     InNode(ASTNode* val, std::vector<ASTNode*> list, bool negated): 
         ASTNode(IN), val_(val), list_(list), negated_(negated) 
     {}
@@ -315,6 +429,12 @@ struct InNode : ASTNode {
         for(int i = 0; i < list_.size(); ++i){
             delete list_[i];
         }
+    }*/
+    void init (ASTNode* val, std::vector<ASTNode*> list, bool negated) {
+        category_ = IN;
+        val_ = val;
+        list_ = list;
+        negated_ = negated;
     }
     ASTNode* val_ = nullptr;
     std::vector<ASTNode*> list_;
@@ -322,6 +442,7 @@ struct InNode : ASTNode {
 };
 
 struct BetweenNode : ASTNode {
+    /*
     BetweenNode(ASTNode* val, ASTNode* lhs, ASTNode* rhs, bool negated): 
         ASTNode(BETWEEN), lhs_(lhs), rhs_(rhs), val_(val), negated_(negated)
     {}
@@ -329,6 +450,14 @@ struct BetweenNode : ASTNode {
         delete val_;
         delete lhs_;
         delete rhs_;
+    }*/
+
+    void init (ASTNode* val, ASTNode* lhs, ASTNode* rhs, bool negated) {
+        category_ = BETWEEN;
+        lhs_ = lhs;
+        rhs_ = rhs;
+        val_ = val;
+        negated_ = negated;
     }
     ASTNode* val_ = nullptr;
     ASTNode* lhs_ = nullptr;
@@ -337,10 +466,17 @@ struct BetweenNode : ASTNode {
 };
 
 struct NotNode : ASTNode {
+    /*
     NotNode(BetweenNode* cur=nullptr, Token op={}): ASTNode(NOT, op), cur_(cur)
     {}
     ~NotNode(){
         delete cur_;
+    }*/
+
+    void init (BetweenNode* cur = nullptr, Token op = {}) {
+        category_ = NOT;
+        token_ = op;
+        cur_ = cur;
     }
     BetweenNode* cur_ = nullptr;
     // only works if an odd number of NOT operators are listed: NOT 1, NOT NOT NOT 1 = false, but NOT NOT 1 = true,
@@ -350,22 +486,38 @@ struct NotNode : ASTNode {
 
 
 struct AndNode : ASTNode {
+    /*
     AndNode(NotNode* lhs, AndNode* rhs = nullptr, Token op={}): ASTNode(AND, op), cur_(lhs), next_(rhs)
     {}
     ~AndNode(){
         delete cur_;
         delete next_;
+    }*/
+
+    void init (NotNode* lhs, AndNode* rhs = nullptr, Token op={}) {
+        category_ = AND;
+        token_ = op;
+        cur_ =  lhs;
+        next_ =  rhs;
     }
     NotNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
 };
 
 struct OrNode : ASTNode {
+    /*
     OrNode(AndNode* lhs, OrNode* rhs = nullptr, Token op={}): ASTNode(OR, op), cur_(lhs), next_(rhs)
     {}
     ~OrNode(){
         delete cur_;
         delete next_;
+    }*/
+
+    void init (AndNode* lhs, OrNode* rhs = nullptr, Token op={}) {
+        category_ = OR;
+        token_ = op;
+        cur_ = lhs;
+        next_ = rhs;
     }
     AndNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
@@ -405,6 +557,7 @@ struct SelectStatementData : QueryData {
 
     SelectStatementData(int parent_idx): QueryData(SELECT_DATA, parent_idx)
     {}
+    /*
     ~SelectStatementData() {
         for(int i = 0; i < fields_.size(); ++i)
             delete fields_[i];
@@ -414,7 +567,7 @@ struct SelectStatementData : QueryData {
         delete having_;
         for(int i = 0; i < group_by_.size(); ++i)
             delete group_by_[i];
-    }
+    }*/
 
     std::vector<ExpressionNode*> fields_ = {};
     std::vector<std::string> field_names_ = {};
@@ -551,10 +704,11 @@ struct CreateIndexStatementData : QueryData {
 struct InsertStatementData : QueryData {
 
     InsertStatementData(int parent_idx): QueryData(INSERT_DATA, parent_idx){}
+    /*
     ~InsertStatementData() {
         for(int i = 0; i < values_.size();++i)
             delete values_[i];
-    }
+    }*/
 
 
     std::string table_name_ = {};
@@ -568,9 +722,10 @@ struct InsertStatementData : QueryData {
 struct DeleteStatementData : QueryData {
 
     DeleteStatementData(int parent_idx): QueryData(DELETE_DATA, parent_idx){}
+    /*
     ~DeleteStatementData() {
         delete where_;
-    }
+    }*/
 
 
     std::string table_name_ = {};
@@ -580,10 +735,11 @@ struct DeleteStatementData : QueryData {
 struct UpdateStatementData : QueryData {
 
     UpdateStatementData(int parent_idx): QueryData(UPDATE_DATA, parent_idx){}
+    /*
     ~UpdateStatementData() {
         delete value_;
         delete where_;
-    }
+    }*/
 
 
     std::string table_name_ = {};
@@ -780,7 +936,7 @@ void Parser::selectList(QueryCTX& ctx, int query_idx){
             ++ctx;
             rename = true;
             if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
-                delete f;
+                //delete f;
                 ctx.error_status_ = Error::EXPECTED_IDENTIFIER;
                 return;
             } else {
@@ -1058,16 +1214,19 @@ ASTNode* Parser::constant(QueryCTX& ctx){
         val += "."; ++ctx;
         val += ctx.getCurrentToken().val_; ++ctx;
         auto t = Token(TokenType::FLOATING_CONSTANT, val);
-        ret = new ASTNode(FLOAT_CONSTANT, t);
+        ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FLOAT_CONSTANT, t);
       // strings
     } else  if(ctx.matchTokenType(TokenType::STR_CONSTANT)){ 
-        ret =  new ASTNode(STRING_CONSTANT, ctx.getCurrentToken()); ++ctx;  
+        //ret =  new ASTNode(STRING_CONSTANT, ctx.getCurrentToken()); ++ctx;  
+        ALLOCATE_INIT(ctx.arena_, ret, ASTNode, STRING_CONSTANT, ctx.getCurrentToken()); ++ctx;
       // integers
     } else if(ctx.matchTokenType(TokenType::NUMBER_CONSTANT)){ 
-        ret = new ASTNode(INTEGER_CONSTANT, ctx.getCurrentToken()); ++ctx;
+        //ret = new ASTNode(INTEGER_CONSTANT, ctx.getCurrentToken()); ++ctx;
+        ALLOCATE_INIT(ctx.arena_, ret, ASTNode, INTEGER_CONSTANT, ctx.getCurrentToken()); ++ctx;
       // null
     } else if(ctx.matchTokenType(TokenType::NULL_CONST)){ 
-        ret = new ASTNode(NULL_CONSTANT, ctx.getCurrentToken()); ++ctx;
+        //ret = new ASTNode(NULL_CONSTANT, ctx.getCurrentToken()); ++ctx;
+        ALLOCATE_INIT(ctx.arena_, ret, ASTNode, NULL_CONSTANT, ctx.getCurrentToken()); ++ctx;
     }
     return ret;
 }
@@ -1076,22 +1235,32 @@ ASTNode* Parser::table(QueryCTX& ctx){
     if((bool)ctx.error_status_) return nullptr;
     if(ctx.matchTokenType(TokenType::IDENTIFIER)){
         auto token = ctx.getCurrentToken(); ++ctx;
-        return new ASTNode(TABLE, token);
+        ASTNode* ret = nullptr;
+        //return new ASTNode(TABLE, token);
+        ALLOCATE_INIT(ctx.arena_, ret, ASTNode, TABLE, token);
+        return ret;
     }
     return nullptr;
 }
 
 ASTNode* Parser::field(QueryCTX& ctx){
     if((bool)ctx.error_status_) return nullptr;
+    ASTNode* ret = nullptr;
     if(ctx.matchTokenType(TokenType::IDENTIFIER)) {
         auto token = ctx.getCurrentToken(); ++ctx;
         std::vector<std::string> possible_tables = catalog_->getTablesByField(token.val_);
         if(possible_tables.size() == 1) {
-          return new ScopedFieldNode(token, new ASTNode(TABLE, Token(TokenType::IDENTIFIER, possible_tables[0])));
+            ASTNode* t = nullptr;
+            ALLOCATE_INIT(ctx.arena_, t, ASTNode, TABLE, Token(TokenType::IDENTIFIER, possible_tables[0]));
+            ALLOCATE_INIT(ctx.arena_, ret, ScopedFieldNode, token, t);
+            return ret;
+            //return new ScopedFieldNode(token, new ASTNode(TABLE, Token(TokenType::IDENTIFIER, possible_tables[0])));
         }
-        return new ASTNode(FIELD, token);
+        ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FIELD, token);
+        //return new ASTNode(FIELD, token);
+        return ret;
     }
-    return nullptr;
+    return ret;
 }
 
 ASTNode* Parser::scoped_field(QueryCTX& ctx){
@@ -1101,7 +1270,10 @@ ASTNode* Parser::scoped_field(QueryCTX& ctx){
         if(!t) return nullptr;
         ++ctx;
         auto field_name = ctx.getCurrentToken();++ctx;
-        return new ScopedFieldNode(field_name, t);
+        ASTNode* ret = nullptr;
+        ALLOCATE_INIT(ctx.arena_, ret, ScopedFieldNode, field_name, t);
+        return ret;
+        //return new ScopedFieldNode(field_name, t);
     }
     return nullptr;
 }
@@ -1133,19 +1305,19 @@ ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
         ++ctx;
         auto when = expression(ctx, query_idx, id);
         if(!when) {
-            delete initial_value;
+            //delete initial_value;
             return nullptr;
         }
         if(!ctx.matchTokenType(TokenType::THEN)) {
-            delete initial_value;
-            delete when;
+            //delete initial_value;
+            //delete when;
             return nullptr;
         }
         ++ctx;
         auto then = expression(ctx, query_idx, id);
         if(!then) {
-            delete initial_value;
-            delete when;
+            //delete initial_value;
+            //delete when;
             return nullptr;
         }
 
@@ -1156,14 +1328,14 @@ ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
         ++ctx;
         else_exp = expression(ctx, query_idx, id);
         if(!else_exp) {
-            delete initial_value;
+            //delete initial_value;
             return nullptr;
         }
     }
     // must have END
     if(!ctx.matchTokenType(TokenType::END)) {
-        delete initial_value;
-        delete else_exp;
+        //delete initial_value;
+        //delete else_exp;
         return nullptr;
     }
     ++ctx;
@@ -1171,12 +1343,15 @@ ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
         ctx.error_status_ = Error::INCORRECT_CASE_EXPRESSION; 
         // TODO: use logger.
         std::cout << "[ERROR] incorrect case expression" << std::endl;
-        delete else_exp;
-        delete initial_value;
+        //delete else_exp;
+        //delete initial_value;
         return nullptr;
     }
 
-    return new CaseExpressionNode(when_then_pairs, else_exp, initial_value);
+    ASTNode* ret = nullptr;
+    ALLOCATE_INIT(ctx.arena_, ret, CaseExpressionNode, when_then_pairs, else_exp, initial_value);
+    return ret;
+    //return new CaseExpressionNode(when_then_pairs, else_exp, initial_value);
 }
 
 ASTNode* Parser::nullif_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
@@ -1203,7 +1378,10 @@ ASTNode* Parser::nullif_expression(QueryCTX& ctx, ExpressionNode* expression_ctx
     }
     ++ctx; // eat ')'
 
-    return new NullifExpressionNode(lhs, rhs);
+    ASTNode* ret = nullptr;
+    ALLOCATE_INIT(ctx.arena_, ret, NullifExpressionNode, lhs, rhs);
+    return ret;
+    //return new NullifExpressionNode(lhs, rhs);
 }
 
 ASTNode* Parser::type_cast(QueryCTX& ctx, ExpressionNode* expression_ctx){
@@ -1229,7 +1407,10 @@ ASTNode* Parser::type_cast(QueryCTX& ctx, ExpressionNode* expression_ctx){
     ++ctx;
     if(!ctx.matchTokenType(TokenType::RP)) return nullptr;
     ++ctx;
-    return new TypeCastNode(exp, t);
+    ASTNode* ret = nullptr;
+    ALLOCATE_INIT(ctx.arena_, ret, TypeCastNode, exp, t);
+    return ret;
+    //return new TypeCastNode(exp, t);
 }
 
 ASTNode* Parser::scalar_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
@@ -1249,7 +1430,10 @@ ASTNode* Parser::scalar_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if(args.size() == 0) return nullptr;
     if(!ctx.matchTokenType(TokenType::RP)) return nullptr;
     ++ctx;
-    return new ScalarFuncNode(args, name, expression_ctx->id_);
+    ASTNode* ret = nullptr;
+    ALLOCATE_INIT(ctx.arena_, ret, ScalarFuncNode, args, name, expression_ctx->id_);
+    return ret;
+    //return new ScalarFuncNode(args, name, expression_ctx->id_);
 }
 
 ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
@@ -1288,7 +1472,9 @@ ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
             return nullptr;
         }
     }
-    expression_ctx->aggregate_func_ =  new AggregateFuncNode(exp, type, expression_ctx->id_);
+    //expression_ctx->aggregate_func_ =  new AggregateFuncNode(exp, type, expression_ctx->id_);
+    expression_ctx->aggregate_func_ =  nullptr; 
+    ALLOCATE_INIT(ctx.arena_, expression_ctx->aggregate_func_, AggregateFuncNode, exp, type, expression_ctx->id_);
     expression_ctx->aggregate_func_->distinct_ = distinct;
     auto query = (SelectStatementData*)ctx.queries_call_stack_[expression_ctx->query_idx_];
     query->aggregates_.push_back(expression_ctx->aggregate_func_);
@@ -1298,7 +1484,10 @@ ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
     std::string tmp = AGG_FUNC_IDENTIFIER_PREFIX;
     //tmp += intToStr(expression_ctx->id_);
     tmp += intToStr(query->aggregates_.size());
-    return new ASTNode(FIELD, Token (TokenType::IDENTIFIER, tmp));
+    ASTNode* ret = nullptr;
+    ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FIELD, Token(TokenType::IDENTIFIER, tmp));
+    return ret;
+    //return new ASTNode(FIELD, Token (TokenType::IDENTIFIER, tmp));
 }
 
 ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
@@ -1325,7 +1514,9 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
         }
         sub_query->is_corelated_ = is_corelated_subquery(ctx, sub_query, catalog_);
         std::cout << "is corelated: " << sub_query->is_corelated_ << "\n";
-        SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
+        //SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
+        SubQueryNode* sub_query_node = nullptr; 
+        ALLOCATE_INIT(ctx.arena_, sub_query_node, SubQueryNode, sub_query->idx_, sub_query->parent_idx_);
         if(!ctx.matchTokenType(TokenType::RP)){
             return nullptr;
         }
@@ -1343,7 +1534,9 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
         }
         sub_query->is_corelated_ = is_corelated_subquery(ctx, sub_query, catalog_);
         std::cout << "(IN)is corelated: " << sub_query->is_corelated_ << "\n";
-        SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
+        //SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
+        SubQueryNode* sub_query_node = nullptr; 
+        ALLOCATE_INIT(ctx.arena_, sub_query_node, SubQueryNode, sub_query->idx_, sub_query->parent_idx_);
         return sub_query_node;
     }
     // nested expressions.
@@ -1381,7 +1574,8 @@ ASTNode* Parser::unary(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if((bool)ctx.error_status_) return nullptr;
     if(ctx.matchAnyTokenType({TokenType::PLUS, TokenType::MINUS})) { 
         UnaryNode* u = nullptr;
-        u = new UnaryNode(nullptr, ctx.getCurrentToken());
+        //u = new UnaryNode(nullptr, ctx.getCurrentToken());
+        ALLOCATE_INIT(ctx.arena_, u, UnaryNode, nullptr, ctx.getCurrentToken());
         ++ctx;
         ASTNode* val = unary(ctx , expression_ctx);
         if(!val) return nullptr;
@@ -1397,7 +1591,9 @@ ASTNode* Parser::factor(QueryCTX& ctx, ExpressionNode* expression_ctx){
     ASTNode* cur = unary(ctx, expression_ctx);
     if(!cur) return nullptr;
     if(ctx.matchAnyTokenType({TokenType::STAR, TokenType::SLASH})) { 
-        FactorNode* f = new FactorNode(reinterpret_cast<UnaryNode*>(cur));
+        //FactorNode* f = new FactorNode(reinterpret_cast<UnaryNode*>(cur));
+        FactorNode* f = nullptr;
+        ALLOCATE_INIT(ctx.arena_, f, FactorNode, (UnaryNode*)cur);
         ASTNode* next = nullptr;
         f->token_ = ctx.getCurrentToken(); ++ctx; 
         next = factor(ctx, expression_ctx);
@@ -1415,7 +1611,9 @@ ASTNode* Parser::term(QueryCTX& ctx,ExpressionNode* expression_ctx){
     ASTNode* cur = factor(ctx, expression_ctx);
     if(!cur) return nullptr;
     if(ctx.matchAnyTokenType({TokenType::PLUS, TokenType::MINUS})) { 
-        TermNode* t = new TermNode(reinterpret_cast<FactorNode*>(cur));
+        //TermNode* t = new TermNode(reinterpret_cast<FactorNode*>(cur));
+        TermNode* t = nullptr;
+        ALLOCATE_INIT(ctx.arena_, t, TermNode, (FactorNode*)cur);
         t->token_ = ctx.getCurrentToken(); ++ctx; 
         ASTNode* next = term(ctx, expression_ctx);
         if(!next) {
@@ -1432,7 +1630,9 @@ ASTNode* Parser::comparison(QueryCTX& ctx, ExpressionNode* expression_ctx){
     ASTNode* cur = term(ctx, expression_ctx);
     if(!cur) return nullptr;
     if(ctx.matchAnyTokenType({TokenType::LT, TokenType::LTE, TokenType::GT, TokenType::GTE })) { 
-        ComparisonNode* c = new ComparisonNode(reinterpret_cast<TermNode*>(cur));
+        //ComparisonNode* c = new ComparisonNode(reinterpret_cast<TermNode*>(cur));
+        ComparisonNode* c = nullptr; 
+        ALLOCATE_INIT(ctx.arena_, c, ComparisonNode, (TermNode*)cur);
         c->token_ = ctx.getCurrentToken(); ++ctx; 
         ASTNode* next = comparison(ctx, expression_ctx);
         if(!next) {
@@ -1449,7 +1649,9 @@ ASTNode* Parser::equality(QueryCTX& ctx, ExpressionNode* expression_ctx){
     ASTNode* cur = comparison(ctx, expression_ctx);
     if(!cur) return nullptr;
     if(ctx.matchAnyTokenType({TokenType::EQ, TokenType::NEQ, TokenType::IS})) { 
-        EqualityNode* eq = new EqualityNode(reinterpret_cast<ComparisonNode*>(cur));
+        //EqualityNode* eq = new EqualityNode(reinterpret_cast<ComparisonNode*>(cur));
+        EqualityNode* eq = nullptr; 
+        ALLOCATE_INIT(ctx.arena_, eq, EqualityNode, (ComparisonNode*)cur);
         eq->token_ = ctx.getCurrentToken(); ++ctx; 
         if(ctx.getCurrentToken().type_ == TokenType::NOT){
           eq->token_ = Token(TokenType::ISNOT); ++ctx;
@@ -1464,9 +1666,10 @@ ASTNode* Parser::equality(QueryCTX& ctx, ExpressionNode* expression_ctx){
 
 ASTNode* Parser::in(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if((bool)ctx.error_status_) return nullptr;
+    ASTNode* ret = nullptr;
     ASTNode* val = equality(ctx, expression_ctx);
     if(!val) return nullptr;
-    if(ctx.matchTokenType(TokenType::IN) || ctx.matchMultiTokenType({TokenType::NOT, TokenType::IN})) { 
+    if(ctx.matchTokenType(TokenType::IN) || ctx.matchMultiTokenType({TokenType::NOT, TokenType::IN})) {
         bool negated = (ctx.getCurrentToken().type_ == TokenType::NOT);
         if(negated) ++ctx;
         ++ctx;
@@ -1475,7 +1678,9 @@ ASTNode* Parser::in(QueryCTX& ctx, ExpressionNode* expression_ctx){
         ++ctx;
         if(ctx.matchTokenType(TokenType::RP)){  // empty list: select 1 in ();
             ++ctx;
-            return new InNode(val, {}, negated);
+            ALLOCATE_INIT(ctx.arena_, ret, InNode, val, {}, negated);
+            return ret;
+            //return new InNode(val, {}, negated);
         }
         std::vector<ASTNode*> args;
         while(1){
@@ -1494,7 +1699,9 @@ ASTNode* Parser::in(QueryCTX& ctx, ExpressionNode* expression_ctx){
         if(!args.size() && !ctx.matchTokenType(TokenType::RP)) 
             return nullptr;
         ++ctx;
-        return new InNode(val, args, negated);
+        ALLOCATE_INIT(ctx.arena_, ret, InNode, val, args, negated);
+        return ret;
+        //return new InNode(val, args, negated);
     }
     return val;
 }
@@ -1515,7 +1722,10 @@ ASTNode* Parser::between(QueryCTX& ctx, ExpressionNode* expression_ctx){
         if(!rhs) {
             return nullptr;
         }
-        return new BetweenNode(val, lhs, rhs, negated);
+        ASTNode* ret = nullptr;
+        ALLOCATE_INIT(ctx.arena_, ret, BetweenNode, val, lhs, rhs, negated);
+        return ret;
+        //return new BetweenNode(val, lhs, rhs, negated);
     }
     return val;
 }
@@ -1523,7 +1733,9 @@ ASTNode* Parser::between(QueryCTX& ctx, ExpressionNode* expression_ctx){
 ASTNode* Parser::logic_not(QueryCTX& ctx,ExpressionNode* expression_ctx){
     if((bool)ctx.error_status_) return nullptr;
     if(ctx.matchTokenType(TokenType::NOT)) { 
-        NotNode* lnot = new NotNode();
+        //NotNode* lnot = new NotNode();
+        NotNode* lnot = nullptr;
+        ALLOCATE_INIT(ctx.arena_, lnot, NotNode, nullptr);
         lnot->token_ = ctx.getCurrentToken(); ++ctx;
         lnot->effective_ = true;
         while(ctx.matchTokenType(TokenType::NOT)){
@@ -1542,7 +1754,9 @@ ASTNode* Parser::logic_and(QueryCTX& ctx,ExpressionNode* expression_ctx){
     ASTNode* cur = logic_not(ctx, expression_ctx);
     if(!cur) return nullptr;
     if(ctx.matchTokenType(TokenType::AND)) { 
-        AndNode* land = new AndNode(reinterpret_cast<NotNode*>(cur));
+        //AndNode* land = new AndNode(reinterpret_cast<NotNode*>(cur));
+        AndNode* land = nullptr;
+        ALLOCATE_INIT(ctx.arena_, land, AndNode, (NotNode*)cur);
         land->token_ = ctx.getCurrentToken(); ++ctx;
         ASTNode* next = logic_and(ctx, expression_ctx);
         if(!next) {
@@ -1559,7 +1773,10 @@ ASTNode* Parser::logic_or(QueryCTX& ctx, ExpressionNode* expression_ctx){
     ASTNode* cur = logic_and(ctx, expression_ctx);
     if(!cur) return nullptr;
     if(ctx.matchTokenType(TokenType::OR)) { 
-        OrNode* lor = new OrNode(reinterpret_cast<AndNode*>(cur));
+        //OrNode* lor = new OrNode(reinterpret_cast<AndNode*>(cur));
+        OrNode* lor = nullptr; 
+        ALLOCATE_INIT(ctx.arena_, lor, OrNode, (AndNode*)cur);
+
         lor->token_ = ctx.getCurrentToken(); ++ctx;
         ASTNode* next = logic_or(ctx, expression_ctx);
         if(!next) {
@@ -1573,11 +1790,13 @@ ASTNode* Parser::logic_or(QueryCTX& ctx, ExpressionNode* expression_ctx){
 
 ExpressionNode* Parser::expression(QueryCTX& ctx, int query_idx, int id){
     if((bool)ctx.error_status_) return nullptr;
-    ExpressionNode* ex = new ExpressionNode(ctx.queries_call_stack_[0], query_idx);
+    //ExpressionNode* ex = new ExpressionNode(ctx.queries_call_stack_[0], query_idx);
+    ExpressionNode* ex = nullptr;
+    ALLOCATE_INIT(ctx.arena_, ex, ExpressionNode, ctx.queries_call_stack_[0], query_idx);
     ex->id_ = id;
     ASTNode* cur = logic_or(ctx, ex);
     if(!cur) {
-        delete ex;
+        //delete ex;
         return nullptr;
     }
     ex->cur_ = cur;
