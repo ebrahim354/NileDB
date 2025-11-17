@@ -23,3 +23,12 @@
 #define Megabytes(count) (u64) (count * 1024 * 1024)
 #define Kilobytes(count) (u64) (count * 1024)
 
+#define ALLOCATE(arena, type) ((type *)((arena).alloc(sizeof(type))))
+#define ALLOCATE_INIT(arena, ptr, type, ...) \
+    do { \
+        ptr = ALLOCATE(arena, type); \
+        new(ptr) type(); \
+        ((type *)ptr)->init(__VA_ARGS__); \
+    } while(0)
+
+

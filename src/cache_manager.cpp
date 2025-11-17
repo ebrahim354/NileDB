@@ -142,6 +142,10 @@ Page* CacheManager::fetchPage(PageID page_id){
         pages_[frame].ResetMemory();
     }
 
+    if(frame == -1){
+        show();
+        replacer_->Show();
+    }
     assert(frame != -1);
 
     replacer_->RecordAccess(frame);
