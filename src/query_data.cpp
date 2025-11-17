@@ -43,9 +43,16 @@ struct FieldDef {
 };
 
 struct QueryData {
-    QueryData(QueryType type, int parent_idx): type_(type), parent_idx_(parent_idx)
-    {}
+    /*
+    QueryData(QueryType type, int parent_idx): type_(type), parent_idx_(parent_idx){}
     virtual ~QueryData(){};
+    */
+
+    void init(QueryType type, int parent_idx) {
+        type_ = type;
+        parent_idx_ = parent_idx;
+    }
+
     QueryType type_;
     int idx_ = -1;          // every query must have an id starting from 0 even the top level query.
     int parent_idx_ = -1;   // -1 means this query is the top level query.
@@ -59,9 +66,9 @@ struct QueryData {
 // SQL statement data wrappers.
 struct SelectStatementData : QueryData {
 
+    /*
     SelectStatementData(int parent_idx): QueryData(SELECT_DATA, parent_idx)
     {}
-    /*
     ~SelectStatementData() {
         for(int i = 0; i < fields_.size(); ++i)
             delete fields_[i];
@@ -72,6 +79,10 @@ struct SelectStatementData : QueryData {
         for(int i = 0; i < group_by_.size(); ++i)
             delete group_by_[i];
     }*/
+    void init (int parent_idx) {
+        type_ = SELECT_DATA;
+        parent_idx_ = parent_idx;
+    }
 
     std::vector<ExpressionNode*> fields_ = {};
     std::vector<std::string> field_names_ = {};
@@ -89,26 +100,42 @@ struct SelectStatementData : QueryData {
 };
 
 struct Intersect : QueryData {
+    /*
     Intersect(int parent_idx, QueryData* lhs, Intersect* rhs, bool all): 
-        QueryData(INTERSECT, parent_idx), cur_(lhs), next_(rhs), all_(all)
-    {}
+        QueryData(INTERSECT, parent_idx), cur_(lhs), next_(rhs), all_(all){}
     ~Intersect() {
         // set operations don't own the queries so we can't do this:
         // the ownership of queries belongs to the query ctx.
         // delete cur_;
         // delete next_;
+    }*/
+    void init(int parent_idx, QueryData* lhs, Intersect* rhs, bool all) {
+        type_ = INTERSECT;
+        parent_idx_ = parent_idx;
+        cur_ = lhs;
+        next_ = rhs;
+        all_ = all;
     }
+
     QueryData* cur_ = nullptr;
     QueryData* next_ = nullptr;
     bool all_ = false;
 };
 
 struct UnionOrExcept : QueryData {
-
+    /*
     UnionOrExcept(QueryType type, int parent_idx, QueryData* lhs, UnionOrExcept* rhs, bool all): 
         QueryData(type, parent_idx), cur_(lhs), next_(rhs), all_(all)
     {}
     ~UnionOrExcept() {}
+    */
+    void init(QueryType type, int parent_idx, QueryData* lhs, UnionOrExcept* rhs, bool all){
+        type_ = type;
+        parent_idx_ = parent_idx;
+        cur_ = lhs;
+        next_ = rhs;
+        all_ = all;
+    }
     QueryData* cur_ = nullptr;
     QueryData* next_ = nullptr; 
     bool all_ = false;
@@ -119,8 +146,14 @@ struct UnionOrExcept : QueryData {
 
 struct CreateTableStatementData : QueryData {
 
+    /*
     CreateTableStatementData(int parent_idx): QueryData(CREATE_TABLE_DATA, parent_idx){}
     ~CreateTableStatementData() {}
+    */
+    void init(int parent_idx) {
+        type_ = CREATE_TABLE_DATA;
+        parent_idx_ = parent_idx;
+    }
 
 
     std::vector<FieldDef> field_defs_ = {};
@@ -129,9 +162,15 @@ struct CreateTableStatementData : QueryData {
 
 struct CreateIndexStatementData : QueryData {
 
+    /*
     CreateIndexStatementData(int parent_idx): QueryData(CREATE_INDEX_DATA, parent_idx){}
     ~CreateIndexStatementData() {}
+    */
 
+    void init(int parent_idx) {
+        type_ = CREATE_INDEX_DATA;
+        parent_idx_ = parent_idx;
+    }
 
     std::vector<IndexField> fields_ = {};
     std::string index_name_ = {};
@@ -140,13 +179,17 @@ struct CreateIndexStatementData : QueryData {
 
 struct InsertStatementData : QueryData {
 
-    InsertStatementData(int parent_idx): QueryData(INSERT_DATA, parent_idx){}
     /*
+    InsertStatementData(int parent_idx): QueryData(INSERT_DATA, parent_idx){}
     ~InsertStatementData() {
         for(int i = 0; i < values_.size();++i)
             delete values_[i];
     }*/
 
+    void init(int parent_idx) {
+        type_ = INSERT_DATA;
+        parent_idx_ = parent_idx;
+    }
 
     std::string table_name_ = {};
     std::vector<std::string> fields_ = {};
@@ -158,12 +201,16 @@ struct InsertStatementData : QueryData {
 
 struct DeleteStatementData : QueryData {
 
-    DeleteStatementData(int parent_idx): QueryData(DELETE_DATA, parent_idx){}
     /*
+    DeleteStatementData(int parent_idx): QueryData(DELETE_DATA, parent_idx){}
     ~DeleteStatementData() {
         delete where_;
     }*/
 
+    void init(int parent_idx) {
+        type_ = DELETE_DATA;
+        parent_idx_ = parent_idx;
+    }
 
     std::string table_name_ = {};
     ExpressionNode* where_ = nullptr;
@@ -171,12 +218,17 @@ struct DeleteStatementData : QueryData {
 
 struct UpdateStatementData : QueryData {
 
-    UpdateStatementData(int parent_idx): QueryData(UPDATE_DATA, parent_idx){}
     /*
+    UpdateStatementData(int parent_idx): QueryData(UPDATE_DATA, parent_idx){}
     ~UpdateStatementData() {
         delete value_;
         delete where_;
     }*/
+
+    void init(int parent_idx) {
+        type_ = UPDATE_DATA;
+        parent_idx_ = parent_idx;
+    }
 
 
     std::string table_name_ = {};

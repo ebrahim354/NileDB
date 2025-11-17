@@ -10,8 +10,7 @@
 
 class Parser {
     public:
-        Parser(Catalog* c): catalog_(c)
-        {}
+        Parser(Catalog* c): catalog_(c){}
         ~Parser(){}
         ASTNode* constant(QueryCTX& ctx);
         ASTNode* table(QueryCTX& ctx);
@@ -1076,7 +1075,14 @@ QueryData* Parser::intersect(QueryCTX& ctx, int parent_idx){
     if(idx >= ctx.queries_call_stack_.size()) return nullptr;
     if(ctx.matchTokenType(TokenType::INTERSECT)) { 
         ++ctx;
-        Intersect* i  = new Intersect(parent_idx, ctx.queries_call_stack_[idx], nullptr, false);
+
+        Intersect* i  = nullptr;
+        ALLOCATE_INIT(ctx.arena_, i,
+                Intersect,
+                parent_idx, ctx.queries_call_stack_[idx],
+                nullptr,
+                false);
+        //Intersect* i  = new Intersect(parent_idx, ctx.queries_call_stack_[idx], nullptr, false);
         QueryData* next = nullptr;
         if(ctx.matchTokenType(TokenType::ALL)){
             i->all_ = true;
@@ -1100,7 +1106,13 @@ QueryData* Parser::union_or_except(QueryCTX& ctx, int parent_idx){
         auto t = QueryType::UNION;
         if(ctx.getCurrentToken().type_ == TokenType::EXCEPT) t = EXCEPT;
         ++ctx;
-        UnionOrExcept* uoe = new UnionOrExcept(t, parent_idx, cur, nullptr, false);
+        //UnionOrExcept* uoe = new UnionOrExcept(t, parent_idx, cur, nullptr, false);
+        UnionOrExcept* uoe = nullptr; 
+        ALLOCATE_INIT(ctx.arena_, uoe,
+                UnionOrExcept,
+                t, parent_idx, cur,
+                nullptr,
+                false);
         if(ctx.matchTokenType(TokenType::ALL)){
             uoe->all_ = true;
             ++ctx;
@@ -1118,7 +1130,11 @@ QueryData* Parser::union_or_except(QueryCTX& ctx, int parent_idx){
 void Parser::selectStatement(QueryCTX& ctx, int parent_idx){
     if((bool)ctx.error_status_) return; 
     ++ctx;
-    SelectStatementData* statement = new SelectStatementData(parent_idx);
+    //SelectStatementData* statement = new SelectStatementData(parent_idx);
+    SelectStatementData* statement = nullptr; 
+    ALLOCATE_INIT(ctx.arena_, statement,
+                SelectStatementData,
+                parent_idx);
     statement->idx_ = ctx.queries_call_stack_.size();
     ctx.queries_call_stack_.push_back(statement);
 
@@ -1190,7 +1206,11 @@ void Parser::createTableStatement(QueryCTX& ctx, int parent_idx){
     if(!ctx.matchMultiTokenType({TokenType::CREATE , TokenType::TABLE}))
         return;
     ctx += 2;
-    CreateTableStatementData* statement = new CreateTableStatementData(parent_idx);
+    //CreateTableStatementData* statement = new CreateTableStatementData(parent_idx);
+    CreateTableStatementData* statement = nullptr; 
+    ALLOCATE_INIT(ctx.arena_, statement,
+                CreateTableStatementData,
+                parent_idx);
     statement->idx_ = ctx.queries_call_stack_.size();
     ctx.queries_call_stack_.push_back(statement);
 
@@ -1226,7 +1246,11 @@ void Parser::createIndexStatement(QueryCTX& ctx, int parent_idx){
     } else {
       return;
     }
-    CreateIndexStatementData* statement = new CreateIndexStatementData(parent_idx);
+    //CreateIndexStatementData* statement = new CreateIndexStatementData(parent_idx);
+    CreateIndexStatementData* statement = nullptr; 
+    ALLOCATE_INIT(ctx.arena_, statement,
+                CreateIndexStatementData,
+                parent_idx);
     statement->idx_ = ctx.queries_call_stack_.size();
     ctx.queries_call_stack_.push_back(statement);
 
@@ -1283,7 +1307,11 @@ void Parser::insertStatement(QueryCTX& ctx, int parent_idx){
     return;
   }
   ctx += 2;
-  InsertStatementData* statement = new InsertStatementData(parent_idx);
+  //InsertStatementData* statement = new InsertStatementData(parent_idx);
+  InsertStatementData* statement = nullptr; 
+    ALLOCATE_INIT(ctx.arena_, statement,
+                InsertStatementData,
+                parent_idx);
   statement->idx_ = ctx.queries_call_stack_.size();
   ctx.queries_call_stack_.push_back(statement);
 

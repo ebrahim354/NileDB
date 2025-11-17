@@ -77,8 +77,9 @@ struct QueryCTX {
             delete operators_call_stack_[i];
         for(int i = 0; i < set_operations_.size(); ++i)
             delete set_operations_[i];
+        /*
         for(int i = 0; i < queries_call_stack_.size(); ++i)
-            delete queries_call_stack_[i];
+            delete queries_call_stack_[i];*/
         arena_.destroy();
         // TODO: clean specific pointers when dealing with set operations?
     }
