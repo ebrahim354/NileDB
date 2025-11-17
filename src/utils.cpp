@@ -5,6 +5,23 @@
 #include <string>
 #include <vector>
 
+std::pair<std::string, std::string> split_scoped_field(std::string& field) {
+    std::string table = "";
+    std::string col = "";
+    bool parsing_table = true;
+    for(int i = 0; i < field.size(); ++i){
+        if(field[i] == '.') {
+            parsing_table = false;
+            continue;
+        }
+        if(parsing_table) table += field[i];
+        else col += field[i];
+    }
+    if(parsing_table) // this field is not scoped.
+        return {col, table};
+    else 
+        return {table, col};
+}
 
 std::string str_toupper(std::string s){
     int diff = 'A' - 'a';

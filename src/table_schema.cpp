@@ -31,8 +31,12 @@ class TableSchema {
         }
         // TODO: change columns to be a set instead of doing this.
         int colExist(std::string& col_name) {
+            std::string field = col_name;
+            if(!tmp_schema_)
+                field = split_scoped_field(col_name).second;
+
             for(size_t i = 0; i < columns_.size(); ++i){
-                if(columns_[i].getName() == col_name)
+                if(columns_[i].getName() == field)
                     return i;
             }
             return -1;

@@ -584,23 +584,6 @@ struct SelectStatementData : QueryData {
 
 };
 
-std::pair<std::string, std::string> split_scoped_field(std::string& field) {
-    std::string table = "";
-    std::string col = "";
-    bool parsing_table = true;
-    for(int i = 0; i < field.size(); ++i){
-        if(field[i] == '.') {
-            parsing_table = false;
-            continue;
-        }
-        if(parsing_table) table += field[i];
-        else col += field[i];
-    }
-    if(parsing_table) // this field is not scoped.
-        return {col, table};
-    else 
-        return {table, col};
-}
 
 bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* catalog) {
     if(!query || !catalog) assert(0 && "invalid input");
@@ -620,10 +603,13 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
         auto table_field = split_scoped_field(fields[i]);
         std::string table = table_field.first;
         std::string cur_field   = table_field.second;
-
         if(table.size()) {  // the field is scoped.
+            for(int k = 0; k < query->table_names_.size(); ++k){
+                if(table != query->table_names_[k]) continue;
+                table = query->tables_[k];
+            }
             TableSchema* schema = catalog->getTableSchema(table);
-            assert(schema != nullptr);
+            if(!schema) return true;
             if(!schema->isValidCol(fields[i])){
                 return true; // the table does not contain this column => corelated.
             }
@@ -639,7 +625,7 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
                     break;
                 }
             }
-            if(!table_matched) return true; // no table matched the field is this scope => corelated.
+            if(!table_matched) return true; // no table matched the field in this scope => corelated.
         }
     }
     return false;
