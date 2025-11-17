@@ -25,35 +25,42 @@ enum AlgebraOperationType {
     AL_INTERSECT,
 };
 
-struct AlgebraOperation {
-    public:
-        AlgebraOperation (AlgebraOperationType type, QueryCTX& ctx) : 
-            type_(type), ctx_(ctx)
-        {}
-        virtual ~AlgebraOperation(){};
-        virtual void print(int prefix_space_cnt) = 0;
-        QueryCTX& ctx_;
-        AlgebraOperationType type_;
-        int query_idx_ = -1;
-        int query_parent_idx_ = -1;
-        bool distinct_ = false;
-                                        
-};
-
 enum ScanType {
     SEQ_SCAN,
     INDEX_SCAN,
 };
 
+struct AlgebraOperation {
+    /*
+    AlgebraOperation (AlgebraOperationType type) : type_(type) {}
+    virtual ~AlgebraOperation(){};
+    */
+    virtual void print(int prefix_space_cnt) = 0;
+    void init(AlgebraOperationType type) {
+        type_ = type;
+    }
+    AlgebraOperationType type_;
+    int query_idx_ = -1;
+    int query_parent_idx_ = -1;
+    bool distinct_ = false;
+
+};
+
 struct ScanOperation: AlgebraOperation {
     public:
-        ScanOperation(QueryCTX& ctx,std::string table_name, std::string table_rename): 
-            AlgebraOperation(SCAN, ctx),
+        /*
+        ScanOperation(std::string table_name, std::string table_rename): 
+            AlgebraOperation(SCAN),
             table_name_(table_name),
             table_rename_(table_rename)
         {}
         ~ScanOperation()
-        {}
+        {}*/
+        void init(std::string table_name, std::string table_rename) {
+            type_ = SCAN;
+            table_name_ = table_name;
+            table_rename_ = table_rename;
+        }
         void print(int prefix_space_cnt) {
             for(int i = 0; i < prefix_space_cnt; ++i)
                 std::cout << " ";
@@ -72,13 +79,20 @@ struct ScanOperation: AlgebraOperation {
 
 struct UnionOperation: AlgebraOperation {
     public:
-        UnionOperation(QueryCTX& ctx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all): 
-            AlgebraOperation(AL_UNION, ctx), lhs_(lhs), rhs_(rhs), all_(all)
+        /*
+        UnionOperation(AlgebraOperation* lhs, AlgebraOperation* rhs, bool all): 
+            AlgebraOperation(AL_UNION), lhs_(lhs), rhs_(rhs), all_(all)
         {}
         ~UnionOperation()
         {
             delete lhs_;
             delete rhs_;
+        }*/
+        void init(AlgebraOperation* lhs, AlgebraOperation* rhs, bool all) {
+            type_ = AL_UNION;
+            lhs_ = lhs;
+            rhs_ = rhs;
+            all_ = all;
         }
         void print(int prefix_space_cnt) {
             for(int i = 0; i < prefix_space_cnt; ++i)
@@ -97,14 +111,23 @@ struct UnionOperation: AlgebraOperation {
 
 struct ExceptOperation: AlgebraOperation {
     public:
-        ExceptOperation(QueryCTX& ctx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all): 
-            AlgebraOperation(AL_EXCEPT, ctx), lhs_(lhs), rhs_(rhs), all_(all)
+        /*
+        ExceptOperation(AlgebraOperation* lhs, AlgebraOperation* rhs, bool all): 
+            AlgebraOperation(AL_EXCEPT), lhs_(lhs), rhs_(rhs), all_(all)
         {}
         ~ExceptOperation()
         {
             delete lhs_;
             delete rhs_;
+        }*/
+
+        void init(AlgebraOperation* lhs, AlgebraOperation* rhs, bool all) {
+            type_ = AL_EXCEPT;
+            lhs_ = lhs;
+            rhs_ = rhs;
+            all_ = all;
         }
+
         void print(int prefix_space_cnt) {
             for(int i = 0; i < prefix_space_cnt; ++i)
                 std::cout << " ";
@@ -120,13 +143,20 @@ struct ExceptOperation: AlgebraOperation {
 
 struct IntersectOperation: AlgebraOperation {
     public:
-        IntersectOperation(QueryCTX& ctx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all): 
-            AlgebraOperation(AL_INTERSECT, ctx), lhs_(lhs), rhs_(rhs), all_(all)
+        /*
+        IntersectOperation(AlgebraOperation* lhs, AlgebraOperation* rhs, bool all): 
+            AlgebraOperation(AL_INTERSECT), lhs_(lhs), rhs_(rhs), all_(all)
         {}
         ~IntersectOperation()
         {
             delete lhs_;
             delete rhs_;
+        }*/
+        void init(AlgebraOperation* lhs, AlgebraOperation* rhs, bool all) {
+            type_ = AL_INTERSECT;
+            lhs_ = lhs;
+            rhs_ = rhs;
+            all_ = all;
         }
         void print(int prefix_space_cnt) {
             for(int i = 0; i < prefix_space_cnt; ++i)
@@ -142,14 +172,19 @@ struct IntersectOperation: AlgebraOperation {
 };
 
 struct ProductOperation: AlgebraOperation {
-    public:
-        ProductOperation(QueryCTX& ctx,AlgebraOperation* lhs, AlgebraOperation* rhs): 
-            AlgebraOperation(PRODUCT, ctx), lhs_(lhs), rhs_(rhs)
+    public:/*
+        ProductOperation(AlgebraOperation* lhs, AlgebraOperation* rhs): 
+            AlgebraOperation(PRODUCT), lhs_(lhs), rhs_(rhs)
         {}
         ~ProductOperation()
         {
             delete lhs_;
             delete rhs_;
+        }*/
+        void init(AlgebraOperation* lhs, AlgebraOperation* rhs) {
+            type_ = PRODUCT;
+            lhs_ = lhs;
+            rhs_ = rhs;
         }
         void print(int prefix_space_cnt) {
             for(int i = 0; i < prefix_space_cnt; ++i)
@@ -170,9 +205,10 @@ enum JoinAlgorithm {
 
 struct JoinOperation: AlgebraOperation {
     public:
-        JoinOperation(QueryCTX& ctx, AlgebraOperation* lhs, AlgebraOperation* rhs, 
+        /*
+        JoinOperation(AlgebraOperation* lhs, AlgebraOperation* rhs, 
             ExpressionNode* filter, JoinType type, JoinAlgorithm join_algo): 
-            AlgebraOperation(JOIN, ctx), lhs_(lhs), rhs_(rhs),
+            AlgebraOperation(JOIN), lhs_(lhs), rhs_(rhs),
             filter_(filter), 
             join_type_(type),
             join_algo_(join_algo)
@@ -181,7 +217,19 @@ struct JoinOperation: AlgebraOperation {
         {
             delete lhs_;
             delete rhs_;
+        }*/
+        void init(AlgebraOperation* lhs,
+                AlgebraOperation* rhs,
+                ExpressionNode* filter,
+                JoinType type, JoinAlgorithm join_algo) {
+            type_ = JOIN;
+            lhs_ = lhs;
+            rhs_ = rhs;
+            filter_ = filter;
+            join_type_ = type;
+            join_algo_ = join_algo;
         }
+
         void print(int prefix_space_cnt) {
             for(int i = 0; i < prefix_space_cnt; ++i)
                 std::cout << " ";
@@ -199,50 +247,60 @@ struct JoinOperation: AlgebraOperation {
 };
 
 struct InsertionOperation: AlgebraOperation {
-    public:
-        InsertionOperation(QueryCTX& ctx): 
-            AlgebraOperation(INSERTION, ctx)
+    public:/*
+        InsertionOperation(): 
+            AlgebraOperation(INSERTION)
         {}
+        ~InsertionOperation()
+        {}*/
+
+        void init() {
+            type_ = INSERTION;
+        }
+
         void print(int prefix_space_cnt) {
             for(int i = 0; i < prefix_space_cnt; ++i)
                 std::cout << " ";
           std::cout << "insertion operation\n"; 
         }
-        ~InsertionOperation()
-        {}
 };
 
 struct FilterOperation: AlgebraOperation {
-    public:
-        Catalog* catalog_ = nullptr;
-        FilterOperation(QueryCTX& ctx,AlgebraOperation* child, ExpressionNode* filter, 
+    public:/*
+        FilterOperation(AlgebraOperation* child, ExpressionNode* filter, 
                 std::vector<ExpressionNode*>& fields, 
-                std::vector<std::string>& field_names,
-                Catalog* catalog
+                std::vector<std::string>& field_names
                 ): 
-            AlgebraOperation(FILTER, ctx),
+            AlgebraOperation(FILTER),
             child_(child), 
             filter_(filter),
             fields_(fields),
             field_names_(field_names),
-            catalog_(catalog)
         {}
         ~FilterOperation()
         {
             delete child_;
+        }*/
+
+        void init(AlgebraOperation* child, ExpressionNode* filter, 
+                std::vector<ExpressionNode*>& fields, 
+                std::vector<std::string>& field_names) 
+        {
+            type_ = FILTER;
+            child_ = child;
+            filter_ = filter;
+            fields_ = fields;
+            field_names_ = field_names;
         }
 
         void print(int prefix_space_cnt) {
-            std::vector<std::string> table_access;
-            accessed_tables(filter_, table_access, catalog_, true);
             for(int i = 0; i < prefix_space_cnt; ++i)
                 std::cout << " ";
             std::cout << "filter operation "; 
-            for(int i = 0; i < table_access.size(); ++i) std::cout << table_access[i] << " ";
-            std::cout << "\n";
             if(child_)
                 child_->print(prefix_space_cnt + 1);
         }
+
         ExpressionNode* filter_;
         std::vector<ExpressionNode*> fields_;
         std::vector<std::string> field_names_;
@@ -251,8 +309,9 @@ struct FilterOperation: AlgebraOperation {
 
 struct AggregationOperation: AlgebraOperation {
     public:
-        AggregationOperation(QueryCTX& ctx, AlgebraOperation* child, std::vector<AggregateFuncNode*> aggregates, std::vector<ASTNode*> group_by): 
-            AlgebraOperation(AGGREGATION, ctx),
+        /*
+        AggregationOperation(AlgebraOperation* child, std::vector<AggregateFuncNode*> aggregates, std::vector<ASTNode*> group_by): 
+            AlgebraOperation(AGGREGATION),
             child_(child), 
             aggregates_(aggregates),
             group_by_(group_by)
@@ -260,7 +319,16 @@ struct AggregationOperation: AlgebraOperation {
         ~AggregationOperation()
         {
             delete child_;
+        }*/
+
+        void init(AlgebraOperation* child, std::vector<AggregateFuncNode*> aggregates,
+                std::vector<ASTNode*> group_by){
+            type_  = AGGREGATION;
+            child_ = child;
+            aggregates_ = aggregates;
+            group_by_ = group_by;
         }
+
         void print(int prefix_space_cnt) {
             for(int i = 0; i < prefix_space_cnt; ++i)
                 std::cout << " ";
@@ -276,15 +344,23 @@ struct AggregationOperation: AlgebraOperation {
 
 struct ProjectionOperation: AlgebraOperation {
     public:
-        ProjectionOperation(QueryCTX& ctx, AlgebraOperation* child, std::vector<ExpressionNode*> fields): 
-            AlgebraOperation(PROJECTION, ctx),
+        /*
+        ProjectionOperation(AlgebraOperation* child, std::vector<ExpressionNode*> fields): 
+            AlgebraOperation(PROJECTION),
             child_(child), 
             fields_(fields)
         {}
         ~ProjectionOperation()
         {
             delete child_;
+        }*/
+
+        void init(AlgebraOperation* child, std::vector<ExpressionNode*> fields) {
+            type_ = PROJECTION;
+            child_ = child;
+            fields_ = fields;
         }
+
         void print(int prefix_space_cnt) {
             for(int i = 0; i < prefix_space_cnt; ++i)
                 std::cout << " ";
@@ -298,15 +374,22 @@ struct ProjectionOperation: AlgebraOperation {
 
 struct SortOperation: AlgebraOperation {
     public:
-        SortOperation(QueryCTX& ctx, AlgebraOperation* child, std::vector<int> order_by_list): 
-            AlgebraOperation(SORT, ctx),
+        /*
+        SortOperation(AlgebraOperation* child, std::vector<int> order_by_list): 
+            AlgebraOperation(SORT),
             child_(child), 
             order_by_list_(order_by_list)
         {}
         ~SortOperation()
         {
             delete child_;
+        }*/
+        void init(AlgebraOperation* child, std::vector<int> order_by_list) {
+            type_ = SORT;
+            child_ = child;
+            order_by_list_ = order_by_list;
         }
+
         void print(int prefix_space_cnt) {
             for(int i = 0; i < prefix_space_cnt; ++i)
                 std::cout << " ";
