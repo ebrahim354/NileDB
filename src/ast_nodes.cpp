@@ -4,6 +4,8 @@
 struct ExpressionNode;
 struct AggregateFuncNode;
 struct QueryData;
+struct ASTNode;
+void accessed_fields(ASTNode* expression ,std::vector<std::string>& fields, bool only_one);
 
 // The grammer rules are defined as structures, each struct is following the name convention: CategoryNameNode,
 // for example: the constant category the struct is named ConstantNode.
@@ -67,6 +69,27 @@ AggregateFuncType getAggFuncType(std::string& func){
     if(func == "AVG")   return AVG;
     return NOT_DEFINED;
 }
+
+enum JoinType {
+    INNER_JOIN = 0,
+    LEFT_JOIN,
+    RIGHT_JOIN,
+    FULL_JOIN
+};
+
+struct JoinedTablesData {
+    int lhs_idx_ = -1;
+    int rhs_idx_ = -1;
+    ExpressionNode* condition_ = nullptr;
+    JoinType type_ = INNER_JOIN; // default is inner.
+};
+
+// more data will be added
+struct FieldDef {
+    std::string field_name_;
+    TokenType type_; 
+    std::vector<Constraint> constraints_;
+};
 
 
 enum CategoryType {

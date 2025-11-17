@@ -1,10 +1,10 @@
 #pragma once
-#include "catalog.cpp"
-#include "executor.cpp"
-#include "filter_executor.cpp"
 #include "parser.cpp"
+#include "filter_executor.cpp"
 #include "expression.cpp"
 #include "algebra_engine.cpp"
+#include "catalog.cpp"
+#include "executor.cpp"
 #include "utils.cpp"
 #include <deque>
 

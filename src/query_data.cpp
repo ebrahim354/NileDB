@@ -2,10 +2,6 @@
 
 #include "ast_nodes.cpp"
 
-struct ASTNode;
-struct ExpressionNode;
-struct AggregateFuncNode;
-void accessed_fields(ASTNode* expression ,std::vector<std::string>& fields, bool only_one);
 
 enum QueryType {
     SELECT_DATA = 0,
@@ -21,26 +17,6 @@ enum QueryType {
 };
 
 
-enum JoinType {
-    INNER_JOIN = 0,
-    LEFT_JOIN,
-    RIGHT_JOIN,
-    FULL_JOIN
-};
-
-struct JoinedTablesData {
-    int lhs_idx_ = -1;
-    int rhs_idx_ = -1;
-    ExpressionNode* condition_ = nullptr;
-    JoinType type_ = INNER_JOIN; // default is inner.
-};
-
-// more data will be added
-struct FieldDef {
-    std::string field_name_;
-    TokenType type_; 
-    std::vector<Constraint> constraints_;
-};
 
 struct QueryData {
     /*
