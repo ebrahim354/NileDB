@@ -692,63 +692,6 @@ class InsertionExecutor : public Executor {
         ~InsertionExecutor()
         {}
 
-        // TODO: Not used anymore, delete this before release.
-        Value evaluate(ASTNode* item){
-            if(item->category_ != FIELD && item->category_ != SCOPED_FIELD){
-                std::cout << "[ERROR] Item type is not supported!" << std::endl;
-                error_status_ = 1;
-                return Value();
-            }
-
-            std::string field = item->token_.val_;
-            if(!output_schema_) {
-                std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
-                error_status_ = 1;
-                return Value();
-            }
-            int idx = -1;
-            if(item->category_ == SCOPED_FIELD){
-                std::string table = output_schema_->getTableName();
-                table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
-                std::string col = table;col += "."; col+= field;
-                idx = output_schema_->colExist(col);
-                //    output_schema_->printTableHeader();
-                if(idx < 0 || idx >= output_.size()) {
-                    std::cout << "[ERROR] Invalid field name " << col << std::endl;
-                    error_status_ = 1;
-                    return Value();
-                }
-            } else {
-                int num_of_matches = 0;
-                auto columns = output_schema_->getColumns();
-                for(size_t i = 0; i < columns.size(); ++i){
-                    std::vector<std::string> splittedStr = strSplit(columns[i].getName(), '.');
-                    if(splittedStr.size() != 2) {
-                        //output_schema_->printTableHeader();
-                        std::cout << "[ERROR] Invalid schema " << std::endl;
-                        error_status_ = 1;
-                        return Value();
-                    }
-                    if(field == splittedStr[1]){
-                        num_of_matches++;
-                        idx = i;
-                    }
-                }
-                if(num_of_matches > 1){
-                    std::cout << "[ERROR] Ambiguous field name: " << field << std::endl;
-                    error_status_ = 1;
-                    return Value();
-                }
-                if(idx < 0 || idx >= output_.size()) {
-                    std::cout << "[ERROR] Invalid field name " << field << std::endl;
-                    //output_schema_->printTableHeader();
-                    error_status_ = 1;
-                    return Value();
-                }
-            }
-            return output_[idx];
-        } 
-
         void init() {
             error_status_ = 0;
             finished_ = 0;
@@ -858,9 +801,6 @@ class InsertionExecutor : public Executor {
         InsertStatementData* statement = nullptr;
         int select_idx_ = -1;
         std::vector<Value> vals_  {};
-        // TODO: Not used anymore, delete this before release.
-        std::function<Value(ASTNode*)>
-            eval = std::bind(&InsertionExecutor::evaluate, this, std::placeholders::_1);
 };
 
 class AggregationExecutor : public Executor {
@@ -876,62 +816,6 @@ class AggregationExecutor : public Executor {
             delete child_executor_;
         }
 
-        // TODO: Not used anymore, delete this before release.
-        Value evaluate(ASTNode* item){
-            if(item->category_ != FIELD && item->category_ != SCOPED_FIELD){
-                std::cout << "[ERROR] Item type is not supported!" << std::endl;
-                error_status_ = 1;
-                return Value();
-            }
-
-            std::string field = item->token_.val_;
-            if(!output_schema_) {
-                std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
-                error_status_ = 1;
-                return Value();
-            }
-            int idx = -1;
-            if(item->category_ == SCOPED_FIELD){
-                std::string table = output_schema_->getTableName();
-                table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
-                std::string col = table;col += "."; col+= field;
-                idx = output_schema_->colExist(col);
-                //output_schema_->printTableHeader();
-                if(idx < 0 || idx >= output_.size()) {
-                    std::cout << "[ERROR] Invalid field name " << col << std::endl;
-                    error_status_ = 1;
-                    return Value();
-                }
-            } else {
-                int num_of_matches = 0;
-                auto columns = output_schema_->getColumns();
-                for(size_t i = 0; i < columns.size(); ++i){
-                    std::vector<std::string> splittedStr = strSplit(columns[i].getName(), '.');
-                    if(splittedStr.size() != 2) {
-                        //output_schema_->printTableHeader();
-                        std::cout << "[ERROR] Invalid schema " << std::endl;
-                        error_status_ = 1;
-                        return Value();
-                    }
-                    if(field == splittedStr[1]){
-                        num_of_matches++;
-                        idx = i;
-                    }
-                }
-                if(num_of_matches > 1){
-                    std::cout << "[ERROR] Ambiguous field name: " << field << std::endl;
-                    error_status_ = 1;
-                    return Value();
-                }
-                if(idx < 0 || idx >= output_.size()) {
-                    std::cout << "[ERROR] Invalid field name " << field << std::endl;
-                    //output_schema_->printTableHeader();
-                    error_status_ = 1;
-                    return Value();
-                }
-            }
-            return output_[idx];
-        } 
         void init() {
             finished_ = 0;
             error_status_ = 0;
@@ -1118,9 +1002,6 @@ class AggregationExecutor : public Executor {
         // TODO: pick a better structure to implement this functionality
         std::unordered_map<std::string, std::unordered_map<int, std::set<std::string>>> distinct_counters_; 
         std::unordered_map<std::string, std::vector<Value>>::iterator it_;
-        // TODO: Not used anymore, delete this before release.
-        std::function<Value(ASTNode*)>
-            eval = std::bind(&AggregationExecutor::evaluate, this, std::placeholders::_1);
 };
 
 class ProjectionExecutor : public Executor {
@@ -1132,153 +1013,6 @@ class ProjectionExecutor : public Executor {
         {
             delete child_executor_;
         }
-
-        // TODO: Not used anymore, delete this before release.
-        Value evaluate(ASTNode* item){
-            if(item->category_ == SUB_QUERY){
-                auto sub_query = reinterpret_cast<SubQueryNode*>(item);
-                bool used_with_exists = sub_query->used_with_exists_;
-                Executor* sub_query_executor = ctx_.executors_call_stack_[sub_query->idx_]; 
-                sub_query_executor->init();
-                if(sub_query_executor->error_status_){
-                    std::cout << "[ERROR] could not initialize sub-query" << std::endl;
-                    error_status_ = 1;
-                    return Value();
-                }
-                std::vector<Value> tmp = sub_query_executor->next();
-                if(tmp.size() == 0 && sub_query_executor->finished_) {
-                    if(used_with_exists) return Value(false);
-                    return Value();
-                }
-
-                if(sub_query_executor->error_status_) {
-                    std::cout << "[ERROR] could not execute sub-query" << std::endl;
-                    error_status_ = 1;
-                    return Value();
-                }
-                if(used_with_exists) return Value(tmp.size() != 0);
-                if(tmp.size() != 1) {
-                    std::cout << "[ERROR] sub-query should return exactly 1 column" << std::endl;
-                    error_status_ = 1;
-                    return Value();
-                }
-                return tmp[0];
-            }
-
-            if(item->category_ != FIELD && item->category_ != SCOPED_FIELD){
-                std::cout << "[ERROR] Item type is not supported!" << std::endl;
-                error_status_ = 1;
-                return Value();
-            }
-
-            std::string field = item->token_.val_;
-
-
-            if(item->category_ == SCOPED_FIELD){
-                TableSchema* schema_ptr = output_schema_;
-                int cur_query_idx = query_idx_;
-                int cur_query_parent = parent_query_idx_;
-                int idx = -1;
-
-                while(true){
-                    if(!schema_ptr && cur_query_parent != -1){
-                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
-                        schema_ptr = parent_query->output_schema_;
-                        cur_query_idx = parent_query->query_idx_;
-                        cur_query_parent = parent_query->parent_query_idx_;
-                        continue;
-                    } else if(!schema_ptr){
-                        std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
-                        error_status_ = 1;
-                        return Value();
-                    }
-                    std::string table = schema_ptr->getTableName();
-                    table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
-                    std::string col = table;col += "."; col+= field;
-                    idx = schema_ptr->colExist(col);
-                    if(idx < 0 && cur_query_parent != -1){
-                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
-                        schema_ptr = parent_query->output_schema_;
-                        cur_query_idx = parent_query->query_idx_;
-                        cur_query_parent = ctx_.executors_call_stack_[cur_query_idx]->parent_query_idx_;
-                        continue;
-                    }
-                    std::vector<Value> cur_output;
-                    if(query_idx_ == 0)
-                        cur_output = output_;
-                    else
-                        cur_output = ctx_.executors_call_stack_[cur_query_idx]->output_; 
-                    if(idx < 0 || idx >= cur_output.size()) {
-                        std::cout << "[ERROR] Invalid field name " << col << std::endl;
-                        error_status_ = 1;
-                        return Value();
-                    }
-                    return cur_output[idx];
-                }
-
-            } else {
-                TableSchema* schema_ptr = output_schema_;
-                int cur_query_idx = query_idx_;
-                int cur_query_parent = parent_query_idx_;
-                int idx = -1;
-                while(true){
-                    if(!schema_ptr && cur_query_parent != -1){
-                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
-                        schema_ptr = parent_query->output_schema_;
-                        cur_query_idx = parent_query->query_idx_;
-                        cur_query_parent = parent_query->parent_query_idx_;
-                        continue;
-                    } else if(!schema_ptr){
-                        std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
-                        error_status_ = 1;
-                        return Value();
-                    }
-                    int num_of_matches = 0;
-                    auto columns = schema_ptr->getColumns();
-                    for(size_t i = 0; i < columns.size(); ++i){
-                        std::vector<std::string> splittedStr = strSplit(columns[i].getName(), '.');
-                        if(splittedStr.size() != 2) {
-                            //output_schema_->printTableHeader();
-                            std::cout << "[ERROR] Invalid schema " << std::endl;
-                            error_status_ = 1;
-                            return Value();
-                        }
-                        if(field == splittedStr[1]){
-                            num_of_matches++;
-                            idx = i;
-                        }
-                    }
-                    if(num_of_matches > 1){
-                        std::cout << "[ERROR] Ambiguous field name: " << field << std::endl;
-                        error_status_ = 1;
-                        return Value();
-                    }
-                    // can't find the field in current context,
-                    // search for it in context of the parent till the top level query.
-                    if(num_of_matches == 0 && cur_query_parent != -1){
-                        Executor* parent_query = ctx_.executors_call_stack_[cur_query_parent]; 
-                        schema_ptr = parent_query->output_schema_;
-                        cur_query_idx = parent_query->query_idx_;
-                        cur_query_parent = ctx_.executors_call_stack_[cur_query_idx]->parent_query_idx_;
-                        continue;
-                    }
-                    std::vector<Value> cur_output;
-                    // if(query_idx_ == 0)
-                    if(cur_query_parent == -1)
-                        cur_output = output_;
-                    else
-                        cur_output = ctx_.executors_call_stack_[cur_query_idx]->output_; 
-
-                    if(idx < 0 || idx >= cur_output.size()) {
-                        std::cout << "[ERROR] Invalid field name " << field << std::endl;
-                        error_status_ = 1;
-                        return Value();
-                    }
-
-                    return cur_output[idx];
-                }
-            }
-        } 
 
         void init() {
             finished_ = 0;
@@ -1318,9 +1052,6 @@ class ProjectionExecutor : public Executor {
     private:
         // child_executor_ is optional in case of projection for example : select 1 + 1 should work without a from clause.
         std::vector<ExpressionNode*> fields_ {};
-        // TODO: Not used anymore, delete this before release.
-        std::function<Value(ASTNode*)>
-            eval = std::bind(&ProjectionExecutor::evaluate, this, std::placeholders::_1);
 };
 
 class SortExecutor : public Executor {
