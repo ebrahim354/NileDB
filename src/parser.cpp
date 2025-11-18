@@ -1,8 +1,8 @@
 #pragma once
 #include "tokenizer.cpp"
-#include "error.cpp"
+#include "error.h"
 #include "catalog.cpp"
-#include "utils.cpp"
+#include "utils.h"
 #include "query_ctx.cpp"
 #include "query_data.cpp"
 #include "index_key.cpp"

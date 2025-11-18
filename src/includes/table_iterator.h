@@ -1,0 +1,35 @@
+#ifndef TABLE_ITERATOR_H
+#define TABLE_ITERATOR_H
+
+#include "cache_manager.h"
+#include "page.h"
+#include "table_data_page.h"
+#include "record.h"
+#include <cstdint>
+
+
+// read only Iterator for data pages.
+class TableIterator {
+    public:
+        TableIterator(CacheManager *cm, PageID page_id);
+        ~TableIterator();
+
+        bool hasNext();
+
+        // 0 in case of no more records.
+        int advance():
+
+        Record getCurRecordCpy();
+        Record* getCurRecordCpyPtr();
+        RecordID getCurRecordID();
+    private:
+        CacheManager *cache_manager_ = nullptr;
+        PageID cur_page_id_ = INVALID_PAGE_ID;
+        TableDataPage* cur_page_ = nullptr;
+        uint32_t next_page_number_;
+        uint32_t prev_page_number_;
+        uint32_t cur_num_of_slots_;
+        int32_t cur_slot_idx_ = -1;
+};
+
+#endif // TABLE_ITERATOR_H

@@ -3,7 +3,7 @@
 #include <string>
 #include <memory.h>
 #include "column.cpp"
-#include "utils.cpp"
+#include "utils.h"
 
 #define INT64_MX (int64_t) 9223372036854775807
 #define INT64_MN (int64_t) -9223372036854775807

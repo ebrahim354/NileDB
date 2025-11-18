@@ -1,4 +1,5 @@
-#pragma once
+#ifndef DEFINES_H
+#define DEFINES_H
 
 // Unsigned int types. 
 #define u8 uint8_t 
@@ -32,3 +33,4 @@
     } while(0)
 
 
+#endif // DEFINES_H

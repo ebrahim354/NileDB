@@ -1,7 +1,9 @@
-#pragma once
-#include "parser.cpp"
-#include "execution_engine.cpp"
-#include "utils.cpp"
+#ifndef EXPRESSION_H
+#define EXPRESSION_H
+
+#include "../parser.cpp"
+#include "executor.h"
+#include "utils.h"
 #include <string>
 #include <unordered_map>
 
@@ -10,35 +12,35 @@ Value evaluate_subquery(QueryCTX& ctx, Executor* this_exec, ASTNode* item);
 
 
 Value abs_func(std::vector<Value> vals){
-  if(vals.size() != 1){
-    std::cout << "[ERROR] Incorrect number of arguments\n";
-    return Value();
-  }
-  int int_val = vals[0].getIntVal(); 
-  if(int_val < 0) 
-    return Value(-int_val);
-  return vals[0];
+    if(vals.size() != 1){
+        std::cout << "[ERROR] Incorrect number of arguments\n";
+        return Value();
+    }
+    int int_val = vals[0].getIntVal(); 
+    if(int_val < 0) 
+        return Value(-int_val);
+    return vals[0];
 }
 
 Value nullif_func(std::vector<Value> vals){
-  if(vals.size() != 2){
-    std::cout << "[ERROR] Incorrect number of arguments\n";
-    return Value();
-  }
-  if(vals[0] == vals[1]) return Value(NULL_TYPE);
-  return vals[0];
+    if(vals.size() != 2){
+        std::cout << "[ERROR] Incorrect number of arguments\n";
+        return Value();
+    }
+    if(vals[0] == vals[1]) return Value(NULL_TYPE);
+    return vals[0];
 }
 
 Value coalesce_func(std::vector<Value> vals){
-  if(!vals.size()){
-    std::cout << "[ERROR] Incorrect number of arguments\n";
-    return Value();
-  }
-  for(Value& val : vals){
-    if(!val.isNull()) 
-      return val;
-  }
-  return Value(NULL_TYPE);
+    if(!vals.size()){
+        std::cout << "[ERROR] Incorrect number of arguments\n";
+        return Value();
+    }
+    for(Value& val : vals){
+        if(!val.isNull()) 
+            return val;
+    }
+    return Value(NULL_TYPE);
 }
 
 //TODO: should be moved the the catalog class.
@@ -48,12 +50,12 @@ std::unordered_map<std::string, std::function<Value(std::vector<Value>)>> reserv
 
 
 Value evaluate_expression(
-      QueryCTX& ctx, 
-      ASTNode* expression, 
-      Executor* this_exec,
-      bool only_one = true,
-      bool eval_sub_query = true
-    ) {
+        QueryCTX& ctx, 
+        ASTNode* expression, 
+        Executor* this_exec,
+        bool only_one = true,
+        bool eval_sub_query = true
+        ) {
     switch(expression->category_) {
         case EXPRESSION  : 
             {
@@ -277,12 +279,12 @@ Value evaluate_expression(
                 ComparisonNode* comp = reinterpret_cast<ComparisonNode*>(expression);
                 TokenType op = comp->token_.type_;
                 Value lhs = evaluate_expression(ctx, comp->cur_, this_exec, 
-                    comp->cur_->category_ == COMPARISON, eval_sub_query);
+                        comp->cur_->category_ == COMPARISON, eval_sub_query);
                 ASTNode* ptr = comp->next_;
                 while(ptr){
                     Value rhs = evaluate_expression(ctx, ptr, this_exec, 
-                        comp->cur_->category_ == COMPARISON, 
-                        eval_sub_query);
+                            comp->cur_->category_ == COMPARISON, 
+                            eval_sub_query);
                     if(lhs.isNull() || rhs.isNull()) return Value(NULL_TYPE);
 
                     if(op == TokenType::GT && lhs > rhs ) lhs = Value(true);
@@ -308,17 +310,17 @@ Value evaluate_expression(
             } 
         case SUB_QUERY:
             {
-              if(eval_sub_query) return evaluate_subquery(ctx, this_exec, expression);
-              auto sub_query = reinterpret_cast<SubQueryNode*>(expression);
-              auto v = Value(sub_query->idx_);
-              v.type_ = Type::EXECUTOR_ID;
-              return v;
+                if(eval_sub_query) return evaluate_subquery(ctx, this_exec, expression);
+                auto sub_query = reinterpret_cast<SubQueryNode*>(expression);
+                auto v = Value(sub_query->idx_);
+                v.type_ = Type::EXECUTOR_ID;
+                return v;
             }
         case TERM : 
             {
                 TermNode* t = reinterpret_cast<TermNode*>(expression);
                 Value lhs = evaluate_expression(ctx, t->cur_, this_exec, 
-                    t->cur_->category_ == TERM, eval_sub_query);
+                        t->cur_->category_ == TERM, eval_sub_query);
                 if(only_one) return lhs;
                 TokenType op = t->token_.type_;
                 ASTNode* ptr = t->next_;
@@ -344,13 +346,13 @@ Value evaluate_expression(
         case FACTOR : {
                           FactorNode* f = reinterpret_cast<FactorNode*>(expression);
                           Value lhs = evaluate_expression(ctx, f->cur_, this_exec, 
-                              f->cur_->category_ == FACTOR, eval_sub_query);
+                                  f->cur_->category_ == FACTOR, eval_sub_query);
                           if(only_one) return lhs;
                           TokenType op = f->token_.type_;
                           ASTNode* ptr = f->next_;
                           while(ptr){
                               Value rhs = evaluate_expression(ctx, ptr, this_exec, 
-                                  ptr->category_ == FACTOR, eval_sub_query);
+                                      ptr->category_ == FACTOR, eval_sub_query);
                               if(lhs.isNull()) return lhs;
                               if(rhs.isNull()) return rhs;
                               //int lhs_num = lhs.getIntVal();
@@ -389,7 +391,7 @@ Value evaluate_expression(
                           }
                           std::vector<Value> vals;
                           for(int i = 0; i < sfn->args_.size(); ++i){
-                            vals.emplace_back(evaluate_expression(ctx, sfn->args_[i], this_exec, true, eval_sub_query));
+                              vals.emplace_back(evaluate_expression(ctx, sfn->args_[i], this_exec, true, eval_sub_query));
                           }
                           return reserved_functions[name](vals);
                       } 
@@ -455,26 +457,26 @@ Value evaluate_expression(
 
 // assumes top level ands only.
 std::vector<ExpressionNode*> split_by_and(QueryCTX& ctx, ExpressionNode* expression) {
-  ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(expression);
-  if(!ex) return {};
+    ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(expression);
+    if(!ex) return {};
 
-  ASTNode* ptr = ex->cur_;
-  std::vector<ExpressionNode*> ret;
-  while(ptr){
-    // TODO: should be changed.
-    //ExpressionNode* ex_copy = new ExpressionNode(ex->top_level_statement_, ex->query_idx_);
-    ExpressionNode* ex_copy = nullptr; 
-    ALLOCATE_INIT(ctx.arena_, ex_copy, ExpressionNode, ex->top_level_statement_, ex->query_idx_);
-    ex_copy->cur_ = ptr;
-    ret.push_back(ex_copy);
-    if(ptr->category_ != AND){
-      break;
-    } 
-    auto cur = reinterpret_cast<AndNode*>(ptr);
-    ptr = cur->next_;
-    cur->next_ = nullptr;
-  }
-  return ret;
+    ASTNode* ptr = ex->cur_;
+    std::vector<ExpressionNode*> ret;
+    while(ptr){
+        // TODO: should be changed.
+        //ExpressionNode* ex_copy = new ExpressionNode(ex->top_level_statement_, ex->query_idx_);
+        ExpressionNode* ex_copy = nullptr; 
+        ALLOCATE_INIT(ctx.arena_, ex_copy, ExpressionNode, ex->top_level_statement_, ex->query_idx_);
+        ex_copy->cur_ = ptr;
+        ret.push_back(ex_copy);
+        if(ptr->category_ != AND){
+            break;
+        } 
+        auto cur = reinterpret_cast<AndNode*>(ptr);
+        ptr = cur->next_;
+        cur->next_ = nullptr;
+    }
+    return ret;
 }
 
 
@@ -997,12 +999,12 @@ Value evaluate_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
                 return Value();
             }
 
-           cur_output  = cur_exec->output_;
+            cur_output  = cur_exec->output_;
         } else {
             //if(cur_query_parent == -1)
-                cur_output = this_exec->output_;
+            cur_output = this_exec->output_;
             //else
-             //   cur_output = ctx.executors_call_stack_[cur_query_idx]->output_; 
+            //   cur_output = ctx.executors_call_stack_[cur_query_idx]->output_; 
         }
 
         if(idx < 0 || idx >= cur_output.size()) {
@@ -1026,7 +1028,7 @@ Value evaluate_scoped_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
     TableSchema* schema_ptr = this_exec->output_schema_;
     int cur_query_idx = this_exec->query_idx_;
     //int cur_query_parent = parent_query_idx_;
-    
+
     int cur_query_parent = this_exec->parent_query_idx_;
     int idx = -1;
     while(true){
@@ -1073,14 +1075,14 @@ Value evaluate_scoped_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
                 ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
                 return Value();
             }
-                cur_output  = cur_exec->output_;
+            cur_output  = cur_exec->output_;
         } else if(this_exec->type_ == PROJECTION_EXECUTOR) {
             if(this_exec->query_idx_ == 0)
                 cur_output = this_exec->output_;
             else
                 cur_output = ctx.executors_call_stack_[cur_query_idx]->output_; 
         } else {
-                cur_output = this_exec->output_;
+            cur_output = this_exec->output_;
         }
 
 
@@ -1103,3 +1105,5 @@ Value evaluate(QueryCTX& ctx, Executor* this_exec, ASTNode* item){
     ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: put a better error_status_.
     return Value();
 }
+
+#endif // EXPRESSION_H

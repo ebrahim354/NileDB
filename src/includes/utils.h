@@ -1,4 +1,5 @@
-#pragma once
+#ifndef UTILS_H
+#define UTILS_H
 
 #include <sstream>
 #include <climits>
@@ -160,4 +161,4 @@ std::string floatToStr(float f){
     return s;*/
 }
 
-
+#endif // UTILS_H

@@ -1,137 +1,12 @@
 #pragma once
-#include "utils.cpp"
+#include "utils.h"
+#include "tokenizer.h"
 #include <map>
 
-enum class TokenType {
-    // only these require the val_  property.
-	NUMBER_CONSTANT=0,
-	STR_CONSTANT,
-	FLOATING_CONSTANT,
-	IDENTIFIER,
-    TOKENS_WITH_VAL, // ----- placeholder to check if members have value or not.
-    LT, // symbols
-    LTE,
-    GT,
-    GTE,
-    EQ,
-    NEQ,
-    LP,
-    RP,
-    SEMICOLON,
-    PLUS,
-    MINUS,
-    STAR,
-    SLASH,
-    PERCENT,
-    DOT,
-    COMMA, 
-    VARCHAR,// datatypes
-    TEXT,
-    INTEGER,
-    BIGINT,
-    FLOAT,// float4
-    REAL, // float8
-    TIMESTAMP,
-    BOOLEAN,
-    SELECT, // keywords
-    ORDER,
-    GROUP,
-    CROSS,
-    JOIN,
-    LEFT,
-    RIGHT,
-    FULL,
-    OUTER,
-    INNER,
-    INDEX,
-    PRIMARY,
-    KEY,
-    UNIQUE,
-    UNION,
-    EXCEPT,
-    INTERSECT,
-    ALL,
-    ASC,
-    DESC,
-    EXISTS,
-    CAST,
-    CASE,
-    NOT,
-    IN,
-    IS,
-    ISNOT,
-    WHEN,
-    THEN,
-    ELSE,
-    NULLIF,
-    END,
-    NULL_CONST,
-    TRUE,
-    FALSE,
-    BY,
-    AS,
-    ON,
-    HAVING,
-    DISTINCT,
-    INSERT,
-    FROM,
-    WHERE,
-    BETWEEN,
-    AND,
-    OR,
-    INTO,
-    VALUES,
-    DELETE,
-    UPDATE,
-    SET,
-    CREATE,
-    TABLE,
-    SUM,
-    COUNT,
-    AVG,
-    MIN,
-    MAX,
-    INVALID_TOKEN,
-};
+Token::Token(TokenType type = TokenType::INVALID_TOKEN, std::string val = ""): type_(type), val_(val)
+{}
 
-struct Token {
-    std::string val_ = "";
-    TokenType type_ = TokenType::INVALID_TOKEN;
-    Token(TokenType type = TokenType::INVALID_TOKEN, std::string val = ""): type_(type), val_(val)
-    {}
-};
-
-
-class Tokenizer {
-    public:
-        Tokenizer();
-        ~Tokenizer(){}
-
-        bool isKeyword(std::string& t);
-        bool isDataType(std::string& t);
-        bool isSymbol(std::string& t);
-        bool isAggFunc(std::string& func);
-        bool isMathOp(std::string& op);
-        bool isCompareOP(std::string& op);
-        bool isEqOP(std::string& op);
-        bool isStrConst(std::string& t);
-        bool isNumberConst (std::string& t);
-        bool isWhitespace(char ch);
-
-        bool isDataType(TokenType type);
-        bool isAggFunc(TokenType func);
-
-        TokenType getTokenType(std::string& t);
-
-        void tokenize(std::string& input, std::vector<Token>& output);
-
-    private:
-        std::map<std::string, TokenType> keywords_;
-        std::map<std::string, TokenType> symbols_;
-        std::map<std::string, TokenType> data_types_;
-};
-
-Tokenizer::Tokenizer(){
+Tokenizer::Tokenizer() {
     // reserved keywords
     keywords_.insert({"NULL"    , TokenType::NULL_CONST   });
     keywords_.insert({"SELECT"  , TokenType::SELECT  });
@@ -222,19 +97,19 @@ Tokenizer::Tokenizer(){
 }
 
 
-bool Tokenizer::isKeyword(std::string& t){
+bool Tokenizer::isKeyword(std::string& t) {
     return keywords_.count(str_toupper(t));
 }
 
-bool Tokenizer::isDataType(std::string& t){
+bool Tokenizer::isDataType(std::string& t) {
     return data_types_.count(str_toupper(t));
 }
 
-bool Tokenizer::isSymbol(std::string& t){
+bool Tokenizer::isSymbol(std::string& t) {
     return symbols_.count(t);
 }
 
-bool Tokenizer::isDataType(TokenType t){
+bool Tokenizer::isDataType(TokenType t) {
     switch(t){
         case TokenType::VARCHAR:
         case TokenType::TEXT:
@@ -250,7 +125,7 @@ bool Tokenizer::isDataType(TokenType t){
     }
 }
 
-bool Tokenizer::isAggFunc(TokenType func){
+bool Tokenizer::isAggFunc(TokenType func) {
     switch(func){
         case TokenType::SUM:
         case TokenType::COUNT:
@@ -263,32 +138,32 @@ bool Tokenizer::isAggFunc(TokenType func){
     }
 }
 
-bool Tokenizer::isAggFunc(std::string& f){
+bool Tokenizer::isAggFunc(std::string& f) {
     std::string func = str_toupper(f);
     if(func == "SUM" || func == "COUNT" || func == "MIN" || func == "MAX" || func == "AVG") return true;
     return false;
 }
 
-bool Tokenizer::isMathOp(std::string& op){
+bool Tokenizer::isMathOp(std::string& op) {
     if(op == "+" || op == "-" || op == "*" || op == "/") return true;
     return false;
 }
 
-bool Tokenizer::isCompareOP(std::string& op){
+bool Tokenizer::isCompareOP(std::string& op) {
     if(op == ">" || op == "<" || op == ">=" || op == "<=") return true;
     return false;
 }
 
-bool Tokenizer::isEqOP(std::string& op){
+bool Tokenizer::isEqOP(std::string& op) {
     if(op == "=" || op == "!=" || op == "<>") return true;
     return false;
 }
 
-bool Tokenizer::isStrConst(std::string& t){
+bool Tokenizer::isStrConst(std::string& t) {
     return t.size() >= 2 && t[0] == '\'' && t[t.size()-1] == '\'';
 }
 
-bool Tokenizer::isNumberConst (std::string& t){
+bool Tokenizer::isNumberConst (std::string& t) {
     return t.size() > 0 && areDigits(t);
 }
 
@@ -307,7 +182,7 @@ bool Tokenizer::isWhitespace(char ch) {
     return false;
 }
 
-void Tokenizer::tokenize(std::string& input, std::vector<Token>& output){
+void Tokenizer::tokenize(std::string& input, std::vector<Token>& output) {
     size_t pos = 0;
     bool inside_string_literal = false;
     std::string cur_token = "";

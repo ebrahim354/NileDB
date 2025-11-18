@@ -1,4 +1,5 @@
-#pragma once
+#ifndef ERROR_H
+#define ERROR_H
 
 enum class Error {
     NO_ERROR = 0,
@@ -28,3 +29,5 @@ enum class Error {
     LOGICAL_PLAN_ERROR,
     EXPECTED_ON_TABLE_NAME,
 };
+
+#endif // ERROR_H
