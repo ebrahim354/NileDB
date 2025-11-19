@@ -54,9 +54,15 @@ inline Token QueryCTX::getCurrentToken() {
 }
 
 void QueryCTX::clean() {
+    for(int i = 0; i < index_handles_.size(); ++i){
+        index_handles_[i]->clear();
+    }
+    for(int i = 0; i < table_handles_.size(); ++i){
+        table_handles_[i]->clear();
+    }
+    /*
     for(int i = 0; i < executors_call_stack_.size(); ++i)
         delete executors_call_stack_[i];
-    /*
        for(int i = 0; i < operators_call_stack_.size(); ++i)
        delete operators_call_stack_[i];
        for(int i = 0; i < set_operations_.size(); ++i)

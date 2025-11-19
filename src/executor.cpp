@@ -41,16 +41,30 @@ std::string exec_type_to_string(ExecutorType t) {
     }
 }
 
-Executor::Executor(ExecutorType type, TableSchema* output_schema, QueryCTX& ctx,int query_idx, int parent_query_idx, Executor* child): 
+/*
+Executor::Executor(ExecutorType type, TableSchema* output_schema, QueryCTX* ctx,int query_idx, int parent_query_idx, Executor* child): 
     type_(type), output_schema_(output_schema), ctx_(ctx), 
     query_idx_(query_idx), parent_query_idx_(parent_query_idx), child_executor_(child)
 {}
 
-Executor::~Executor(){};
+Executor::~Executor(){};*/
+void Executor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* output_schema,
+        Executor* child_executor,
+        ExecutorType type) {
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    output_schema_ = output_schema;
+    type_ = type;
+    assert(query_idx_ < ctx->queries_call_stack_.size() && plan_node != nullptr);
+    query_idx_ = plan_node->query_idx_;
+    parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
+    child_executor_ = child_executor;
+}
 
+/*
 NestedLoopJoinExecutor::NestedLoopJoinExecutor(
         TableSchema* output_schema,
-        QueryCTX& ctx, int query_idx, int parent_query_idx,
+        QueryCTX* ctx, int query_idx, int parent_query_idx,
         Executor* lhs, Executor* rhs,
         ExpressionNode* filter, JoinType type)
     : Executor(
@@ -65,6 +79,30 @@ NestedLoopJoinExecutor::~NestedLoopJoinExecutor()
     delete left_child_;  
     delete right_child_;
     delete output_schema_;
+}*/
+
+void NestedLoopJoinExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs) {
+    assert(plan_node != nullptr && plan_node->type_ == JOIN);
+    type_ = NESTED_LOOP_JOIN_EXECUTOR;
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    //output_schema_ = output_schema;
+    query_idx_ = plan_node->query_idx_;
+    assert(query_idx_ < ctx->queries_call_stack_.size());
+    parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
+
+    left_child_  = lhs;
+    right_child_ = rhs;
+
+    filter_ = ((JoinOperation*)plan_node_)->filter_;
+    join_type_ = ((JoinOperation*)plan_node_)->join_type_;
+
+    std::vector<Column> lhs_columns = lhs->output_schema_->getColumns();
+    std::vector<Column> rhs_columns = rhs->output_schema_->getColumns();
+    for(int i = 0; i < rhs_columns.size(); i++)
+        lhs_columns.push_back(rhs_columns[i]);
+
+    output_schema_ = new TableSchema("TMP_JOIN_TABLE", nullptr, lhs_columns, true); // TODO: fix leak.
 }
 
 void NestedLoopJoinExecutor::init() {
@@ -134,8 +172,9 @@ std::vector<Value> NestedLoopJoinExecutor::next() {
     }
 }
 
+/*
 ProductExecutor::ProductExecutor(
-        TableSchema* output_schema, QueryCTX& ctx, 
+        TableSchema* output_schema, QueryCTX* ctx, 
         int query_idx, int parent_query_idx, 
         Executor* lhs, Executor* rhs)
     : Executor(
@@ -148,6 +187,27 @@ ProductExecutor::~ProductExecutor()
     delete left_child_;  
     delete right_child_;
     delete output_schema_;
+}*/
+
+void ProductExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs) {
+    assert(plan_node != nullptr && plan_node->type_ == PRODUCT);
+    assert(lhs && rhs);
+    type_ = PRODUCT_EXECUTOR;
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    //output_schema_ = output_schema;
+    query_idx_ = plan_node->query_idx_;
+    assert(query_idx_ < ctx->queries_call_stack_.size());
+    parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
+    left_child_  = lhs;
+    right_child_ = rhs;
+
+    std::vector<Column> lhs_columns = lhs->output_schema_->getColumns();
+    std::vector<Column> rhs_columns = rhs->output_schema_->getColumns();
+    for(int i = 0; i < rhs_columns.size(); i++)
+        lhs_columns.push_back(rhs_columns[i]);
+
+    output_schema_ =  new TableSchema("TMP_PRODUCT_TABLE", nullptr, lhs_columns, true);// TODO: fix leak
 }
 
 void ProductExecutor::init() {
@@ -197,8 +257,9 @@ std::vector<Value> ProductExecutor::next() {
     return output_;
 }
 
+/*
 HashJoinExecutor::HashJoinExecutor(
-        TableSchema* output_schema, QueryCTX& ctx, 
+        TableSchema* output_schema, QueryCTX* ctx, 
         int query_idx, int parent_query_idx, 
         Executor* lhs, Executor* rhs, 
         ExpressionNode* filter, JoinType type)
@@ -212,6 +273,29 @@ HashJoinExecutor::~HashJoinExecutor() {
     delete left_child_;  
     delete right_child_;
     delete output_schema_;
+}*/
+
+void HashJoinExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs) {
+    assert(plan_node != nullptr && plan_node->type_ == JOIN);
+    type_ = HASH_JOIN_EXECUTOR;
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    //output_schema_ = output_schema;
+    query_idx_ = plan_node->query_idx_;
+    assert(query_idx_ < ctx->queries_call_stack_.size());
+    parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
+    left_child_  = lhs;
+    right_child_ = rhs;
+
+    filter_ = ((JoinOperation*)plan_node_)->filter_;
+    join_type_ = ((JoinOperation*)plan_node_)->join_type_;
+
+    std::vector<Column> lhs_columns = lhs->output_schema_->getColumns();
+    std::vector<Column> rhs_columns = rhs->output_schema_->getColumns();
+    for(int i = 0; i < rhs_columns.size(); i++)
+        lhs_columns.push_back(rhs_columns[i]);
+
+    output_schema_ = new TableSchema("TMP_JOIN_TABLE", nullptr, lhs_columns, true); // TODO: fix leak.
 }
 
 void HashJoinExecutor::init() {
@@ -384,8 +468,9 @@ std::vector<Value> HashJoinExecutor::next() {
     return output_;
 }
 
+/*
 UnionExecutor::UnionExecutor(
-        TableSchema* output_schema, QueryCTX& ctx,
+        TableSchema* output_schema, QueryCTX* ctx,
         int query_idx, int parent_query_idx,
         Executor* lhs, Executor* rhs)
     : Executor(
@@ -395,7 +480,21 @@ UnionExecutor::UnionExecutor(
 {}
 // doesn't own its children, so no cleaning needed.
 UnionExecutor::~UnionExecutor()
-{}
+{}*/
+
+void UnionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs) {
+    assert(plan_node != nullptr && plan_node->type_ == AL_UNION);
+    assert(lhs && rhs);
+    type_ = UNION_EXECUTOR;
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    output_schema_ = lhs->output_schema_;
+    query_idx_ = plan_node->query_idx_;
+    assert(query_idx_ < ctx->set_operations_.size());
+    parent_query_idx_ = ctx->set_operations_[query_idx_]->parent_idx_;
+    left_child_  = lhs;
+    right_child_ = rhs;
+}
 
 void UnionExecutor::init() {
     error_status_ = 0;
@@ -429,8 +528,9 @@ std::vector<Value> UnionExecutor::next() {
     return output_;
 }
 
+/*
 ExceptExecutor::ExceptExecutor(
-        TableSchema* output_schema, QueryCTX& ctx,
+        TableSchema* output_schema, QueryCTX* ctx,
         int query_idx, int parent_query_idx,
         Executor* lhs, Executor* rhs)
     : Executor(
@@ -440,7 +540,21 @@ ExceptExecutor::ExceptExecutor(
 {}
 // doesn't own its children, so no cleaning needed.
 ExceptExecutor::~ExceptExecutor()
-{}
+{}*/
+
+void ExceptExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs) {
+    assert(plan_node != nullptr && plan_node->type_ == AL_EXCEPT);
+    assert(lhs && rhs);
+    type_ = EXCEPT_EXECUTOR;
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    output_schema_ = lhs->output_schema_;
+    query_idx_ = plan_node->query_idx_;
+    assert(query_idx_ < ctx->set_operations_.size());
+    parent_query_idx_ = ctx->set_operations_[query_idx_]->parent_idx_;
+    left_child_  = lhs;
+    right_child_ = rhs;
+}
 
 void ExceptExecutor::init() {
     error_status_ = 0;
@@ -476,12 +590,27 @@ std::vector<Value> ExceptExecutor::next() {
     }
 }
 
-IntersectExecutor::IntersectExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs)
+/*
+IntersectExecutor::IntersectExecutor(TableSchema* output_schema, QueryCTX* ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs)
     : Executor(INTERSECT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, lhs), left_child_(lhs), right_child_(rhs)
 {}
 // doesn't own its children, so no cleaning needed.
 IntersectExecutor::~IntersectExecutor()
-{}
+{}*/
+
+void IntersectExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs) {
+    assert(plan_node != nullptr && plan_node->type_ == AL_INTERSECT);
+    assert(lhs && rhs);
+    type_ = INTERSECT_EXECUTOR;
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    output_schema_ = lhs->output_schema_;
+    query_idx_ = plan_node->query_idx_;
+    assert(query_idx_ < ctx->set_operations_.size());
+    parent_query_idx_ = ctx->set_operations_[query_idx_]->parent_idx_;
+    left_child_  = lhs;
+    right_child_ = rhs;
+}
 
 void IntersectExecutor::init() {
     error_status_ = 0;
@@ -519,21 +648,35 @@ std::vector<Value> IntersectExecutor::next() {
 
 
 
-SeqScanExecutor::SeqScanExecutor(TableSchema* table, QueryCTX& ctx, int query_idx, int parent_query_idx)
+/*
+SeqScanExecutor::SeqScanExecutor(TableSchema* table, QueryCTX* ctx, int query_idx, int parent_query_idx)
     : Executor(SEQUENTIAL_SCAN_EXECUTOR, table, ctx, query_idx, parent_query_idx, nullptr), table_(table)
 {}
 SeqScanExecutor::~SeqScanExecutor()
 {
     delete it_;
     delete table_;
+}*/
+
+void SeqScanExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table) {
+    assert(plan_node != nullptr && plan_node->type_ == SCAN);
+    type_ = SEQUENTIAL_SCAN_EXECUTOR;
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    output_schema_ = table;
+    query_idx_ = plan_node->query_idx_;
+    assert(query_idx_ < ctx->queries_call_stack_.size());
+    parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
+    table_ = table;
 }
 
 void SeqScanExecutor::init() {
     error_status_ = 0;
     finished_ = 0;
     output_.resize(output_schema_->numOfCols());
-    delete it_;
+    //delete it_;
     it_ = table_->getTable()->begin();
+    ctx_->table_handles_.push_back(it_);
 }
 
 std::vector<Value> SeqScanExecutor::next() {
@@ -553,8 +696,9 @@ std::vector<Value> SeqScanExecutor::next() {
 }
 
 // TODO: change BTreeIndex type to be a generic ( just Index ) that might be a btree or hash index.
+/*
 IndexScanExecutor::IndexScanExecutor(IndexHeader index, ASTNode* filter,
-        TableSchema* table, QueryCTX& ctx, int query_idx, int parent_query_idx)
+        TableSchema* table, QueryCTX* ctx, int query_idx, int parent_query_idx)
     : Executor(INDEX_SCAN_EXECUTOR, table, ctx, query_idx, parent_query_idx, nullptr), 
     table_(table), 
     index_header_(index),
@@ -565,6 +709,21 @@ IndexScanExecutor::~IndexScanExecutor()
     delete table_;
     start_it_.clear();
     end_it_.clear();
+}*/
+
+void IndexScanExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table, IndexHeader index) {
+    assert(plan_node != nullptr && plan_node->type_ == SCAN);
+    type_ = INDEX_SCAN_EXECUTOR;
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    output_schema_ = table;
+    query_idx_ = plan_node->query_idx_;
+    assert(query_idx_ < ctx->queries_call_stack_.size());
+    parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
+
+    table_ = table;
+    index_header_ = index;
+    filter_ = ((ScanOperation*)plan_node)->filter_;
 }
 
 void IndexScanExecutor::assign_iterators() {
@@ -626,11 +785,13 @@ void IndexScanExecutor::assign_iterators() {
                                 if(op == TokenType::LTE && end_it_.getCurKey() == search_key  ) end_it_.advance();
                                 if(op == TokenType::GT  && start_it_.getCurKey() == search_key)  start_it_.advance();
                             }
-                            return;
+                            break;
                         }
         default:
                         assert(0 && "NOT SUPPORTED INDEX SCAN CONDITION!");
     }
+    ctx_->index_handles_.push_back(&end_it_);
+    ctx_->index_handles_.push_back(&start_it_);
 }
 
 void IndexScanExecutor::init() {
@@ -665,12 +826,29 @@ std::vector<Value> IndexScanExecutor::next() {
     return output_;
 }
 
-InsertionExecutor::InsertionExecutor(TableSchema* table, std::vector<IndexHeader> indexes, QueryCTX& ctx, int query_idx, int parent_query_idx, int select_idx)
+/*
+InsertionExecutor::InsertionExecutor(TableSchema* table, std::vector<IndexHeader> indexes, QueryCTX* ctx, int query_idx, int parent_query_idx, int select_idx)
     : Executor(INSERTION_EXECUTOR, table, ctx, query_idx, parent_query_idx, nullptr),
     table_(table), indexes_(indexes), select_idx_(select_idx)
 {}
 InsertionExecutor::~InsertionExecutor()
-{}
+{}*/
+
+void InsertionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table, 
+        std::vector<IndexHeader> indexes, int select_idx) {
+    assert(plan_node != nullptr && plan_node->type_ == INSERTION);
+    type_ = INSERTION_EXECUTOR;
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    output_schema_ = table;
+    query_idx_ = plan_node->query_idx_;
+    assert(query_idx_ < ctx->queries_call_stack_.size());
+    parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
+
+    table_ = table;
+    indexes_ = indexes;
+    select_idx_ = select_idx;
+}
 
 void InsertionExecutor::init() {
     error_status_ = 0;
@@ -680,7 +858,7 @@ void InsertionExecutor::init() {
         return;
     }
     vals_.resize(table_->numOfCols());
-    statement = reinterpret_cast<InsertStatementData*>(ctx_.queries_call_stack_[query_idx_]);
+    statement = reinterpret_cast<InsertStatementData*>(ctx_->queries_call_stack_[query_idx_]);
     // fields
     if(!statement->fields_.size() || statement->fields_.size() < table_->getCols().size()){
         statement->fields_ = table_->getCols();
@@ -698,8 +876,8 @@ void InsertionExecutor::init() {
 
 
     // this means we're using insert .. select syntax.
-    if(select_idx_ != -1 && select_idx_ < ctx_.executors_call_stack_.size()){
-        child_executor_ = ctx_.executors_call_stack_[select_idx_];
+    if(select_idx_ != -1 && select_idx_ < ctx_->executors_call_stack_.size()){
+        child_executor_ = ctx_->executors_call_stack_[select_idx_];
         child_executor_->init();
         if(child_executor_->error_status_) {
             error_status_ = 1;
@@ -775,14 +953,50 @@ std::vector<Value> InsertionExecutor::next() {
     return vals_;
 }
 
+/*
 AggregationExecutor::AggregationExecutor(Executor* child_executor, TableSchema* output_schema, 
-        std::vector<AggregateFuncNode*> aggregates, std::vector<ASTNode*> group_by, QueryCTX& ctx, int query_idx, int parent_query_idx): 
+        std::vector<AggregateFuncNode*> aggregates, std::vector<ASTNode*> group_by, QueryCTX* ctx, int query_idx, int parent_query_idx): 
     Executor(AGGREGATION_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child_executor), aggregates_(aggregates), group_by_(group_by)
 {}
 AggregationExecutor::~AggregationExecutor()
 {
     delete output_schema_;
     delete child_executor_;
+}*/
+
+void AggregationExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor) {
+
+    assert(plan_node != nullptr && plan_node->type_ == AGGREGATION);
+    type_ = AGGREGATION_EXECUTOR;
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    //output_schema_ = output_schema;
+    child_executor_ = child_executor;
+
+    query_idx_ = plan_node->query_idx_;
+    assert(query_idx_ < ctx->queries_call_stack_.size());
+    parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
+    
+    aggregates_ = ((AggregationOperation*)plan_node_)->aggregates_;
+    group_by_ = ((AggregationOperation*)plan_node_)->group_by_;
+
+    // build the new output schema.
+    std::vector<Column> new_cols;
+    int offset_ptr = 0; 
+    if(child_executor_ && child_executor_->output_schema_){
+        new_cols = child_executor_->output_schema_->getColumns();
+        offset_ptr = Column::getSizeFromType(new_cols[new_cols.size() - 1].getType());
+    } 
+    for(int i = 0; i < aggregates_.size(); i++){
+        std::string col_name = "agg_tmp_schema.";
+        col_name += AGG_FUNC_IDENTIFIER_PREFIX;
+        //col_name += intToStr(op->aggregates_[i]->parent_id_);
+        col_name += intToStr(i+1);
+        new_cols.push_back(Column(col_name, INT, offset_ptr));
+        offset_ptr += Column::getSizeFromType(INT);
+    }
+
+    output_schema_ = new TableSchema("agg_tmp_schema", nullptr, new_cols, true); // TODO: fix leak.
 }
 
 void AggregationExecutor::init() {
@@ -959,12 +1173,31 @@ std::vector<Value> AggregationExecutor::next() {
     return output_;
 }
 
-ProjectionExecutor::ProjectionExecutor(Executor* child_executor, TableSchema* output_schema, std::vector<ExpressionNode*> fields, QueryCTX& ctx, int query_idx, int parent_query_idx): 
+/*
+ProjectionExecutor::ProjectionExecutor(Executor* child_executor, TableSchema* output_schema, std::vector<ExpressionNode*> fields, QueryCTX* ctx, int query_idx, int parent_query_idx): 
     Executor(PROJECTION_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child_executor), fields_(fields)
 {}
 ProjectionExecutor::~ProjectionExecutor()
 {
     delete child_executor_;
+}*/
+
+void ProjectionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor) {
+
+    assert(plan_node != nullptr && plan_node->type_ == PROJECTION);
+    type_ = PROJECTION_EXECUTOR;
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    child_executor_ = child_executor;
+
+    if(child_executor)
+        output_schema_ = child_executor_->output_schema_;
+
+    query_idx_ = plan_node->query_idx_;
+    assert(query_idx_ < ctx->queries_call_stack_.size());
+    parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
+    
+    fields_ = ((ProjectionOperation*)plan_node_)->fields_;
 }
 
 void ProjectionExecutor::init() {
@@ -1003,12 +1236,30 @@ std::vector<Value> ProjectionExecutor::next() {
     return tmp_output;
 }
 
-SortExecutor::SortExecutor(Executor* child_executor , TableSchema* output_schema, std::vector<int> order_by_list, QueryCTX& ctx, int query_idx, int parent_query_idx): 
+/*
+SortExecutor::SortExecutor(Executor* child_executor , TableSchema* output_schema, std::vector<int> order_by_list, QueryCTX* ctx, int query_idx, int parent_query_idx): 
     Executor(SORT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child_executor), order_by_list_(order_by_list)
 {}
 SortExecutor::~SortExecutor()
 {
     delete child_executor_;
+}*/
+
+void SortExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor) {
+
+    assert(plan_node != nullptr && plan_node->type_ == SORT);
+    assert(child_executor != nullptr);
+    type_ = SORT_EXECUTOR;
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    child_executor_ = child_executor;
+    output_schema_ = child_executor_->output_schema_;
+
+    query_idx_ = plan_node->query_idx_;
+    assert(query_idx_ < ctx->queries_call_stack_.size());
+    parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
+    
+    order_by_list_ = ((SortOperation*)plan_node_)->order_by_list_;
 }
 
 void SortExecutor::init() {
@@ -1053,12 +1304,25 @@ std::vector<Value> SortExecutor::next() {
     return tuples_[idx_++];
 }
 
-DistinctExecutor::DistinctExecutor(Executor* child_executor , TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx): 
+/*
+DistinctExecutor::DistinctExecutor(Executor* child_executor , TableSchema* output_schema, QueryCTX* ctx, int query_idx, int parent_query_idx): 
     Executor(DISTINCT_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child_executor)
 {}
 DistinctExecutor::~DistinctExecutor()
 {
     delete child_executor_;
+}*/
+
+void DistinctExecutor::construct(QueryCTX* ctx, Executor* child_executor) {
+    assert(child_executor != nullptr);
+    type_ = DISTINCT_EXECUTOR;
+    ctx_ = ctx; 
+    child_executor_ = child_executor;
+    plan_node_ = child_executor_->plan_node_;
+    output_schema_ = child_executor_->output_schema_;
+
+    query_idx_ = child_executor_->query_idx_;
+    parent_query_idx_ = child_executor_->parent_query_idx_; 
 }
 
 void DistinctExecutor::init() {
@@ -1090,13 +1354,26 @@ std::vector<Value> DistinctExecutor::next() {
     }
 }
 
+/*
 
-SubQueryExecutor::SubQueryExecutor(Executor* child_executor, TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx): 
+SubQueryExecutor::SubQueryExecutor(Executor* child_executor, TableSchema* output_schema, QueryCTX* ctx, int query_idx, int parent_query_idx): 
     Executor(SUB_QUERY_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child_executor)
 {}
 SubQueryExecutor::~SubQueryExecutor()
 {
     delete child_executor_;
+}*/
+
+void SubQueryExecutor::construct(QueryCTX* ctx, Executor* child_executor) {
+    assert(child_executor != nullptr);
+    type_ = SUB_QUERY_EXECUTOR;
+    ctx_ = ctx; 
+    child_executor_ = child_executor;
+    plan_node_ = child_executor_->plan_node_;
+    output_schema_ = child_executor_->output_schema_;
+
+    query_idx_ = child_executor_->query_idx_;
+    parent_query_idx_ = child_executor_->parent_query_idx_; 
 }
 
 void SubQueryExecutor::init() {
@@ -1138,10 +1415,12 @@ std::vector<Value> SubQueryExecutor::next() {
 }
 
 
+
+/*
 FilterExecutor::FilterExecutor(Executor* child, TableSchema* output_schema, ExpressionNode* filter, 
         std::vector<ExpressionNode*>& fields, 
         std::vector<std::string>& field_names,
-        QueryCTX& ctx,
+        QueryCTX* ctx,
         int query_idx,
         int parent_query_idx)
     : Executor(FILTER_EXECUTOR, output_schema, ctx, query_idx, parent_query_idx, child), filter_(filter), 
@@ -1150,6 +1429,25 @@ FilterExecutor::FilterExecutor(Executor* child, TableSchema* output_schema, Expr
 FilterExecutor::~FilterExecutor()
 {
     delete child_executor_;
+}*/
+
+void FilterExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor) {
+
+    assert(plan_node != nullptr && plan_node->type_ == FILTER);
+    type_ = FILTER_EXECUTOR;
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    //output_schema_ = output_schema;
+    child_executor_ = child_executor;
+    if(child_executor_) output_schema_ = child_executor_->output_schema_;
+
+    query_idx_ = plan_node->query_idx_;
+    assert(query_idx_ < ctx->queries_call_stack_.size());
+    parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
+    
+    fields_      = ((FilterOperation*)plan_node_)->fields_;
+    field_names_ = ((FilterOperation*)plan_node_)->field_names_;
+    filter_      = ((FilterOperation*)plan_node_)->filter_;
 }
 
 

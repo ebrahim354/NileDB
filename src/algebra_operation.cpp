@@ -3,12 +3,14 @@
 #include "executor.h"
 
 // algebra operation
-void AlgebraOperation::init(AlgebraOperationType type) {
+void AlgebraOperation::init(int query_idx, AlgebraOperationType type) {
+    query_idx_ = query_idx;
     type_ = type;
 }
 
 // scan operation
-void ScanOperation::init(std::string table_name, std::string table_rename) {
+void ScanOperation::init(int query_idx, std::string table_name, std::string table_rename) {
+    query_idx_ = query_idx;
     type_ = SCAN;
     table_name_ = table_name;
     table_rename_ = table_rename;
@@ -24,7 +26,8 @@ void ScanOperation::print(int prefix_space_cnt) {
 }
 
 // union operation
-void UnionOperation::init(AlgebraOperation* lhs, AlgebraOperation* rhs, bool all) {
+void UnionOperation::init(int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all) {
+    query_idx_ = query_idx;
     type_ = AL_UNION;
     lhs_ = lhs;
     rhs_ = rhs;
@@ -41,7 +44,8 @@ void UnionOperation::print(int prefix_space_cnt) {
 }
 
 // except operation
-void ExceptOperation::init(AlgebraOperation* lhs, AlgebraOperation* rhs, bool all) {
+void ExceptOperation::init(int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all) {
+    query_idx_ = query_idx;
     type_ = AL_EXCEPT;
     lhs_ = lhs;
     rhs_ = rhs;
@@ -57,7 +61,8 @@ void ExceptOperation::print(int prefix_space_cnt) {
 }
 
 // intersect operation
-void IntersectOperation::init(AlgebraOperation* lhs, AlgebraOperation* rhs, bool all) {
+void IntersectOperation::init(int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all) {
+    query_idx_ = query_idx;
     type_ = AL_INTERSECT;
     lhs_ = lhs;
     rhs_ = rhs;
@@ -72,7 +77,8 @@ void IntersectOperation::print(int prefix_space_cnt) {
 }
 
 // product operation
-void ProductOperation::init(AlgebraOperation* lhs, AlgebraOperation* rhs) {
+void ProductOperation::init(int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs) {
+    query_idx_ = query_idx;
     type_ = PRODUCT;
     lhs_ = lhs;
     rhs_ = rhs;
@@ -87,10 +93,11 @@ void ProductOperation::print(int prefix_space_cnt) {
 }
 
 // join operation
-void JoinOperation::init(AlgebraOperation* lhs,
+void JoinOperation::init(int query_idx, AlgebraOperation* lhs,
         AlgebraOperation* rhs,
         ExpressionNode* filter,
         JoinType type, JoinAlgorithm join_algo) {
+    query_idx_ = query_idx;
     type_ = JOIN;
     lhs_ = lhs;
     rhs_ = rhs;
@@ -109,7 +116,8 @@ void JoinOperation::print(int prefix_space_cnt) {
 }
 
 // insertion operation
-void InsertionOperation::init() {
+void InsertionOperation::init(int query_idx) {
+    query_idx_ = query_idx;
     type_ = INSERTION;
 }
 
@@ -120,10 +128,11 @@ void InsertionOperation::print(int prefix_space_cnt) {
 }
 
 // filter operation
-void FilterOperation::init(AlgebraOperation* child, ExpressionNode* filter, 
+void FilterOperation::init(int query_idx, AlgebraOperation* child, ExpressionNode* filter, 
         std::vector<ExpressionNode*>& fields, 
         std::vector<std::string>& field_names) 
 {
+    query_idx_ = query_idx;
     type_ = FILTER;
     child_ = child;
     filter_ = filter;
@@ -140,8 +149,9 @@ void FilterOperation::print(int prefix_space_cnt) {
 }
 
 // aggregation operation
-void AggregationOperation::init(AlgebraOperation* child, std::vector<AggregateFuncNode*> aggregates,
+void AggregationOperation::init(int query_idx, AlgebraOperation* child, std::vector<AggregateFuncNode*> aggregates,
         std::vector<ASTNode*> group_by){
+    query_idx_ = query_idx;
     type_  = AGGREGATION;
     child_ = child;
     aggregates_ = aggregates;
@@ -157,7 +167,8 @@ void AggregationOperation::print(int prefix_space_cnt) {
 }
 
 // Projection operation
-void ProjectionOperation::init(AlgebraOperation* child, std::vector<ExpressionNode*> fields) {
+void ProjectionOperation::init(int query_idx, AlgebraOperation* child, std::vector<ExpressionNode*> fields) {
+    query_idx_ = query_idx;
     type_ = PROJECTION;
     child_ = child;
     fields_ = fields;
@@ -172,7 +183,8 @@ void ProjectionOperation::print(int prefix_space_cnt) {
 }
 
 // sort operation
-void SortOperation::init(AlgebraOperation* child, std::vector<int> order_by_list) {
+void SortOperation::init(int query_idx, AlgebraOperation* child, std::vector<int> order_by_list) {
+    query_idx_ = query_idx;
     type_ = SORT;
     child_ = child;
     order_by_list_ = order_by_list;

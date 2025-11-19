@@ -177,21 +177,26 @@ class ExecutionEngine {
             std::cout << "[INFO] Creating physical plan" << std::endl;
 
             for(auto cur_plan : ctx.operators_call_stack_){
-                Executor* created_physical_plan = buildExecutionPlan(ctx, cur_plan, cur_plan->query_idx_, cur_plan->query_parent_idx_);
+                Executor* created_physical_plan = buildExecutionPlan(ctx, cur_plan);
                 if(!created_physical_plan){
                     std::cout << "[ERROR] Could not build physical operation\n";
                     return false;
                 }
                 if(cur_plan->distinct_){
-                    created_physical_plan = new DistinctExecutor(created_physical_plan, created_physical_plan->output_schema_, ctx, cur_plan->query_idx_, cur_plan->query_parent_idx_);
+                    DistinctExecutor* dis = nullptr;
+                    ALLOCATE_CONSTRUCT(ctx.arena_, dis, DistinctExecutor, &ctx, created_physical_plan);
+                    created_physical_plan = dis;
+                    //created_physical_plan = new DistinctExecutor(created_physical_plan, created_physical_plan->output_schema_, ctx, cur_plan->query_idx_, cur_plan->query_parent_idx_);
                 }
 
                 if(created_physical_plan->query_idx_ > 0 &&
                         created_physical_plan->query_idx_ < ctx.queries_call_stack_.size() &&
                         !ctx.queries_call_stack_[created_physical_plan->query_idx_]->is_corelated_
                   ){
-                    std::cout << "not corelated query: " << created_physical_plan->query_idx_ << "\n";
-                    created_physical_plan = new SubQueryExecutor(created_physical_plan, created_physical_plan->output_schema_, ctx, cur_plan->query_idx_, cur_plan->query_parent_idx_);
+                    //created_physical_plan = new SubQueryExecutor(created_physical_plan, created_physical_plan->output_schema_, ctx, cur_plan->query_idx_, cur_plan->query_parent_idx_);
+                    SubQueryExecutor* sub_q = nullptr;
+                    ALLOCATE_CONSTRUCT(ctx.arena_, sub_q, SubQueryExecutor, &ctx, created_physical_plan);
+                    created_physical_plan = sub_q;
                 }
                 ctx.executors_call_stack_.push_back(created_physical_plan);
             }
@@ -202,33 +207,40 @@ class ExecutionEngine {
 
     private:
 
-        Executor* buildExecutionPlan(QueryCTX& ctx, AlgebraOperation* logical_plan, int query_idx, int parent_query_idx) {
+        Executor* buildExecutionPlan(QueryCTX& ctx, AlgebraOperation* logical_plan) {
             if(!logical_plan) return nullptr;
             switch(logical_plan->type_) {
                 case SORT: 
                     {
                         SortOperation* op = reinterpret_cast<SortOperation*>(logical_plan);
-                        Executor* child = buildExecutionPlan(ctx, op->child_, query_idx, parent_query_idx);
-                        SortExecutor* sort = new SortExecutor(child, child->output_schema_, op->order_by_list_, ctx, query_idx, parent_query_idx);
+                        Executor* child = buildExecutionPlan(ctx, op->child_);
+                        SortExecutor* sort = nullptr;
+                        ALLOCATE_CONSTRUCT(ctx.arena_, sort, SortExecutor, &ctx, op, child);
+                        //SortExecutor* sort = new SortExecutor(child, child->output_schema_, op->order_by_list_, ctx, query_idx, parent_query_idx);
                         return sort;
                     } break;
                 case PROJECTION: 
                     {
                         ProjectionOperation* op = reinterpret_cast<ProjectionOperation*>(logical_plan);
-                        Executor* child = buildExecutionPlan(ctx, op->child_, query_idx, parent_query_idx);
+                        Executor* child = buildExecutionPlan(ctx, op->child_);
 
                         ProjectionExecutor* project = nullptr; 
-                        if(!child)
+                        ALLOCATE_CONSTRUCT(ctx.arena_, project, ProjectionExecutor, &ctx, op, child);
+                        /*
+                        if(!child){
                             project = new ProjectionExecutor(child, nullptr, op->fields_, ctx, query_idx, parent_query_idx);
-                        else
+                        }
+                        else{
                             project = new ProjectionExecutor(child, child->output_schema_, op->fields_, ctx, query_idx, parent_query_idx);
+                        }*/
                         return project;
                     } break;
                 case AGGREGATION: 
                     {
                         AggregationOperation* op = reinterpret_cast<AggregationOperation*>(logical_plan);
-                        Executor* child = buildExecutionPlan(ctx, op->child_, query_idx, parent_query_idx);
+                        Executor* child = buildExecutionPlan(ctx, op->child_);
 
+                        /*
                         std::vector<Column> new_cols;
                         int offset_ptr = 0; 
                         if(child && child->output_schema_){
@@ -245,17 +257,23 @@ class ExecutionEngine {
                         }
                         TableSchema* new_output_schema = new TableSchema("agg_tmp_schema", nullptr, new_cols, true);
 
-                        return new AggregationExecutor(child, new_output_schema, op->aggregates_, op->group_by_, ctx, query_idx, parent_query_idx);
+                        return new AggregationExecutor(child, new_output_schema, op->aggregates_, op->group_by_, ctx, query_idx, parent_query_idx);*/
+                        AggregationExecutor* agg = nullptr;
+                        ALLOCATE_CONSTRUCT(ctx.arena_, agg, AggregationExecutor, &ctx, op, child);
+                        return agg;
                     } break;
                 case FILTER: 
                     {
                         FilterOperation* op = reinterpret_cast<FilterOperation*>(logical_plan);
-                        Executor* child = buildExecutionPlan(ctx, op->child_, query_idx, parent_query_idx);
+                        Executor* child = buildExecutionPlan(ctx, op->child_);
+                        /*
                         TableSchema* schema = nullptr;
                         if(child == nullptr) schema = nullptr;
                         else                 schema = child->output_schema_;
 
-                        FilterExecutor* filter = new FilterExecutor(child, schema, op->filter_, op->fields_, op->field_names_, ctx, query_idx, parent_query_idx);
+                        FilterExecutor* filter = new FilterExecutor(child, schema, op->filter_, op->fields_, op->field_names_, ctx, query_idx, parent_query_idx);*/
+                        FilterExecutor* filter = nullptr;
+                        ALLOCATE_CONSTRUCT(ctx.arena_, filter, FilterExecutor, &ctx, op, child);
                         return filter;
                     } break;
                 case SCAN: 
@@ -276,21 +294,25 @@ class ExecutionEngine {
                         TableSchema* new_output_schema = new TableSchema(tname, schema->getTable(), columns, true);
                         Executor* scan = nullptr;
                         if(op->scan_type_ == SEQ_SCAN){
-                            scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
+                            //scan = new SeqScanExecutor(new_output_schema, ctx, query_idx, parent_query_idx);
+                            ALLOCATE_CONSTRUCT(ctx.arena_, scan, SeqScanExecutor, &ctx, op, new_output_schema);
                         } else {
-                            scan = new IndexScanExecutor(catalog_->getIndexHeader(op->index_name_),
+                            /*scan = new IndexScanExecutor(catalog_->getIndexHeader(op->index_name_),
                                     op->filter_,
                                     new_output_schema,
                                     ctx, query_idx,
-                                    parent_query_idx);
+                                    parent_query_idx);*/
+                            ALLOCATE_CONSTRUCT(ctx.arena_, scan, IndexScanExecutor, &ctx, op,
+                                    new_output_schema, catalog_->getIndexHeader(op->index_name_));
                         }
                         return scan;
                     } break;
                 case PRODUCT: 
                     {
                         ProductOperation* op = reinterpret_cast<ProductOperation*>(logical_plan);
-                        Executor* lhs = buildExecutionPlan(ctx, op->lhs_, query_idx, parent_query_idx);
-                        Executor* rhs = buildExecutionPlan(ctx, op->rhs_, query_idx, parent_query_idx);
+                        Executor* lhs = buildExecutionPlan(ctx, op->lhs_);
+                        Executor* rhs = buildExecutionPlan(ctx, op->rhs_);
+                        /*
                         std::vector<Column> lhs_columns = lhs->output_schema_->getColumns();
                         std::vector<Column> rhs_columns = rhs->output_schema_->getColumns();
                         for(int i = 0; i < lhs_columns.size(); i++)
@@ -298,32 +320,43 @@ class ExecutionEngine {
 
                         TableSchema* product_output_schema = new TableSchema("TMP_PRODUCT_TABLE", nullptr, rhs_columns, true);
                         ProductExecutor* product = new ProductExecutor(product_output_schema, ctx, query_idx, parent_query_idx, rhs, lhs);
+                        */
+                        ProductExecutor* product = nullptr;
+                        ALLOCATE_CONSTRUCT(ctx.arena_, product, ProductExecutor, &ctx, op, rhs, lhs);
                         return product;
                     } break;
                 case JOIN: 
                     {
                         auto op = reinterpret_cast<JoinOperation*>(logical_plan);
                         JoinAlgorithm join_algo = op->join_algo_;
-                        Executor* lhs = buildExecutionPlan(ctx, op->lhs_, query_idx, parent_query_idx);
-                        Executor* rhs = buildExecutionPlan(ctx, op->rhs_, query_idx, parent_query_idx);
-                        std::vector<Column> lhs_columns = lhs->output_schema_->getColumns();
+                        Executor* lhs = buildExecutionPlan(ctx, op->lhs_);
+                        Executor* rhs = buildExecutionPlan(ctx, op->rhs_);
+                        /*std::vector<Column> lhs_columns = lhs->output_schema_->getColumns();
                         std::vector<Column> rhs_columns = rhs->output_schema_->getColumns();
                         for(int i = 0; i < rhs_columns.size(); i++)
                             lhs_columns.push_back(rhs_columns[i]);
 
-                        TableSchema* join_output_schema = new TableSchema("TMP_JOIN_TABLE", nullptr, lhs_columns, true);
+                        TableSchema* join_output_schema = new TableSchema("TMP_JOIN_TABLE", nullptr, lhs_columns, true);*/
                         if(join_algo == NESTED_LOOP_JOIN){
+                            /*
                             return new NestedLoopJoinExecutor(join_output_schema,
                                     ctx, query_idx, parent_query_idx,
                                     lhs, rhs, 
-                                    op->filter_, op->join_type_);
+                                    op->filter_, op->join_type_);*/
+
+                            NestedLoopJoinExecutor* join = nullptr;
+                            ALLOCATE_CONSTRUCT(ctx.arena_, join, NestedLoopJoinExecutor, &ctx, op, lhs, rhs);
+                            return join;
 
                         } else {
-                            return new HashJoinExecutor(join_output_schema,
+                            /*return new HashJoinExecutor(join_output_schema,
                                         ctx, query_idx, parent_query_idx,
                                         lhs, rhs, 
-                                        op->filter_, op->join_type_);
+                                        op->filter_, op->join_type_);*/
 
+                            HashJoinExecutor* join = nullptr;
+                            ALLOCATE_CONSTRUCT(ctx.arena_, join, HashJoinExecutor, &ctx, op, lhs, rhs);
+                            return join;
                         }
                     } break;
                 case AL_UNION: 
@@ -334,87 +367,103 @@ class ExecutionEngine {
                         if(logical_plan->type_ == AL_UNION){
                             UnionOperation* op = reinterpret_cast<UnionOperation*>(logical_plan);
                             if(!op->lhs_ || !op->rhs_) return nullptr;
-                            // TODO: don't rebuild queries.
-                            // Executor* lhs = buildExecutionPlan(ctx, op->lhs_, op->lhs_->query_idx_, op->lhs_->query_parent_idx_);
-                            // Executor* rhs = buildExecutionPlan(ctx, op->rhs_, op->rhs_->query_idx_, op->rhs_->query_parent_idx_);
+
                             Executor* lhs = nullptr; 
                             Executor* rhs = nullptr; 
 
                             if(op->lhs_->query_idx_ == -1)
-                                lhs = buildExecutionPlan(ctx, op->lhs_, op->lhs_->query_idx_, op->lhs_->query_parent_idx_);
+                                lhs = buildExecutionPlan(ctx, op->lhs_);
                             else
                                 lhs = ctx.executors_call_stack_[op->lhs_->query_idx_];
 
                             if(op->rhs_->query_idx_ == -1)
-                                rhs = buildExecutionPlan(ctx, op->rhs_, op->rhs_->query_idx_, op->rhs_->query_parent_idx_);
+                                rhs = buildExecutionPlan(ctx, op->rhs_);
                             else
                                 rhs = ctx.executors_call_stack_[op->rhs_->query_idx_];
                             // TODO: check that lhs and rhs have the same schema.
-                            UnionExecutor* un = new UnionExecutor(lhs->output_schema_, ctx, query_idx, parent_query_idx, lhs, rhs);
+                            //UnionExelutor* un = new UnionExecutor(lhs->output_schema_, ctx, query_idx, parent_query_idx, lhs, rhs);
+                            
+                            UnionExecutor* un = nullptr;
+                            ALLOCATE_CONSTRUCT(ctx.arena_, un, UnionExecutor, &ctx, op, lhs, rhs);
 
                             // TODO: don't use an extra distinct executor for the all = false case, 
                             // Use a built-in hashtable inside of the set-operation executor instead.
-                            if(op->all_ == false) 
-                                return new DistinctExecutor(un , un->output_schema_, ctx, query_idx, parent_query_idx);
+                            if(op->all_ == false) {
+                                //return new DistinctExecutor(un , un->output_schema_, ctx, query_idx, parent_query_idx);
+                                DistinctExecutor* dis = nullptr;
+                                ALLOCATE_CONSTRUCT(ctx.arena_, dis, DistinctExecutor, &ctx, un);
+                                return dis;
+                            }
                             return un;
                         } else if(logical_plan->type_ == AL_EXCEPT) {
                             ExceptOperation* op = reinterpret_cast<ExceptOperation*>(logical_plan);
                             if(!op->lhs_ || !op->rhs_) return nullptr;
-                            //Executor* lhs = buildExecutionPlan(ctx, op->lhs_, op->lhs_->query_idx_, op->lhs_->query_parent_idx_);
-                            //Executor* rhs = buildExecutionPlan(ctx, op->rhs_, op->rhs_->query_idx_, op->rhs_->query_parent_idx_);
                             Executor* lhs = nullptr; 
                             Executor* rhs = nullptr; 
 
                             if(op->lhs_->query_idx_ == -1)
-                                lhs = buildExecutionPlan(ctx, op->lhs_, op->lhs_->query_idx_, op->lhs_->query_parent_idx_);
+                                lhs = buildExecutionPlan(ctx, op->lhs_);
                             else
                                 lhs = ctx.executors_call_stack_[op->lhs_->query_idx_];
 
                             if(op->rhs_->query_idx_ == -1)
-                                rhs = buildExecutionPlan(ctx, op->rhs_, op->rhs_->query_idx_, op->rhs_->query_parent_idx_);
+                                rhs = buildExecutionPlan(ctx, op->rhs_);
                             else
                                 rhs = ctx.executors_call_stack_[op->rhs_->query_idx_];
                             // TODO: check that lhs and rhs have the same schema.
-                            ExceptExecutor* ex = new ExceptExecutor(lhs->output_schema_, ctx, query_idx, parent_query_idx, lhs, rhs);
+                            //ExceptExecutor* ex = new ExceptExecutor(lhs->output_schema_, ctx, query_idx, parent_query_idx, lhs, rhs);
+                            ExceptExecutor* ex = nullptr;
+                            ALLOCATE_CONSTRUCT(ctx.arena_, ex, ExceptExecutor, &ctx, op, lhs, rhs);
 
                             // TODO: don't use an extra distinct executor for the all = false case, 
                             // Use a built-in hashtable inside of the set-operation executor instead.
-                            if(op->all_ == false) 
-                                return new DistinctExecutor(ex , ex->output_schema_, ctx, query_idx, parent_query_idx);
+                            if(op->all_ == false) {
+                                DistinctExecutor* dis = nullptr;
+                                ALLOCATE_CONSTRUCT(ctx.arena_, dis, DistinctExecutor, &ctx, ex);
+                                return dis;
+                                //return new DistinctExecutor(ex , ex->output_schema_, ctx, query_idx, parent_query_idx);
+                            }
                             return ex;
                         } else {
                             IntersectOperation* op = reinterpret_cast<IntersectOperation*>(logical_plan);
                             if(!op->lhs_ || !op->rhs_) return nullptr;
-                            //Executor* lhs = buildExecutionPlan(ctx, op->lhs_, op->lhs_->query_idx_, op->lhs_->query_parent_idx_);
-                            //Executor* rhs = buildExecutionPlan(ctx, op->rhs_, op->rhs_->query_idx_, op->rhs_->query_parent_idx_);
+
                             Executor* lhs = nullptr; 
                             Executor* rhs = nullptr; 
 
                             if(op->lhs_->query_idx_ == -1)
-                                lhs = buildExecutionPlan(ctx, op->lhs_, op->lhs_->query_idx_, op->lhs_->query_parent_idx_);
+                                lhs = buildExecutionPlan(ctx, op->lhs_);
                             else
                                 lhs = ctx.executors_call_stack_[op->lhs_->query_idx_];
 
                             if(op->rhs_->query_idx_ == -1)
-                                rhs = buildExecutionPlan(ctx, op->rhs_, op->rhs_->query_idx_, op->rhs_->query_parent_idx_);
+                                rhs = buildExecutionPlan(ctx, op->rhs_);
                             else
                                 rhs = ctx.executors_call_stack_[op->rhs_->query_idx_];
                             // TODO: check that lhs and rhs have the same schema.
-                            IntersectExecutor* intersect = new IntersectExecutor(lhs->output_schema_, ctx, query_idx, parent_query_idx, lhs, rhs);
+                            //IntersectExecutor* intersect = new IntersectExecutor(lhs->output_schema_, ctx, query_idx, parent_query_idx, lhs, rhs);
+                            IntersectExecutor* intersect = nullptr;
+                            ALLOCATE_CONSTRUCT(ctx.arena_, intersect, IntersectExecutor, &ctx, op, lhs, rhs);
 
                             // TODO: don't use an extra distinct executor for the all = false case, 
                             // Use a built-in hashtable inside of the set-operation executor instead.
-                            if(op->all_ == false) 
-                                return new DistinctExecutor(intersect , intersect->output_schema_, ctx, query_idx, parent_query_idx);
+                            if(op->all_ == false) {
+                                DistinctExecutor* dis = nullptr;
+                                ALLOCATE_CONSTRUCT(ctx.arena_, dis, DistinctExecutor, &ctx, intersect);
+                                return dis;
+                                //return new DistinctExecutor(intersect , intersect->output_schema_, ctx, query_idx, parent_query_idx);
+                            }
                             return intersect;
                         }
                     } break;
                 case INSERTION: 
                     {
-                        auto statement = reinterpret_cast<InsertStatementData*>(ctx.queries_call_stack_[query_idx]);
+                        auto statement = 
+                            (InsertStatementData*)(ctx.queries_call_stack_[logical_plan->query_idx_]);
                         TableSchema* table = catalog_->getTableSchema(statement->table_name_);
                         int select_idx = statement->select_idx_;
 
+                        /*
                         InsertionExecutor* insert =  new InsertionExecutor(
                                                          table,
                                                          catalog_->getIndexesOfTable(statement->table_name_),            
@@ -422,7 +471,14 @@ class ExecutionEngine {
                                                          query_idx, 
                                                          parent_query_idx, 
                                                          select_idx
-                                                       );
+                                                       );*/
+                        InsertionExecutor* insert = nullptr;
+                        ALLOCATE_CONSTRUCT(ctx.arena_, insert, InsertionExecutor,
+                                &ctx,
+                                logical_plan, 
+                                table,
+                                catalog_->getIndexesOfTable(statement->table_name_),
+                                select_idx);
                         return insert;
                     } break;
                 default: 
@@ -438,9 +494,7 @@ class ExecutionEngine {
             if(ctx.executors_call_stack_.size() > ctx.queries_call_stack_.size()) {
                 // first set operation.
                 physical_plan = ctx.executors_call_stack_[ctx.queries_call_stack_.size()]; 
-                std::cout << "Set operation\n";
-            }
-            else{
+            } else {
                 physical_plan = ctx.executors_call_stack_[0];
             }
 

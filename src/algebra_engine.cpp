@@ -159,9 +159,10 @@ class AlgebraEngine {
 
             //AlgebraOperation* result = new InsertionOperation();
             AlgebraOperation* result = nullptr; 
-            ALLOCATE_INIT(ctx.arena_, result, InsertionOperation);
+            ALLOCATE_INIT(ctx.arena_, result, InsertionOperation, data->idx_);
+            /*
             result->query_idx_ = data->idx_;
-            result->query_parent_idx_ = data->parent_idx_;
+            result->query_parent_idx_ = data->parent_idx_;*/
             return result;
         }
 
@@ -184,12 +185,12 @@ class AlgebraEngine {
                                 if(op == EXCEPT){
                                     //lhs = new ExceptOperation(lhs, rhs, all);
                                     ExceptOperation* tmp = nullptr;
-                                    ALLOCATE_INIT(ctx.arena_, tmp, ExceptOperation, lhs, rhs, all);
+                                    ALLOCATE_INIT(ctx.arena_, tmp, ExceptOperation, data->idx_, lhs, rhs, all);
                                     lhs = tmp;
                                 } else if(op == UNION){
                                     //lhs = new UnionOperation(lhs, rhs, all);
                                     UnionOperation* tmp = nullptr;
-                                    ALLOCATE_INIT(ctx.arena_, tmp, UnionOperation, lhs, rhs, all);
+                                    ALLOCATE_INIT(ctx.arena_, tmp, UnionOperation, data->idx_,lhs, rhs, all);
                                     lhs = tmp;
                                 }
                                 if(ptr->type_ == EXCEPT || ptr->type_ == UNION){
@@ -217,7 +218,7 @@ class AlgebraEngine {
                                     );
                                 //lhs = new IntersectOperation(lhs, rhs, all);
                                 IntersectOperation* tmp = nullptr; 
-                                ALLOCATE_INIT(ctx.arena_, tmp, IntersectOperation, lhs, rhs, all);
+                                ALLOCATE_INIT(ctx.arena_, tmp, IntersectOperation, data->idx_, lhs, rhs, all);
                                 lhs = tmp;
 
                                 if(ptr->type_ == INTERSECT){
@@ -270,7 +271,7 @@ class AlgebraEngine {
                       join_algorithm = HASH_JOIN;
 
                   JoinOperation* join_node = nullptr;
-                  ALLOCATE_INIT(ctx.arena_, join_node, JoinOperation, 
+                  ALLOCATE_INIT(ctx.arena_, join_node, JoinOperation, product->query_idx_,
                           product->lhs_, 
                           product->rhs_, 
                           op->filter_,
@@ -415,10 +416,12 @@ class AlgebraEngine {
             if(!isValidSelectStatementData(data))
                 return nullptr;
 
+            int query_idx = data->idx_;
+
             std::vector<ExpressionNode*> splitted_where;
             if(data->where_){
                 // split conjunctive predicates.
-                splitted_where = split_by_and(ctx, data->where_);
+                splitted_where = split_by_and(&ctx, data->where_);
             }
             // collect data about which tables did we access for each splitted predicate from the previous step.
             std::vector<std::pair<std::vector<std::string>, ExpressionNode*>> tables_per_filter;
@@ -463,7 +466,7 @@ class AlgebraEngine {
             for(int i = 0; i < data->tables_.size(); ++i){
                 //AlgebraOperation* scan = new ScanOperation(data->tables_[i], data->table_names_[i]);
                 AlgebraOperation* scan = nullptr;
-                ALLOCATE_INIT(ctx.arena_, scan, ScanOperation, data->tables_[i], data->table_names_[i]);
+                ALLOCATE_INIT(ctx.arena_, scan, ScanOperation, query_idx, data->tables_[i], data->table_names_[i]);
                 table_scanner[data->table_names_[i]] = scan;
             }
 
@@ -481,7 +484,7 @@ class AlgebraEngine {
                         cur_filter, 
                         data->fields_, data->field_names_, catalog_);*/
                 FilterOperation* tmp = nullptr;
-                ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation,
+                ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation, query_idx,
                         table_scanner[cur_table],
                         cur_filter,
                         data->fields_, data->field_names_);
@@ -511,7 +514,7 @@ class AlgebraEngine {
                                         join_algorithm
                                      );*/
                 JoinOperation* join_op = nullptr;
-                ALLOCATE_INIT(ctx.arena_, join_op, JoinOperation,
+                ALLOCATE_INIT(ctx.arena_, join_op, JoinOperation, query_idx, 
                         table_scanner[lhs_name], 
                         table_scanner[rhs_name],
                         join_data.condition_,
@@ -535,7 +538,7 @@ class AlgebraEngine {
                     } else if(table_scanner.count(t)){
                         //result =  new ProductOperation(table_scanner[t], result); 
                         ProductOperation* tmp = nullptr;
-                        ALLOCATE_INIT(ctx.arena_, tmp, ProductOperation, table_scanner[t], result);
+                        ALLOCATE_INIT(ctx.arena_, tmp, ProductOperation, query_idx,table_scanner[t], result);
                         result = tmp;
                     } else {
                         continue;
@@ -543,7 +546,7 @@ class AlgebraEngine {
                     table_scanner.erase(t);
                 }
                 FilterOperation* tmp = nullptr;
-                ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation, 
+                ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation, query_idx,
                         result,
                         tables_per_filter[i].second,
                         data->fields_, data->field_names_);
@@ -564,7 +567,7 @@ class AlgebraEngine {
                     result = table_scanner[t];
                 } else{
                     ProductOperation* tmp = nullptr;
-                    ALLOCATE_INIT(ctx.arena_, tmp, ProductOperation, table_scanner[t], result);
+                    ALLOCATE_INIT(ctx.arena_, tmp, ProductOperation, query_idx, table_scanner[t], result);
                     result = tmp;
                     //result =  new ProductOperation(table_scanner[t], result);
                 }
@@ -574,7 +577,7 @@ class AlgebraEngine {
             for(int i = 0; i < splitted_where.size(); ++i){
                 if(tables_per_filter[i].first.size() == 0){
                     FilterOperation* tmp = nullptr;
-                    ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation, 
+                    ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation, query_idx,
                             result, 
                             tables_per_filter[i].second,
                             data->fields_, data->field_names_);
@@ -591,12 +594,12 @@ class AlgebraEngine {
 
             if(data->aggregates_.size() || data->group_by_.size()){
                 AggregationOperation* tmp = nullptr;
-                ALLOCATE_INIT(ctx.arena_, tmp, AggregationOperation, result, data->aggregates_, data->group_by_);
+                ALLOCATE_INIT(ctx.arena_, tmp, AggregationOperation, query_idx, result, data->aggregates_, data->group_by_);
                 result = tmp;
                 //result = new AggregationOperation(result, data->aggregates_, data->group_by_);
                 if(data->having_){
                     FilterOperation* tmp = nullptr;
-                    ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation, 
+                    ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation, query_idx,
                             result,
                             data->having_,
                             data->fields_, data->field_names_);
@@ -606,20 +609,21 @@ class AlgebraEngine {
             }
             if(data->fields_.size()){
                 ProjectionOperation* tmp = nullptr;
-                ALLOCATE_INIT(ctx.arena_, tmp, ProjectionOperation, result, data->fields_);
+                ALLOCATE_INIT(ctx.arena_, tmp, ProjectionOperation, query_idx, result, data->fields_);
                 result = tmp;
                 //result = new ProjectionOperation(result, data->fields_);
             }
             if(data->order_by_list_.size()){
                 SortOperation* tmp = nullptr;
-                ALLOCATE_INIT(ctx.arena_, tmp, SortOperation, result, data->order_by_list_);
+                ALLOCATE_INIT(ctx.arena_, tmp, SortOperation, query_idx, result, data->order_by_list_);
                 result = tmp;
                 //result = new SortOperation(result, data->order_by_list_);
             }
+            /*
             if(result) {
                 result->query_idx_ = data->idx_;
                 result->query_parent_idx_ = data->parent_idx_;
-            }
+            }*/
             result->print(0);
             return result;
         }

@@ -3,6 +3,7 @@
 
 #include "string"
 #include "ast_nodes.h"
+#include "algebra_operation.h"
 
 struct QueryCTX;
 struct InsertStatementData;
@@ -30,33 +31,40 @@ enum ExecutorType {
 std::string exec_type_to_string(ExecutorType t);
 
 struct Executor {
-    Executor(ExecutorType type, TableSchema* output_schema, QueryCTX& ctx, 
+    /*
+    Executor(ExecutorType type, TableSchema* output_schema, QueryCTX* ctx, 
             int query_idx, int parent_query_idx, Executor* child);
-
     virtual ~Executor();
+    */
 
+    void construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* output_schema,
+            Executor* child,
+            ExecutorType type);
     virtual void init() = 0;
     virtual std::vector<Value> next() = 0;
 
-    ExecutorType type_;
+    QueryCTX* ctx_ = nullptr;
+    AlgebraOperation* plan_node_ = nullptr;
     Executor* child_executor_ = nullptr;
     TableSchema* output_schema_ = nullptr;
     std::vector<Value> output_ = {};
-    bool error_status_ = 0;
-    bool finished_ = 0;
     int query_idx_ = -1;
     int parent_query_idx_ = -1;
-    QueryCTX& ctx_;
+    ExecutorType type_;
+    bool error_status_ = 0;
+    bool finished_ = 0;
 };
 
 struct FilterExecutor : public Executor {
+    /*
     FilterExecutor(Executor* child, TableSchema* output_schema, ExpressionNode* filter, 
             std::vector<ExpressionNode*>& fields, 
             std::vector<std::string>& field_names,
-            QueryCTX& ctx,
+            QueryCTX* ctx,
             int query_idx,
             int parent_query_idx);
-    ~FilterExecutor();
+    ~FilterExecutor();*/
+    void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child);
 
     void init();
     std::vector<Value> next();
@@ -67,36 +75,42 @@ struct FilterExecutor : public Executor {
 };
 
 struct NestedLoopJoinExecutor : public Executor {
-        NestedLoopJoinExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs, ExpressionNode* filter, JoinType type);
-        ~NestedLoopJoinExecutor();
+    /*
+       NestedLoopJoinExecutor(TableSchema* output_schema, QueryCTX* ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs, ExpressionNode* filter, JoinType type);
+       ~NestedLoopJoinExecutor();*/
 
-        void init();
-        std::vector<Value> next();
+    void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs);
+    void init();
+    std::vector<Value> next();
 
-        Executor* left_child_ = nullptr;
-        std::vector<Value> left_output_;
-        Executor* right_child_ = nullptr;
-        ExpressionNode* filter_ = nullptr;
-        JoinType join_type_ = INNER_JOIN;
-        bool right_child_have_reset_ = false;
-        bool left_output_visited_ = false;
+    Executor* left_child_ = nullptr;
+    std::vector<Value> left_output_;
+    Executor* right_child_ = nullptr;
+    ExpressionNode* filter_ = nullptr;
+    JoinType join_type_ = INNER_JOIN;
+    bool right_child_have_reset_ = false;
+    bool left_output_visited_ = false;
 };
 
-struct ProductExecutor : public Executor {
-        ProductExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs);
-        ~ProductExecutor();
+struct ProductExecutor : public Executor {/*
+        ProductExecutor(TableSchema* output_schema, QueryCTX* ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs);
+        ~ProductExecutor();*/
 
-        void init();
-        std::vector<Value> next();
+    void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs);
 
-        Executor* left_child_ = nullptr;
-        Executor* right_child_ = nullptr;
+    void init();
+    std::vector<Value> next();
+
+    Executor* left_child_ = nullptr;
+    Executor* right_child_ = nullptr;
 };
 
 
-struct HashJoinExecutor : public Executor {
-        HashJoinExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs, ExpressionNode* filter, JoinType type);
-        ~HashJoinExecutor();
+struct HashJoinExecutor : public Executor {/*
+        HashJoinExecutor(TableSchema* output_schema, QueryCTX* ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs, ExpressionNode* filter, JoinType type);
+        ~HashJoinExecutor();*/
+
+    void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs);
 
         void init();
         // TODO: implement merg and nested loop joines, 
@@ -122,22 +136,26 @@ struct HashJoinExecutor : public Executor {
 };
 
 struct UnionExecutor : public Executor {
-        UnionExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs);
-        // doesn't own its children, so no cleaning needed.
-        ~UnionExecutor();
+    /*
+       UnionExecutor(TableSchema* output_schema, QueryCTX* ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs);
+    // doesn't own its children, so no cleaning needed.
+    ~UnionExecutor();*/
 
-        void init();
-        std::vector<Value> next();
+    void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs);
+    void init();
+    std::vector<Value> next();
 
-        Executor* left_child_ = nullptr;
-        Executor* right_child_ = nullptr;
+    Executor* left_child_ = nullptr;
+    Executor* right_child_ = nullptr;
 };
 
 struct ExceptExecutor : public Executor {
-        ExceptExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs);
+    /*
+        ExceptExecutor(TableSchema* output_schema, QueryCTX* ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs);
         // doesn't own its children, so no cleaning needed.
-        ~ExceptExecutor();
+        ~ExceptExecutor();*/
 
+    void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs);
         void init();
         std::vector<Value> next();
 
@@ -147,11 +165,12 @@ struct ExceptExecutor : public Executor {
 };
 
 struct IntersectExecutor : public Executor {
-    public:
-        IntersectExecutor(TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs);
+    public:/*
+        IntersectExecutor(TableSchema* output_schema, QueryCTX* ctx, int query_idx, int parent_query_idx, Executor* lhs, Executor* rhs);
         // doesn't own its children, so no cleaning needed.
-        ~IntersectExecutor();
+        ~IntersectExecutor();*/
 
+    void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs);
         void init();
         std::vector<Value> next();
 
@@ -163,21 +182,24 @@ struct IntersectExecutor : public Executor {
 
 
 struct SeqScanExecutor : public Executor {
-        SeqScanExecutor(TableSchema* table, QueryCTX& ctx, int query_idx, int parent_query_idx);
-        ~SeqScanExecutor();
+    /*
+    SeqScanExecutor(TableSchema* table, QueryCTX* ctx, int query_idx, int parent_query_idx);
+    ~SeqScanExecutor();*/
+    void construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table);
 
-        void init();
-        std::vector<Value> next();
+    void init();
+    std::vector<Value> next();
 
-        TableSchema* table_ = nullptr;
-        TableIterator* it_ = nullptr;
+    TableSchema* table_ = nullptr;
+    TableIterator* it_ = nullptr;
 };
 
 struct IndexScanExecutor : public Executor {
         // TODO: change BTreeIndex type to be a generic ( just Index ) that might be a btree or hash index.
-        IndexScanExecutor(IndexHeader index, ASTNode* filter,
-                TableSchema* table, QueryCTX& ctx, int query_idx, int parent_query_idx);
-        ~IndexScanExecutor();
+        /*IndexScanExecutor(IndexHeader index, ASTNode* filter,
+                TableSchema* table, QueryCTX* ctx, int query_idx, int parent_query_idx);
+        ~IndexScanExecutor();*/
+        void construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table, IndexHeader index);
 
         void assign_iterators();
         void init();
@@ -191,8 +213,11 @@ struct IndexScanExecutor : public Executor {
 };
 
 struct InsertionExecutor : public Executor {
-        InsertionExecutor(TableSchema* table, std::vector<IndexHeader> indexes, QueryCTX& ctx, int query_idx, int parent_query_idx, int select_idx);
-        ~InsertionExecutor();
+        /*InsertionExecutor(TableSchema* table, std::vector<IndexHeader> indexes, QueryCTX* ctx, int query_idx, int parent_query_idx, int select_idx);
+        ~InsertionExecutor();*/
+
+        void construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table, std::vector<IndexHeader> indexes,
+            int select_idx);
 
         void init();
         std::vector<Value> next();
@@ -204,10 +229,12 @@ struct InsertionExecutor : public Executor {
         std::vector<Value> vals_  {};
 };
 
-struct AggregationExecutor : public Executor {
+struct AggregationExecutor : public Executor {/*
         AggregationExecutor(Executor* child_executor, TableSchema* output_schema, 
-                std::vector<AggregateFuncNode*> aggregates, std::vector<ASTNode*> group_by, QueryCTX& ctx, int query_idx, int parent_query_idx);
-        ~AggregationExecutor();
+                std::vector<AggregateFuncNode*> aggregates, std::vector<ASTNode*> group_by, QueryCTX* ctx, int query_idx, int parent_query_idx);
+        ~AggregationExecutor();*/
+
+        void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor);
 
         void init();
         std::vector<Value> next();
@@ -227,8 +254,11 @@ struct AggregationExecutor : public Executor {
 };
 
 struct ProjectionExecutor : public Executor {
-        ProjectionExecutor(Executor* child_executor, TableSchema* output_schema, std::vector<ExpressionNode*> fields, QueryCTX& ctx, int query_idx, int parent_query_idx);
-        ~ProjectionExecutor();
+    /*
+        ProjectionExecutor(Executor* child_executor, TableSchema* output_schema, std::vector<ExpressionNode*> fields, QueryCTX* ctx, int query_idx, int parent_query_idx);
+        ~ProjectionExecutor();*/
+
+        void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor);
 
         void init();
         std::vector<Value> next();
@@ -238,8 +268,10 @@ struct ProjectionExecutor : public Executor {
 };
 
 struct SortExecutor : public Executor {
-        SortExecutor(Executor* child_executor , TableSchema* output_schema, std::vector<int> order_by_list, QueryCTX& ctx, int query_idx, int parent_query_idx);
-        ~SortExecutor();
+    /*
+        SortExecutor(Executor* child_executor , TableSchema* output_schema, std::vector<int> order_by_list, QueryCTX* ctx, int query_idx, int parent_query_idx);
+        ~SortExecutor();*/
+        void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor);
 
         void init();
         std::vector<Value> next();
@@ -250,8 +282,10 @@ struct SortExecutor : public Executor {
 };
 
 struct DistinctExecutor : public Executor {
-        DistinctExecutor(Executor* child_executor , TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx);
-        ~DistinctExecutor();
+    /*
+        DistinctExecutor(Executor* child_executor , TableSchema* output_schema, QueryCTX* ctx, int query_idx, int parent_query_idx);
+        ~DistinctExecutor();*/
+        void construct(QueryCTX* ctx, Executor* child_executor);
 
         void init();
         std::vector<Value> next();
@@ -260,9 +294,11 @@ struct DistinctExecutor : public Executor {
 };
 
 struct SubQueryExecutor : public Executor {
-        SubQueryExecutor(Executor* child_executor, TableSchema* output_schema, QueryCTX& ctx, int query_idx, int parent_query_idx);
-        ~SubQueryExecutor();
+    /*
+        SubQueryExecutor(Executor* child_executor, TableSchema* output_schema, QueryCTX* ctx, int query_idx, int parent_query_idx);
+        ~SubQueryExecutor();*/
 
+        void construct(QueryCTX* ctx, Executor* child_executor);
         void init();
         std::vector<Value> next();
 

@@ -47,6 +47,8 @@ struct QueryCTX {
     std::vector<Token> tokens_;
     std::vector<QueryData*> queries_call_stack_ = {};
     std::vector<QueryData*> set_operations_ = {};
+    std::vector<IndexIterator*> index_handles_ = {};
+    std::vector<TableIterator*> table_handles_ = {};
     std::vector<AlgebraOperation*> operators_call_stack_ = {};
     std::vector<Executor*> executors_call_stack_ = {};
     Arena arena_;

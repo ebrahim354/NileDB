@@ -25,6 +25,12 @@ class TableIterator {
                 cache_manager_->unpinPage(cur_page_id_, false);
         }
 
+        void clear() {
+            if(cur_page_) {
+                cache_manager_->unpinPage(cur_page_id_, false);
+            }
+        }
+
         bool hasNext() {
             // invalid current page.
             if(!cur_page_) return false;

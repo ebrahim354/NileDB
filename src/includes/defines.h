@@ -32,5 +32,12 @@
         ((type *)ptr)->init(__VA_ARGS__); \
     } while(0)
 
+#define ALLOCATE_CONSTRUCT(arena, ptr, type, ...) \
+    do { \
+        ptr = ALLOCATE(arena, type); \
+        new(ptr) type(); \
+        ((type *)ptr)->construct(__VA_ARGS__); \
+    } while(0)
+
 
 #endif // DEFINES_H

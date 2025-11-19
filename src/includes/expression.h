@@ -7,8 +7,8 @@
 #include <string>
 #include <unordered_map>
 
-Value evaluate(QueryCTX& ctx, Executor* this_exec, ASTNode* item);
-Value evaluate_subquery(QueryCTX& ctx, Executor* this_exec, ASTNode* item);
+Value evaluate(QueryCTX* ctx, Executor* this_exec, ASTNode* item);
+Value evaluate_subquery(QueryCTX* ctx, Executor* this_exec, ASTNode* item);
 
 
 Value abs_func(std::vector<Value> vals){
@@ -50,7 +50,7 @@ std::unordered_map<std::string, std::function<Value(std::vector<Value>)>> reserv
 
 
 Value evaluate_expression(
-        QueryCTX& ctx, 
+        QueryCTX* ctx, 
         ASTNode* expression, 
         Executor* this_exec,
         bool only_one = true,
@@ -106,7 +106,7 @@ Value evaluate_expression(
                     Value tmp = evaluate_expression(ctx, in->list_[i], this_exec, false, false);
                     if(tmp.type_ == Type::EXECUTOR_ID){
                         int idx = tmp.getIntVal();
-                        Executor* sub_query_executor = ctx.executors_call_stack_[idx]; 
+                        Executor* sub_query_executor = ctx->executors_call_stack_[idx]; 
                         sub_query_executor->init();
                         // TODO: register errors to ctx object and stop execution.
                         if(sub_query_executor->error_status_){
@@ -123,14 +123,14 @@ Value evaluate_expression(
                             if(sub_query_executor->error_status_) {
                                 std::cout << "[ERROR] could not execute sub-query" << std::endl;
                                 this_exec->error_status_ = 1;
-                                //ctx.error_status_ = 1; // TODO: better error handling.
+                                //ctx->error_status_ = 1; // TODO: better error handling.
                                 return Value();
                             }
 
                             if(sub_query_output.size() != 1) {
                                 std::cout << "[ERROR] sub-query should return exactly 1 column" << std::endl;
                                 this_exec->error_status_ = 1;
-                                //ctx.error_status_ = 1; // TODO: better error handling.
+                                //ctx->error_status_ = 1; // TODO: better error handling.
                                 return Value();
                             }
                             if(sub_query_output[0].isNull()){
@@ -456,7 +456,7 @@ Value evaluate_expression(
 
 
 // assumes top level ands only.
-std::vector<ExpressionNode*> split_by_and(QueryCTX& ctx, ExpressionNode* expression) {
+std::vector<ExpressionNode*> split_by_and(QueryCTX* ctx, ExpressionNode* expression) {
     ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(expression);
     if(!ex) return {};
 
@@ -466,7 +466,7 @@ std::vector<ExpressionNode*> split_by_and(QueryCTX& ctx, ExpressionNode* express
         // TODO: should be changed.
         //ExpressionNode* ex_copy = new ExpressionNode(ex->top_level_statement_, ex->query_idx_);
         ExpressionNode* ex_copy = nullptr; 
-        ALLOCATE_INIT(ctx.arena_, ex_copy, ExpressionNode, ex->top_level_statement_, ex->query_idx_);
+        ALLOCATE_INIT(ctx->arena_, ex_copy, ExpressionNode, ex->top_level_statement_, ex->query_idx_);
         ex_copy->cur_ = ptr;
         ret.push_back(ex_copy);
         if(ptr->category_ != AND){
@@ -883,15 +883,15 @@ void accessed_fields(ASTNode* expression ,std::vector<std::string>& fields, bool
     }
 }
 
-Value evaluate_subquery(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
+Value evaluate_subquery(QueryCTX* ctx, Executor* this_exec, ASTNode* item) {
     auto sub_query = reinterpret_cast<SubQueryNode*>(item);
     bool used_with_exists = sub_query->used_with_exists_;
-    Executor* sub_query_executor = ctx.executors_call_stack_[sub_query->idx_]; 
+    Executor* sub_query_executor = ctx->executors_call_stack_[sub_query->idx_]; 
     sub_query_executor->init();
     if(sub_query_executor->error_status_){
         std::cout << "[ERROR] could not initialize sub-query" << std::endl;
         this_exec->error_status_ = 1;
-        ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: put a better error_status_.
+        ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: put a better error_status_.
         return Value();
     }
 
@@ -905,21 +905,21 @@ Value evaluate_subquery(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
     if(sub_query_executor->error_status_) {
         std::cout << "[ERROR] could not execute sub-query" << std::endl;
         this_exec->error_status_ = 1;
-        ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: put a better error_status_.
+        ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: put a better error_status_.
         return Value();
     }
     if(used_with_exists) return Value(tmp.size() != 0);
     if(tmp.size() != 1) {
         std::cout << "[ERROR] sub-query should return exactly 1 column" << std::endl;
         this_exec->error_status_ = 1;
-        ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: put a better error_status_.
+        ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: put a better error_status_.
         return Value();
     }
     return tmp[0];
 }
 
 
-Value evaluate_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
+Value evaluate_field(QueryCTX* ctx, Executor* this_exec, ASTNode* item) {
 
     std::string field = item->token_.val_;
     //TableSchema* schema_ptr = output_schema_;
@@ -930,7 +930,7 @@ Value evaluate_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
     int idx = -1;
     while(true){
         if(!schema_ptr && cur_query_parent != -1){
-            Executor* parent_query = ctx.executors_call_stack_[cur_query_parent]; 
+            Executor* parent_query = ctx->executors_call_stack_[cur_query_parent]; 
             schema_ptr = parent_query->output_schema_;
             cur_query_idx = parent_query->query_idx_;
             cur_query_parent = parent_query->parent_query_idx_;
@@ -938,7 +938,7 @@ Value evaluate_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
         } else if(!schema_ptr){
             std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
             this_exec->error_status_ = 1;
-            ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: make a better error_status_.
+            ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: make a better error_status_.
             return Value();
         }
         int num_of_matches = 0;
@@ -948,7 +948,7 @@ Value evaluate_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
             if(splittedStr.size() != 2) {
                 std::cout << "[ERROR] Invalid schema " << std::endl;
                 this_exec->error_status_ = 1;
-                ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: make a better error_status_.
+                ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: make a better error_status_.
                 return Value();
             }
             if(field == splittedStr[1]){
@@ -959,7 +959,7 @@ Value evaluate_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
         if(num_of_matches > 1){
             std::cout << "[ERROR] Ambiguous field name: " << field << std::endl;
             this_exec->error_status_ = 1;
-            ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: make a better error_status_.
+            ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: make a better error_status_.
             return Value();
         }
         if(this_exec->type_ == FILTER_EXECUTOR){ // TODO: check why only filter executor type has field renames?
@@ -974,10 +974,10 @@ Value evaluate_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
         // can't find the field in current context,
         // search for it in context of the parent till the top level query.
         if(num_of_matches == 0 && cur_query_parent != -1){
-            Executor* parent_query = ctx.executors_call_stack_[cur_query_parent]; 
+            Executor* parent_query = ctx->executors_call_stack_[cur_query_parent]; 
             schema_ptr = parent_query->output_schema_;
             cur_query_idx = parent_query->query_idx_;
-            cur_query_parent = ctx.executors_call_stack_[cur_query_idx]->parent_query_idx_;
+            cur_query_parent = ctx->executors_call_stack_[cur_query_idx]->parent_query_idx_;
             continue;
         }
         std::vector<Value> cur_output;
@@ -986,7 +986,7 @@ Value evaluate_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
             if(cur_query_idx == this_exec->query_idx_){
                 cur_exec  = this_exec;
             } else {
-                Executor* cur_exec = ctx.executors_call_stack_[cur_query_idx];
+                Executor* cur_exec = ctx->executors_call_stack_[cur_query_idx];
 
                 while(cur_exec != nullptr && cur_exec->type_ != FILTER_EXECUTOR){
                     cur_exec = cur_exec->child_executor_;
@@ -995,7 +995,7 @@ Value evaluate_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
             if(!cur_exec){
                 std::cout << "[ERROR] Invalid filter operation"<< std::endl;
                 this_exec->error_status_ = 1;
-                ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
+                ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
                 return Value();
             }
 
@@ -1004,7 +1004,7 @@ Value evaluate_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
             //if(cur_query_parent == -1)
             cur_output = this_exec->output_;
             //else
-            //   cur_output = ctx.executors_call_stack_[cur_query_idx]->output_; 
+            //   cur_output = ctx->executors_call_stack_[cur_query_idx]->output_; 
         }
 
         if(idx < 0 || idx >= cur_output.size()) {
@@ -1014,14 +1014,14 @@ Value evaluate_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
             else 
                 std::cout << "[ERROR] Invalid field name " << field << std::endl;
             this_exec->error_status_ = 1;
-            ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
+            ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
             return Value();
         }
         return cur_output[idx];
     }
 }
 
-Value evaluate_scoped_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
+Value evaluate_scoped_field(QueryCTX* ctx, Executor* this_exec, ASTNode* item) {
 
     std::string field = item->token_.val_;
     //TableSchema* schema_ptr = output_schema_;
@@ -1033,7 +1033,7 @@ Value evaluate_scoped_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
     int idx = -1;
     while(true){
         if(!schema_ptr && cur_query_parent != -1){
-            Executor* parent_query = ctx.executors_call_stack_[cur_query_parent]; 
+            Executor* parent_query = ctx->executors_call_stack_[cur_query_parent]; 
             schema_ptr = parent_query->output_schema_;
             cur_query_idx = parent_query->query_idx_;
             cur_query_parent = parent_query->parent_query_idx_;
@@ -1041,7 +1041,7 @@ Value evaluate_scoped_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
         } else if(!schema_ptr){
             std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
             this_exec->error_status_ = 1;
-            ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
+            ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
             return Value();
         }
         std::string table = schema_ptr->getTableName();
@@ -1050,10 +1050,10 @@ Value evaluate_scoped_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
         idx = schema_ptr->colExist(col);
 
         if(idx < 0 && cur_query_parent != -1){
-            Executor* parent_query = ctx.executors_call_stack_[cur_query_parent]; 
+            Executor* parent_query = ctx->executors_call_stack_[cur_query_parent]; 
             schema_ptr = parent_query->output_schema_;
             cur_query_idx = parent_query->query_idx_;
-            cur_query_parent = ctx.executors_call_stack_[cur_query_idx]->parent_query_idx_;
+            cur_query_parent = ctx->executors_call_stack_[cur_query_idx]->parent_query_idx_;
             continue;
         }
 
@@ -1063,7 +1063,7 @@ Value evaluate_scoped_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
             if(cur_query_idx == this_exec->query_idx_){
                 cur_exec = this_exec;
             } else {
-                cur_exec = ctx.executors_call_stack_[cur_query_idx];
+                cur_exec = ctx->executors_call_stack_[cur_query_idx];
 
                 while(cur_exec && cur_exec->type_ != SEQUENTIAL_SCAN_EXECUTOR && cur_exec->type_ != PRODUCT_EXECUTOR){
                     cur_exec = cur_exec->child_executor_;
@@ -1072,7 +1072,7 @@ Value evaluate_scoped_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
             if(!cur_exec){
                 std::cout << "[ERROR] Invalid scoped operation"<< std::endl;
                 this_exec->error_status_ = 1;
-                ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
+                ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
                 return Value();
             }
             cur_output  = cur_exec->output_;
@@ -1080,7 +1080,7 @@ Value evaluate_scoped_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
             if(this_exec->query_idx_ == 0)
                 cur_output = this_exec->output_;
             else
-                cur_output = ctx.executors_call_stack_[cur_query_idx]->output_; 
+                cur_output = ctx->executors_call_stack_[cur_query_idx]->output_; 
         } else {
             cur_output = this_exec->output_;
         }
@@ -1089,20 +1089,20 @@ Value evaluate_scoped_field(QueryCTX& ctx, Executor* this_exec, ASTNode* item) {
         if(idx < 0 || idx >= cur_output.size()) {
             std::cout << "[ERROR] Invalid scoped field name " << col << std::endl;
             this_exec->error_status_ = 1;
-            ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
+            ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
             return Value();
         }
         return cur_output[idx];
     }
 }
 
-Value evaluate(QueryCTX& ctx, Executor* this_exec, ASTNode* item){
+Value evaluate(QueryCTX* ctx, Executor* this_exec, ASTNode* item){
     if(item->category_ == FIELD) return evaluate_field(ctx, this_exec, item);
     if(item->category_ == SCOPED_FIELD) return evaluate_scoped_field(ctx, this_exec, item);
     if(item->category_ == SUB_QUERY) return evaluate_scoped_field(ctx, this_exec, item);
     std::cout << "?????[ERROR] Item type is not supported!" << std::endl;
     // error_status_ = 1;
-    ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: put a better error_status_.
+    ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: put a better error_status_.
     return Value();
 }
 
