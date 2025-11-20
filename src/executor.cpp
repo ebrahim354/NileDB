@@ -75,7 +75,9 @@ void NestedLoopJoinExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_nod
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
-    output_schema_ = new TableSchema("TMP_JOIN_TABLE", nullptr, lhs_columns, true); // TODO: fix leak.
+    auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
+    output_schema_ = new(ptr) TableSchema("TMP_JOIN_TABLE", nullptr, lhs_columns, true);
+
 }
 
 void NestedLoopJoinExecutor::init() {
@@ -162,7 +164,8 @@ void ProductExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Exec
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
-    output_schema_ =  new TableSchema("TMP_PRODUCT_TABLE", nullptr, lhs_columns, true);// TODO: fix leak
+    auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
+    output_schema_ = new(ptr) TableSchema("TMP_PRODUCT_TABLE", nullptr, lhs_columns, true);
 }
 
 void ProductExecutor::init() {
@@ -231,7 +234,8 @@ void HashJoinExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Exe
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
-    output_schema_ = new TableSchema("TMP_JOIN_TABLE", nullptr, lhs_columns, true); // TODO: fix leak.
+    auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
+    output_schema_ = new(ptr) TableSchema("TMP_JOIN_TABLE", nullptr, lhs_columns, true);
 }
 
 void HashJoinExecutor::init() {
@@ -851,7 +855,8 @@ void AggregationExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, 
         offset_ptr += Column::getSizeFromType(INT);
     }
 
-    output_schema_ = new TableSchema("agg_tmp_schema", nullptr, new_cols, true); // TODO: fix leak.
+    auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
+    output_schema_ = new(ptr) TableSchema("agg_tmp_schema", nullptr, new_cols, true);
 }
 
 void AggregationExecutor::init() {
