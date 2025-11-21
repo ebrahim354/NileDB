@@ -3,6 +3,10 @@
 
 #include "column.h"
 #include "table.h"
+#include "record.h"
+
+class Table;
+struct Record;
 
 
 

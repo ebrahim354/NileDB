@@ -13,11 +13,12 @@ class TableIterator {
     public:
         TableIterator(CacheManager *cm, PageID page_id);
         ~TableIterator();
+        void clear();
 
         bool hasNext();
 
         // 0 in case of no more records.
-        int advance():
+        int advance();
 
         Record getCurRecordCpy();
         Record* getCurRecordCpyPtr();

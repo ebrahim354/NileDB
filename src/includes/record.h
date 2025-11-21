@@ -2,6 +2,8 @@
 #define RECORD_H
 
 #include "page.h"
+#include "value.h"
+#include "table_schema.h"
 #include <cstdint>
 
 
@@ -48,5 +50,27 @@ class Record {
         uint32_t record_size_;
         bool read_only_ = true; // is the data_ read only (can't deallocate it?) or not.
 };
+
+struct Tuple {
+    TableSchema* schema_;
+    std::vector<Value> values_;
+    /*
+    // linked list for merging tuples and manipulating them, 
+    // usually used in product and join executors.
+    Record* rec_;
+    Tuple* next_;
+    Tuple* prev_;*/
+    /*
+       void init(TableSchema* schema){
+       schema_ = schema;
+       values_.resize(schema_.numOfCols());
+       }
+       void copy_at_start(const Tuple* t) {
+       assert(t && t.values_ && t.values_.size() <= values_.size());
+       for(int i = 0; i < t.values_.size(); ++i)
+       values_[i] = t->values_[i];
+       }*/
+};
+
 
 #endif // RECORD_H

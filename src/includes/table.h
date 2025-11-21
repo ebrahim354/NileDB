@@ -8,6 +8,8 @@
 #include "record.h"
 #include "table_data_page.h"
 
+class TableIterator;
+
 /*
  * the current model we are using is:              "Heap File Organization".
  *
