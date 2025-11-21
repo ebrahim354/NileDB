@@ -1,10 +1,10 @@
 #ifndef TABLE_ITERATOR_H
 #define TABLE_ITERATOR_H
 
+#include "record.h"
 #include "cache_manager.h"
 #include "page.h"
 #include "table_data_page.h"
-#include "record.h"
 #include <cstdint>
 
 

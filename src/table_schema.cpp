@@ -195,7 +195,10 @@ class TableSchema {
         }
 
         int translateToValuesOffset(Record& r, std::vector<Value>& values, int offset){
-            if( offset < 0 || offset + columns_.size() > values.size()) return 1;
+            if( offset < 0 || offset + columns_.size() > values.size()) {
+                assert(0 && "Can't translate this record");
+                return 1;
+            }
             for(int i = 0; i < columns_.size(); ++i){
                 // check the bitmap if this value is null.
                 char * bitmap_ptr = r.getFixedPtr(size_)+(i/8);  

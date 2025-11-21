@@ -7,62 +7,37 @@
 
 #include "disk_manager.cpp"
 #include "lru_k_replacer.cpp"
+#include "cache_manager.h"
 
-class CacheManager {
-    public:
-        CacheManager (size_t pool_size, DiskManager *disk_manager, size_t replacer_k)
-            : pool_size_(pool_size), disk_manager_(disk_manager) {
-                std::cout << "pool size: " << pool_size_ << "\n";
-                std::cout << "replacer k: " << replacer_k << "\n";
-                pages_ = new Page[pool_size_];
-                replacer_ = new LRUKReplacer(pool_size, replacer_k);
+CacheManager::CacheManager (size_t pool_size, DiskManager *disk_manager, size_t replacer_k)
+    : pool_size_(pool_size), disk_manager_(disk_manager) {
+        std::cout << "pool size: " << pool_size_ << "\n";
+        std::cout << "replacer k: " << replacer_k << "\n";
+        pages_ = new Page[pool_size_];
+        replacer_ = new LRUKReplacer(pool_size, replacer_k);
 
-                // Initially, every page is in the free list.
-                for (size_t i = 0; i < pool_size_; ++i) {
-                    free_list_.emplace_back(static_cast<int>(i));
-                }
-            }
-
-        ~CacheManager() {
-            flushAllPages();
-            delete[] pages_;
-            delete replacer_;
+        // Initially, every page is in the free list.
+        for (size_t i = 0; i < pool_size_; ++i) {
+            free_list_.emplace_back(static_cast<int>(i));
         }
+    }
 
-        void show(bool hide_unpinned = false) {
-            std::cout << "free list size: " << free_list_.size() << std::endl;
-            std::cout << "pages contents: " << std::endl;
-            for (size_t i = 0; i < pool_size_; i++) {
-                if(hide_unpinned && pages_[i].pin_count_ == 0) continue;
-                std::cout << "page number: " << i << " " << *pages_[i].data_ << " pinCnt: " << pages_[i].pin_count_
-                    << " isDirty: " << pages_[i].is_dirty_ << " page_id: " << fid_to_fname[pages_[i].page_id_.fid_]
-                    << " " << pages_[i].page_id_.page_num_ << std::endl;
-            }
-        }
+CacheManager::~CacheManager() {
+    flushAllPages();
+    delete[] pages_;
+    delete replacer_;
+}
 
-        // create a new page on the cache then persist it with allocatePage and returns a pointer to the page.
-        // this is not effecient because we persist the new page twice once on creation and flushing,
-        // should be optimized later.
-        Page* newPage(FileID fid);
-        Page* fetchPage(PageID page_id);
-        bool unpinPage(PageID page_id, bool is_dirty);
-        bool flushPage(PageID page_id);
-        void flushAllPages();
-        bool deletePage(PageID page_id);
-
-    private:
-
-        const size_t pool_size_;
-        Page *pages_;
-        DiskManager *disk_manager_;
-        std::map<PageID, uint32_t> page_table_;
-        LRUKReplacer *replacer_;
-        std::list<uint32_t> free_list_;
-        std::mutex latch_;
-};
-
-
-
+void CacheManager::show(bool hide_unpinned) {
+    std::cout << "free list size: " << free_list_.size() << std::endl;
+    std::cout << "pages contents: " << std::endl;
+    for (size_t i = 0; i < pool_size_; i++) {
+        if(hide_unpinned && pages_[i].pin_count_ == 0) continue;
+        std::cout << "page number: " << i << " " << *pages_[i].data_ << " pinCnt: " << pages_[i].pin_count_
+            << " isDirty: " << pages_[i].is_dirty_ << " page_id: " << fid_to_fname[pages_[i].page_id_.fid_]
+            << " " << pages_[i].page_id_.page_num_ << std::endl;
+    }
+}
 
 Page* CacheManager::newPage(FileID fid){
     const std::lock_guard<std::mutex> lock(latch_);

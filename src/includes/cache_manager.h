@@ -11,7 +11,7 @@
 
 class CacheManager {
     public:
-        CacheManager (size_t pool_size, DiskManager *disk_manager, size_t replacer_k)
+        CacheManager (size_t pool_size, DiskManager *disk_manager, size_t replacer_k);
         ~CacheManager();
 
         void show(bool hide_unpinned = false);

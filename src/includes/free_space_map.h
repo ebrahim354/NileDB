@@ -16,7 +16,7 @@
 
 class FreeSpaceMap {
     public:
-        FreeSpaceMap(CacheManager* cm, PageID first_page_id): cm_(cm), first_page_id_(first_page_id);
+        FreeSpaceMap(CacheManager* cm, PageID first_page_id);
         ~FreeSpaceMap();
 
         int addPage(uint8_t fraction);
