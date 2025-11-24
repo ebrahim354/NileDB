@@ -73,8 +73,11 @@ Value Parser::constVal(QueryCTX& ctx){
     if((bool)ctx.error_status_) return Value();
     Token token = ctx.getCurrentToken();
     switch(token.type_){
-        case TokenType::STR_CONSTANT:
-            return Value(token.val_);
+        case TokenType::STR_CONSTANT:{
+            char* str = (char*)ctx.arena_.alloc(token.val_.size());
+            memcpy(str, token.val_.c_str(), token.val_.size());
+            return Value(str, (uint16_t)token.val_.size());
+                                     }
         case TokenType::FLOATING_CONSTANT:
         {
             errno = 0;

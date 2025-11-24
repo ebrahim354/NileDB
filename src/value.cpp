@@ -6,6 +6,10 @@
 #include "utils.h"
 #include "value.h"
 
+
+
+#define cast_as(type, ptr) *((type*)&ptr)
+
 // check for overflows and underflows for 64 bit.
 bool is_valid_operation64(int64_t a, int64_t b, MathOp op) {
     switch(op){
@@ -33,70 +37,63 @@ bool is_valid_operation64(int64_t a, int64_t b, MathOp op) {
     return true;
 }
 
-void Value::value_from_size(int sz){
-    size_ = sz;
-    //delete [] content_;
-    //content_ = new char[size_];
-    free(content_);
-    content_ = (char*) malloc(size_);
-}
-Value::~Value(){
-    free(content_);
-}
+Value::~Value(){}
 
 Value::Value(Type type){
     type_ = type;
 } 
-// handle memory leaks later.
-// constuctors for different value types.
-Value::Value(const Value& rhs){
-    this->size_ = rhs.size_;
-    if(!rhs.isNull()){
-        //delete[] this->content_;
-        //this->content_ = new char[size_];
-        free(this->content_);
-        this->content_ = (char*) malloc(size_);
-        memcpy(this->content_, rhs.content_, size_);
-    }
-    this->type_ = rhs.type_;
-} 
 
-Value& Value::operator=(const Value& rhs) {
-    this->size_ = rhs.size_;
-    if(!rhs.isNull()){
-        //delete[] this->content_;
-        //this->content_ = new char[size_];
-        free(this->content_);
-        this->content_ = (char*) malloc(size_);
-        memcpy(this->content_, rhs.content_, size_);
-    }
-    this->type_ = rhs.type_;
-    return *this;
-} 
+Value::Value(char* content, Type t, uint16_t size) {
+    type_ = t;
+    size_ = size;
+    setValue(t, content);
+}
+
+Value::Value(char* str, uint16_t size) {
+    content_ = (uintptr_t)str;
+    size_ = size;
+    type_ = VARCHAR;
+}
+
+char* Value::get_ptr() {
+    if(type_ == VARCHAR) return (char*) content_;
+    return (char*)&content_;
+}
+
+Value::Value(const std::string& str){ // TODO: either pass an allocator or remove this.
+    size_ = str.size(); 
+    this->content_ = (uintptr_t) malloc(size_);
+    memcpy((char*)content_, str.c_str(), size_);
+    type_ = VARCHAR;
+}
+
+Value Value::get_copy() { // TODO: pass an allocator. 
+    if(type_ != VARCHAR) return *this; // copy by value if we don't have a var length type.
+    char* tmp = (char*)malloc(size_);
+    memcpy(tmp, (char*)content_, size_);
+    return Value(tmp, VARCHAR, size_);
+}
 
 bool Value::cast_up() {
     if(type_ == INT){
-        long val = *(int*)content_;
-        free(content_);
+        int64_t val = cast_as(int, content_);
         size_ = 8;
-        content_ = (char*) malloc(size_);
-        *(long*)content_ = val;
         type_ = BIGINT;
+        setBigintValue(val);
         return true;
     } 
     if(type_ == FLOAT){
-        double val = *(float*)content_;
-        free(content_);
+        double val = cast_as(float, content_);;
         size_ = 8;
-        content_ = (char*) malloc(size_);
-        *(double*)content_ = val;
         type_ = DOUBLE;
+        setDoubleValue(val);
         return true;
     } 
     if(type_ == BIGINT){
-        double val = *(int64_t*)content_;
-        *(double*) content_ = val;
+        double val = cast_as(int64_t, content_);
         type_ = DOUBLE;
+        size_ = 8;
+        setDoubleValue(val);
         return true;
     }
     assert(0);
@@ -114,11 +111,11 @@ Value& Value::operator+=(const Value& rhs) {
             // TODO: check for overflows, underflows in double, bigint.
             case DOUBLE:{
                             if(rhs.type_ == INT || rhs.type_ == BIGINT) {
-                                *(double*)content_ += rhs.type_ == INT ? rhs.getIntVal() : rhs.getBigIntVal();
+                                cast_as(double, content_) += rhs.type_ == INT ? rhs.getIntVal() : rhs.getBigIntVal();
                             } else if(rhs.type_ == FLOAT) {
-                                *(double*)content_ += rhs.getFloatVal();
+                                cast_as(double, content_) += rhs.getFloatVal();
                             } else if(rhs.type_ == DOUBLE){
-                                *(double*)content_ += rhs.getDoubleVal();
+                                cast_as(double, content_) += rhs.getDoubleVal();
                             } else {
                                 assert(0 && "NOT SUPPORTED TYPE CONVERSION");
                             }
@@ -126,22 +123,22 @@ Value& Value::operator+=(const Value& rhs) {
                         return *this;
             case BIGINT:{
                             if(rhs.type_ == INT) {
-                                if(!is_valid_operation64(*(long*)content_, rhs.getIntVal(), MATH_PLUS)){
+                                if(!is_valid_operation64(cast_as(long, content_), rhs.getIntVal(), MATH_PLUS)){
                                     cast_up();
                                     continue;
                                 }
-                                *(long*)content_ += rhs.getIntVal();
+                                cast_as(long, content_) += rhs.getIntVal();
                             } else if(rhs.type_ == FLOAT || rhs.type_ == DOUBLE) {
                                 double val = getBigIntVal();
                                 val += rhs.type_ == FLOAT ? rhs.getFloatVal() : rhs.getDoubleVal();
-                                *(double*)content_ = val; 
+                                cast_as(double, content_) = val; 
                                 type_ = DOUBLE;
                             } else if(rhs.type_ == BIGINT) {
-                                if(!is_valid_operation64(*(long*)content_, rhs.getBigIntVal(), MATH_PLUS)){
+                                if(!is_valid_operation64(cast_as(long, content_), rhs.getBigIntVal(), MATH_PLUS)){
                                     cast_up();
                                     continue;
                                 }
-                                *(long*)content_ += rhs.getBigIntVal();
+                                cast_as(long, content_) += rhs.getBigIntVal();
                             } else {
                                 assert(0 && "NOT SUPPORTED TYPE CONVERSION");
                             }
@@ -154,14 +151,14 @@ Value& Value::operator+=(const Value& rhs) {
                                    cast_up();
                                    continue;
                                }
-                               *(int*)content_ = (int) res; 
+                               cast_as(int, content_) = (int) res; 
                            } else if(rhs.type_ == FLOAT) {
                                float res = (float) getIntVal() + rhs.getFloatVal();
                                if(isinf(res) || isnan(res)) {
                                    cast_up();
                                    continue;
                                }
-                               *(float*)content_ = (float) res; 
+                               cast_as(float, content_) = (float) res; 
                                type_ = FLOAT;
                            } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
                                cast_up();
@@ -178,14 +175,14 @@ Value& Value::operator+=(const Value& rhs) {
                                    cast_up();
                                    continue;
                                }
-                               *(float*)content_ = res;
+                               cast_as(float, content_) = res;
                            } else if(rhs.type_ == FLOAT) {
                                float res = getFloatVal() + rhs.getFloatVal();
                                if(isinf(res) || isnan(res)) {
                                    cast_up();
                                    continue;
                                }
-                               *(float*)content_ = res; 
+                               cast_as(float, content_) = res; 
                            } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
                                cast_up();
                                continue;
@@ -215,11 +212,11 @@ Value& Value::operator-=(const Value& rhs){
             // TODO: check for overflows, underflows in double, bigint.
             case DOUBLE:{
                             if(rhs.type_ == INT || rhs.type_ == BIGINT) {
-                                *(double*)content_ -= rhs.type_ == INT ? rhs.getIntVal() : rhs.getBigIntVal();
+                                cast_as(double, content_) -= rhs.type_ == INT ? rhs.getIntVal() : rhs.getBigIntVal();
                             } else if(rhs.type_ == FLOAT) {
-                                *(double*)content_ -= rhs.getFloatVal();
+                                cast_as(double, content_) -= rhs.getFloatVal();
                             } else if(rhs.type_ == DOUBLE){
-                                *(double*)content_ -= rhs.getDoubleVal();
+                                cast_as(double, content_) -= rhs.getDoubleVal();
                             } else {
                                 assert(0 && "NOT SUPPORTED TYPE CONVERSION");
                             }
@@ -227,22 +224,22 @@ Value& Value::operator-=(const Value& rhs){
                         return *this;
             case BIGINT:{
                             if(rhs.type_ == INT) {
-                                if(!is_valid_operation64(*(long*)content_, rhs.getIntVal(), MATH_MINUS)){
+                                if(!is_valid_operation64(cast_as(long, content_), rhs.getIntVal(), MATH_MINUS)){
                                     cast_up();
                                     continue;
                                 }
-                                *(long*)content_ -= rhs.getIntVal();
+                                cast_as(long, content_) -= rhs.getIntVal();
                             } else if(rhs.type_ == FLOAT || rhs.type_ == DOUBLE) {
                                 double val = getBigIntVal();
                                 val -= rhs.type_ == FLOAT ? rhs.getFloatVal() : rhs.getDoubleVal();
-                                *(double*)content_ = val; 
+                                cast_as(double, content_) = val; 
                                 type_ = DOUBLE;
                             } else if(rhs.type_ == BIGINT) {
-                                if(!is_valid_operation64(*(long*)content_, rhs.getBigIntVal(), MATH_MINUS)){
+                                if(!is_valid_operation64(cast_as(long, content_), rhs.getBigIntVal(), MATH_MINUS)){
                                     cast_up();
                                     continue;
                                 }
-                                *(long*)content_ -= rhs.getBigIntVal();
+                                cast_as(long, content_) -= rhs.getBigIntVal();
                             } else {
                                 assert(0 && "NOT SUPPORTED TYPE CONVERSION");
                             }
@@ -255,14 +252,14 @@ Value& Value::operator-=(const Value& rhs){
                                    cast_up();
                                    continue;
                                }
-                               *(int*)content_ = (int) res; 
+                               cast_as(int, content_) = (int) res; 
                            } else if(rhs.type_ == FLOAT) {
                                float res = (float) getIntVal() - rhs.getFloatVal();
                                if(isinf(res) || isnan(res)) {
                                    cast_up();
                                    continue;
                                }
-                               *(float*)content_ = (float) res; 
+                               cast_as(float, content_) = (float) res; 
                                type_ = FLOAT;
                            } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
                                cast_up();
@@ -279,14 +276,14 @@ Value& Value::operator-=(const Value& rhs){
                                    cast_up();
                                    continue;
                                }
-                               *(float*)content_ = res;
+                               cast_as(float, content_) = res;
                            } else if(rhs.type_ == FLOAT) {
                                float res = getFloatVal() - rhs.getFloatVal();
                                if(isinf(res) || isnan(res)) {
                                    cast_up();
                                    continue;
                                }
-                               *(float*)content_ = res; 
+                               cast_as(float, content_) = res; 
                            } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
                                cast_up();
                                continue;
@@ -316,11 +313,11 @@ Value& Value::operator*=(const Value& rhs){
             // TODO: check for overflows, underflows in double, bigint.
             case DOUBLE:{
                             if(rhs.type_ == INT || rhs.type_ == BIGINT) {
-                                *(double*)content_ *= rhs.type_ == INT ? rhs.getIntVal() : rhs.getBigIntVal();
+                                cast_as(double, content_) *= rhs.type_ == INT ? rhs.getIntVal() : rhs.getBigIntVal();
                             } else if(rhs.type_ == FLOAT) {
-                                *(double*)content_ *= rhs.getFloatVal();
+                                cast_as(double, content_) *= rhs.getFloatVal();
                             } else if(rhs.type_ == DOUBLE){
-                                *(double*)content_ *= rhs.getDoubleVal();
+                                cast_as(double, content_) *= rhs.getDoubleVal();
                             } else {
                                 assert(0 && "NOT SUPPORTED TYPE CONVERSION");
                             }
@@ -328,22 +325,22 @@ Value& Value::operator*=(const Value& rhs){
                         return *this;
             case BIGINT:{
                             if(rhs.type_ == INT) {
-                                if(!is_valid_operation64(*(long*)content_, rhs.getIntVal(), MATH_MULT)){
+                                if(!is_valid_operation64(cast_as(long, content_), rhs.getIntVal(), MATH_MULT)){
                                     cast_up();
                                     continue;
                                 }
-                                *(long*)content_ *= rhs.getIntVal();
+                                cast_as(long, content_) *= rhs.getIntVal();
                             } else if(rhs.type_ == FLOAT || rhs.type_ == DOUBLE) {
                                 double val = getBigIntVal();
                                 val *= rhs.type_ == FLOAT ? rhs.getFloatVal() : rhs.getDoubleVal();
-                                *(double*)content_ = val; 
+                                cast_as(double, content_) = val; 
                                 type_ = DOUBLE;
                             } else if(rhs.type_ == BIGINT) {
-                                if(!is_valid_operation64(*(long*)content_, rhs.getBigIntVal(), MATH_MULT)){
+                                if(!is_valid_operation64(cast_as(long, content_), rhs.getBigIntVal(), MATH_MULT)){
                                     cast_up();
                                     continue;
                                 }
-                                *(long*)content_ *= rhs.getBigIntVal();
+                                cast_as(long, content_) *= rhs.getBigIntVal();
                             } else {
                                 assert(0 && "NOT SUPPORTED TYPE CONVERSION");
                             }
@@ -356,14 +353,14 @@ Value& Value::operator*=(const Value& rhs){
                                    cast_up();
                                    continue;
                                }
-                               *(int*)content_ = (int) res; 
+                               cast_as(int, content_) = (int) res; 
                            } else if(rhs.type_ == FLOAT) {
                                float res = (float) getIntVal() * rhs.getFloatVal();
                                if(isinf(res) || isnan(res)) {
                                    cast_up();
                                    continue;
                                }
-                               *(float*)content_ = (float) res; 
+                               cast_as(float, content_) = (float) res; 
                                type_ = FLOAT;
                            } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
                                cast_up();
@@ -380,14 +377,14 @@ Value& Value::operator*=(const Value& rhs){
                                    cast_up();
                                    continue;
                                }
-                               *(float*)content_ = res;
+                               cast_as(float, content_) = res;
                            } else if(rhs.type_ == FLOAT) {
                                float res = getFloatVal() * rhs.getFloatVal();
                                if(isinf(res) || isnan(res)) {
                                    cast_up();
                                    continue;
                                }
-                               *(float*)content_ = res;
+                               cast_as(float, content_) = res;
                            } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
                                cast_up();
                                continue;
@@ -419,15 +416,15 @@ Value& Value::operator/=(const Value& rhs){
                             if(rhs.type_ == INT || rhs.type_ == BIGINT) {
                                 long val = rhs.type_ == INT ? rhs.getIntVal() : rhs.getBigIntVal();
                                 assert(val != 0 && "division by 0");
-                                *(double*)content_ /= val;
+                                cast_as(double, content_) /= val;
                             } else if(rhs.type_ == FLOAT) {
                                 float val = rhs.getFloatVal(); 
                                 assert(val != 0 && "division by 0");
-                                *(double*)content_ /= val; 
+                                cast_as(double, content_) /= val; 
                             } else if(rhs.type_ == DOUBLE){
                                 double val = rhs.getDoubleVal(); 
                                 assert(val != 0 && "division by 0");
-                                *(double*)content_ /= val;
+                                cast_as(double, content_) /= val;
                             } else {
                                 assert(0 && "NOT SUPPORTED TYPE CONVERSION");
                             }
@@ -437,26 +434,26 @@ Value& Value::operator/=(const Value& rhs){
                             if(rhs.type_ == INT) {
                                 long val = rhs.getIntVal();
                                 assert(val != 0 && "division by 0");
-                                if(!is_valid_operation64(*(long*)content_, rhs.getIntVal(), MATH_DIV)){
+                                if(!is_valid_operation64(cast_as(long, content_), rhs.getIntVal(), MATH_DIV)){
                                     cast_up();
                                     continue;
                                 }
-                                *(long*)content_ /= val; 
+                                cast_as(long, content_) /= val; 
                             } else if(rhs.type_ == FLOAT || rhs.type_ == DOUBLE) {
                                 double val = getBigIntVal();
                                 double denom = rhs.type_ == FLOAT ? rhs.getFloatVal() : rhs.getDoubleVal();
                                 assert(denom != 0 && "division by 0");
                                 val /= denom;
-                                *(double*)content_ = val; 
+                                cast_as(double, content_) = val; 
                                 type_ = DOUBLE;
                             } else if(rhs.type_ == BIGINT) {
                                 long val = rhs.getBigIntVal();
                                 assert(val != 0 && "division by 0");
-                                if(!is_valid_operation64(*(long*)content_, rhs.getBigIntVal(), MATH_DIV)){
+                                if(!is_valid_operation64(cast_as(long, content_), rhs.getBigIntVal(), MATH_DIV)){
                                     cast_up();
                                     continue;
                                 }
-                                *(long*)content_ /= val;
+                                cast_as(long, content_) /= val;
                             } else {
                                 assert(0 && "NOT SUPPORTED TYPE CONVERSION");
                             }
@@ -470,7 +467,7 @@ Value& Value::operator/=(const Value& rhs){
                                    cast_up();
                                    continue;
                                }
-                               *(int*)content_ = (int) res; 
+                               cast_as(int, content_) = (int) res; 
                            } else if(rhs.type_ == FLOAT) {
                                assert(rhs.getFloatVal() != 0 && "division by 0");
                                float res = (float) getIntVal() / rhs.getFloatVal();
@@ -478,7 +475,7 @@ Value& Value::operator/=(const Value& rhs){
                                    cast_up();
                                    continue;
                                }
-                               *(float*)content_ = (float) res; 
+                               cast_as(float, content_) = (float) res; 
                                type_ = FLOAT;
                            } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
                                cast_up();
@@ -496,7 +493,7 @@ Value& Value::operator/=(const Value& rhs){
                                    cast_up();
                                    continue;
                                }
-                               *(float*)content_ = res;
+                               cast_as(float, content_) = res;
                            } else if(rhs.type_ == FLOAT) {
                                assert(rhs.getFloatVal() != 0 && "division by 0");
                                float res = getFloatVal() / rhs.getFloatVal();
@@ -504,7 +501,7 @@ Value& Value::operator/=(const Value& rhs){
                                    cast_up();
                                    continue;
                                }
-                               *(float*)content_ = res; 
+                               cast_as(float, content_) = res; 
                            } else if(rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
                                cast_up();
                                continue;
@@ -561,9 +558,9 @@ Value Value::operator-(Value rhs) {
                     }
         case INT : {
                        if(rhs.type_ == INT) {
-                           return Value(*(int*)content_ - rhs.getIntVal());
+                           return Value(cast_as(int, content_) - rhs.getIntVal());
                        } else if(rhs.type_ == FLOAT) {
-                           float val = *(int*)content_;
+                           float val = cast_as(int, content_);
                            return Value(val - rhs.getFloatVal());
                        } else {
                            assert(0 && "NOT SUPPORTED TYPE CONVERSION");
@@ -572,9 +569,9 @@ Value Value::operator-(Value rhs) {
                    break;
         case FLOAT:{
                        if(rhs.type_ == INT) {
-                           return Value(*(float*)content_ - rhs.getIntVal());
+                           return Value(cast_as(float, content_) - rhs.getIntVal());
                        } else if(rhs.type_ == FLOAT) {
-                           return Value(*(float*)content_ - rhs.getFloatVal());
+                           return Value(cast_as(float, content_) - rhs.getFloatVal());
                        } else {
                            assert(0 && "NOT SUPPORTED TYPE CONVERSION");
                        }
@@ -582,7 +579,7 @@ Value Value::operator-(Value rhs) {
                    break;
         case BOOLEAN:{
                          if(rhs.type_ == BOOLEAN){
-                             return Value((int)(*(bool*)content_ - rhs.getBoolVal()));
+                             return Value((int)((bool)content_ - rhs.getBoolVal()));
                          } else {
                              assert(0 && "NOT SUPPORTED TYPE CONVERSION");
                          }
@@ -592,9 +589,9 @@ Value Value::operator-(Value rhs) {
                      {
                          if(rhs.type_ == VARCHAR) {
                              int n = std::min(size_, rhs.size_);
-                             return Value(strncmp(content_, rhs.content_, n));
+                             return Value(strncmp((char*)content_, (char*)rhs.content_, n));
                          } else if(rhs.type_ == INT || rhs.type_ == FLOAT || rhs.type_ == BIGINT || rhs.type_ == DOUBLE) {
-                             return Value(Value(strtod(content_, NULL)) - rhs);
+                             return Value(Value(strtod((char*)content_, NULL)) - rhs);
                          } else {
                              assert(0 && "NOT SUPPORTED TYPE CONVERSION");
                          }
@@ -608,48 +605,58 @@ Value Value::operator-(Value rhs) {
     return Value(NULL_TYPE);
 } 
 
-Value::Value(const std::string& str){
-    size_ = str.size(); 
-    //content_ = new char[size_];
-    this->content_ = (char*) malloc(size_);
-    //str.copy(content_, size_);
-    memcpy(content_, str.c_str(), size_);
-    type_ = VARCHAR;
-}
 Value::Value(bool val){
     size_ = 1; 
-    //content_ = new char[size_];
-    this->content_ = (char*) malloc(size_);
-    memcpy(content_, &val, size_);
     type_ = BOOLEAN;
+    cast_as(bool, content_) = val;
 }
 Value::Value(int val){
     size_ = 4; 
-    //content_ = new char[size_];
-    this->content_ = (char*) malloc(size_);
-    memcpy(content_, &val, size_);
     type_ = INT;
+    cast_as(int, content_) = val;
 }
 Value::Value(long long val){
     size_ = 8; 
-    //content_ = new char[size_];
-    this->content_ = (char*) malloc(size_);
-    memcpy(content_, &val, size_);
     type_ = BIGINT;
+    cast_as(long long, content_) = val;
 }
 Value::Value(float val){
     size_ = 4; 
-    //content_ = new char[size_];
-    this->content_ = (char*) malloc(size_);
-    memcpy(content_, &val, size_);
     type_ = FLOAT;
+    cast_as(float, content_) = val;
 }
 Value::Value(double val){
     size_ = 8; 
-    //content_ = new char[size_];
-    this->content_ = (char*) malloc(size_);
-    memcpy(content_, &val, size_);
     type_ = DOUBLE;
+    cast_as(double, content_) = val;
+}
+
+void Value::setValue(Type t, char* content) { 
+    switch (t) {
+        case VARCHAR: 
+            content_ = (uintptr_t) content;
+            break;
+        case BOOLEAN:
+            cast_as(bool, content_) = *(bool*)content;
+            break;
+        case INT:
+            setIntValue(*(int32_t*)content);
+            break;
+        case BIGINT:
+            setBigintValue(*(int64_t*)content);
+            break;
+        case FLOAT:
+            setFloatValue(*(float*)content);
+            break;
+        case DOUBLE:
+            setDoubleValue(*(double*)content);
+            break;
+        case NULL_TYPE:
+            return;
+        case INVALID:
+        default :
+            assert(0);
+    }
 }
 
 
@@ -686,41 +693,45 @@ inline bool Value::isNull() const {
 }
 std::string Value::getStringVal() const {
     if(!content_) return "";
-    return std::string(content_, size_);  
+    return std::string((char*)content_, size_);  
 }
 bool Value::getBoolVal() const{
     if(!content_) return false;
-    if(type_ == FLOAT){
+    if(type_ == BOOLEAN) return (bool)content_;
+    else if(type_ == FLOAT){
         return getFloatVal();
     } else if(type_ == DOUBLE){
         return getDoubleVal();
     } else if(type_ == INT){
         return getIntVal();
     }
-    return *reinterpret_cast<bool*>(content_);
+    assert(0);
+    return false;
 }
 int Value::getIntVal() const {
     if(!content_) return 0;
-    if(type_ == FLOAT){
+    if(type_ == INT || type_ == BIGINT) return cast_as(int, content_);
+    else if(type_ == FLOAT){
         return getFloatVal();
     } else if(type_ == DOUBLE){
         return getDoubleVal();
     } else if(type_ == BOOLEAN){
         return getBoolVal();
     }
-    return *reinterpret_cast<int*>(content_);
+    assert(0);
+    return 0;
 }
 long long Value::getBigIntVal() const {
     if(!content_) return 0;
-    return *reinterpret_cast<long long*>(content_);
+    return cast_as(long long, content_);
 }
 float Value::getFloatVal() const {
     if(!content_) return 0.0f;
-    return *reinterpret_cast<float*>(content_);
+    return cast_as(float, content_);;
 }
 double Value::getDoubleVal() const {
     if(!content_) return 0.0f;
-    return *reinterpret_cast<double*>(content_);
+    return cast_as(double, content_);
 }
 bool Value::operator==(const Value &rhs) const { 
     int cmp = value_cmp(*this, rhs);
@@ -752,38 +763,51 @@ bool Value::operator>=(const Value &rhs) const {
     return cmp >= 0;
 }
 
-void Value::setValue(int val){
-    if(type_ == INT)
-        memcpy(content_, &val, 4);
+void Value::setIntValue(int32_t val){
+    if(type_ == INT) 
+        *((int32_t*)&content_) = val;
+    else 
+        assert(0);
 }
 
-void Value::setValue(long long val){
+void Value::setBigintValue(int64_t val){
     if(type_ == BIGINT)
-        memcpy(content_, &val, 8);
+        *((int64_t*)&content_) = val;
+    else 
+        assert(0);
 }
 
-void Value::setValue(float val){
+void Value::setFloatValue(float val){
     if(type_ == FLOAT)
-        memcpy(content_, &val, 4);
+        *((float*)&content_) = val;
+    else 
+        assert(0);
+
 }
 
-void Value::setValue(double val){
+void Value::setDoubleValue(double val){
     if(type_ == DOUBLE)
-        memcpy(content_, &val, 8);
+        *((double*)&content_) = val;
+    else 
+        assert(0);
 }
 
 Value& Value::operator++() {
     switch (type_) {
         case INT:
-            setValue(getIntVal()+1);
+            setIntValue(getIntVal()+1);
+            break;
         case BIGINT:
-            setValue(getBigIntVal()+1);
+            setBigintValue(getBigIntVal()+1);
+            break;
         case FLOAT:
-            setValue(getFloatVal()+1);
+            setFloatValue(getFloatVal()+1);
+            break;
         case DOUBLE:
-            setValue(getDoubleVal()+1);
+            setDoubleValue(getDoubleVal()+1);
+            break;
         default :
-            ;
+            assert(0 && "Can't increment this type");
     }
     return *this;
 }
@@ -791,9 +815,16 @@ Value& Value::operator++() {
 // -1 ==> lhs < rhs, 0 eq, 1 ==> lhs > rhs
 int value_cmp(Value lhs, Value rhs) {
     assert(!lhs.isNull() && !rhs.isNull()); // can't compare null values.
+    /*
     if(lhs.content_  && !rhs.content_ ) return 1;
     if(rhs.content_  && !lhs.content_ ) return -1;
     if(!rhs.content_ && !lhs.content_ ) return 0;
+    */
+    /*
+    if(lhs.content_  && !rhs.content_ ) assert(0);
+    if(rhs.content_  && !lhs.content_ ) assert(0);
+    if(!rhs.content_ && !lhs.content_ ) assert(0);
+    */
 
     if((lhs.type_ == BIGINT || lhs.type_ == DOUBLE) && (rhs.type_ == FLOAT || rhs.type_ == INT))
         rhs.cast_up();

@@ -23,21 +23,17 @@ enum MathOp {
 bool is_valid_operation64(int64_t a, int64_t b, MathOp op);
 
 class Value {
+    private:
+        uintptr_t content_ = 0;
     public:
-        char* content_ = nullptr;  
         uint16_t size_ = 0;
         Type type_ = INVALID;
         //Value(){} 
-        void value_from_size(int sz);
         ~Value();
 
         Value(Type type = NULL_TYPE);
-        // handle memory leaks later.
-        // constuctors for different value types.
-        Value(const Value& rhs);
-
-        Value& operator=(const Value& rhs);
         bool cast_up();
+        char* get_ptr();
 
 
         Value& operator+=(const Value& rhs);
@@ -50,6 +46,10 @@ class Value {
 
         Value operator-(Value rhs);
 
+        void setValue(Type t, char* content);
+        Value get_copy(); // TODO: pass an allocator. 
+        Value(char* content, Type t, uint16_t size);
+        Value(char* str, uint16_t size);
         Value(const std::string& str);
         Value(bool val);
         Value(int val);
@@ -76,10 +76,10 @@ class Value {
         bool operator>(const Value &rhs) const;
         bool operator>=(const Value &rhs) const;
 
-        void setValue(int val);
-        void setValue(long long val);
-        void setValue(float val);
-        void setValue(double val);
+        void setIntValue(int32_t val);
+        void setBigintValue(int64_t val);
+        void setFloatValue(float val);
+        void setDoubleValue(double val);
         Value& operator++();
 };
 

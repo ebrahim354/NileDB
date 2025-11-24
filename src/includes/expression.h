@@ -420,7 +420,9 @@ Value evaluate_expression(
                           for(int i = 1; i < expression->token_.val_.size() - 1; i++){
                               val += expression->token_.val_[i];
                           }
-                          return Value(val);
+                          char* str = (char*)ctx->arena_.alloc(val.size());
+                          memcpy(str, val.c_str(), val.size());
+                          return Value(str, val.size());
                       }
         case FLOAT_CONSTANT:
                       {

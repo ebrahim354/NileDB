@@ -55,11 +55,18 @@ struct Tuple {
     TableSchema* schema_;
     std::vector<Value> values_;
     /*
-    // linked list for merging tuples and manipulating them, 
-    // usually used in product and join executors.
     Record* rec_;
-    Tuple* next_;
-    Tuple* prev_;*/
+    */
+    void append_tuple_copy_to_end(Tuple* new_tuple) {
+        assert(new_tuple != nullptr);
+        int n = new_tuple->values_.size();
+        assert(schema_ && schema_->numOfCols() >= values_.size() + n);
+        for(int i = 0; i < n; ++i)
+            values_.push_back(new_tuple->values_[i]);
+    }
+    void append_value_to_end(Value v) {
+        values_.push_back(v);
+    }
     /*
        void init(TableSchema* schema){
        schema_ = schema;

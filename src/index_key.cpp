@@ -245,7 +245,8 @@ IndexKey temp_index_key_from_values(std::vector<Value>& vals) {
             header_ptr = buf + header_offset;
             bound = buf + buf_size;
         }
-        memcpy(payload_ptr, vals[i].content_, val_size);
+        //memcpy(payload_ptr, (char*)vals[i].content_, val_size);
+        memcpy(payload_ptr, vals[i].get_ptr(), val_size);
         payload_ptr += val_size;
     }
     return {

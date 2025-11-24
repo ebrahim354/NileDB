@@ -181,13 +181,14 @@ int TableSchema::translateToValues(Record& r, std::vector<Value>& values){
             values.emplace_back(Value(NULL_TYPE));
             continue;
         }
-        Value val{};
-        char* content = getValue(columns_[i].getName(), r, &val.size_);
+        uint16_t sz = 0;
+        char* content = getValue(columns_[i].getName(), r, &sz);
         if(!content)
             return 1;
-        val.value_from_size(val.size_);
-        memcpy(val.content_, content, val.size_);
-        val.type_ = columns_[i].getType();
+        Value val(content, columns_[i].getType(), sz);
+        //val.type_ = columns_[i].getType();
+        //val.value_from_size(val.size_);
+        //memcpy(val.get_ptr(), content, val.size_);
         values.emplace_back(val);
     }
     return 0;
@@ -207,12 +208,14 @@ int TableSchema::translateToValuesOffset(Record& r, std::vector<Value>& values, 
             continue;
         }
         Value* val = &values[offset+i];
-        char* content = getValue(columns_[i].getName(), r, &val->size_);
+        //val->type_ = columns_[i].getType();
+        uint16_t sz = 0;
+        char* content = getValue(columns_[i].getName(), r, &sz);
         if(!content)
             return 1;
-        val->value_from_size(val->size_);
-        memcpy(val->content_, content, val->size_);
-        val->type_ = columns_[i].getType();
+        *val = Value(content, columns_[i].getType(), sz);
+        //val->value_from_size(val->size_);
+        //memcpy(val->get_ptr(), content, val->size_);
     }
     return 0;
 }
@@ -240,11 +243,11 @@ Record* TableSchema::translateToRecord(std::vector<Value>& values){
             memcpy(data + columns_[i].getOffset(), &cur_var_offset, sizeof(cur_var_offset));
             memcpy(data + columns_[i].getOffset() + 2, &values[i].size_, sizeof(cur_var_offset));
             // cpy the actual data and update the var offset pointer.
-            memcpy(data + cur_var_offset, values[i].content_, values[i].size_);
+            memcpy(data + cur_var_offset, values[i].get_ptr(), values[i].size_);
             cur_var_offset+= values[i].size_;
         } else {
             // just copy the data into its fixed offset.
-            memcpy(data + columns_[i].getOffset(), values[i].content_, values[i].size_);
+            memcpy(data + columns_[i].getOffset(), values[i].get_ptr(), values[i].size_);
         }
         // initialize the bitmap, 1 means null and 0 means not null.
         if(values[i].isNull()){

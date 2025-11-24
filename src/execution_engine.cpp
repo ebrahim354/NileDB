@@ -502,8 +502,13 @@ class ExecutionEngine {
             while(!physical_plan->error_status_ && !physical_plan->finished_){
                 std::vector<Value> tmp = physical_plan->next();
                 if(tmp.size() == 0 || physical_plan->error_status_) break;
-                    
-                result->push_back(tmp);
+
+                std::vector<Value> tmp_cpy;
+                for(int i = 0; i < tmp.size(); ++i){
+                    tmp_cpy.push_back(tmp[i].get_copy());
+                }
+
+                result->push_back(tmp_cpy);
             }
             return (physical_plan->error_status_ == 0);
         }
