@@ -36,13 +36,13 @@ struct Executor {
             Executor* child,
             ExecutorType type);
     virtual void init() = 0;
-    virtual std::vector<Value> next() = 0;
+    virtual Tuple next() = 0;
 
     QueryCTX* ctx_ = nullptr;
     AlgebraOperation* plan_node_ = nullptr;
     Executor* child_executor_ = nullptr;
     TableSchema* output_schema_ = nullptr;
-    std::vector<Value> output_ = {};
+    Tuple output_;
     int query_idx_ = -1;
     int parent_query_idx_ = -1;
     ExecutorType type_;
@@ -54,7 +54,7 @@ struct FilterExecutor : public Executor {
 
     void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child);
     void init();
-    std::vector<Value> next();
+    Tuple next();
 
     ExpressionNode* filter_ = nullptr;
     std::vector<ExpressionNode*> fields_ = {};
@@ -65,10 +65,10 @@ struct NestedLoopJoinExecutor : public Executor {
 
     void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs);
     void init();
-    std::vector<Value> next();
+    Tuple next();
 
     Executor* left_child_ = nullptr;
-    std::vector<Value> left_output_;
+    Tuple left_output_;
     Executor* right_child_ = nullptr;
     ExpressionNode* filter_ = nullptr;
     JoinType join_type_ = INNER_JOIN;
@@ -80,7 +80,7 @@ struct ProductExecutor : public Executor {
 
     void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs);
     void init();
-    std::vector<Value> next();
+    Tuple next();
 
     Executor* left_child_ = nullptr;
     Executor* right_child_ = nullptr;
@@ -93,7 +93,7 @@ struct HashJoinExecutor : public Executor {
     void init();
     // TODO: implement merg and nested loop joines, 
     // hash join is not good for cases of none equality conditions, and full outer joins.
-    std::vector<Value> next();
+    Tuple next();
 
     Executor* left_child_ = nullptr;
     Executor* right_child_ = nullptr;
@@ -108,7 +108,7 @@ struct HashJoinExecutor : public Executor {
     std::string prev_key_ = "";
     std::vector<int> right_child_fields_;
     ExpressionNode* filter_ = nullptr;
-    std::unordered_map<std::string, std::vector<std::vector<Value>>> hashed_left_child_;
+    std::unordered_map<std::string, std::vector<Tuple>> hashed_left_child_;
     // tracks left keys that didn't find a match and can be used for left and full outer joins.
     std::set<std::string> non_visited_left_keys_; 
 };
@@ -117,7 +117,7 @@ struct UnionExecutor : public Executor {
 
     void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs);
     void init();
-    std::vector<Value> next();
+    Tuple next();
 
     Executor* left_child_ = nullptr;
     Executor* right_child_ = nullptr;
@@ -127,7 +127,7 @@ struct ExceptExecutor : public Executor {
 
     void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs);
     void init();
-    std::vector<Value> next();
+    Tuple next();
 
     Executor* left_child_ = nullptr;
     Executor* right_child_ = nullptr;
@@ -138,7 +138,7 @@ struct IntersectExecutor : public Executor {
 
     void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs);
     void init();
-    std::vector<Value> next();
+    Tuple next();
 
     Executor* left_child_ = nullptr;
     Executor* right_child_ = nullptr;
@@ -151,7 +151,7 @@ struct SeqScanExecutor : public Executor {
 
     void construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table);
     void init();
-    std::vector<Value> next();
+    Tuple next();
 
     TableSchema* table_ = nullptr;
     TableIterator* it_ = nullptr;
@@ -163,7 +163,7 @@ struct IndexScanExecutor : public Executor {
         void construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table, IndexHeader index);
         void assign_iterators();
         void init();
-        std::vector<Value> next();
+        Tuple next();
 
         TableSchema* table_ = nullptr;
         IndexHeader index_header_ = {};
@@ -177,24 +177,23 @@ struct InsertionExecutor : public Executor {
         void construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table, std::vector<IndexHeader> indexes,
             int select_idx);
         void init();
-        std::vector<Value> next();
+        Tuple next();
 
         TableSchema* table_ = nullptr;
         std::vector<IndexHeader> indexes_;
         InsertStatementData* statement = nullptr;
         int select_idx_ = -1;
-        std::vector<Value> vals_  {};
 };
 
 struct AggregationExecutor : public Executor {
 
         void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor);
         void init();
-        std::vector<Value> next();
+        Tuple next();
 
         std::vector<AggregateFuncNode*> aggregates_;
         std::vector<ASTNode*> group_by_;
-        std::unordered_map<std::string, std::vector<Value>> aggregated_values_;
+        std::unordered_map<std::string, std::pair<Tuple, int>> aggregated_values_;
         // this hash table holds a set of values for each aggregate function 
         // if that function uses the distinct keyword inside the clause e.g: count(distinct a).
         // the mapping string is the hashed_key that is generated from the group by clause,
@@ -203,14 +202,14 @@ struct AggregationExecutor : public Executor {
         // second value is the set of values that has been parameters to that function so far.
         // TODO: pick a better structure to implement this functionality
         std::unordered_map<std::string, std::unordered_map<int, std::set<std::string>>> distinct_counters_; 
-        std::unordered_map<std::string, std::vector<Value>>::iterator it_;
+        std::unordered_map<std::string, std::pair<Tuple, int>>::iterator it_;
 };
 
 struct ProjectionExecutor : public Executor {
 
         void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor);
         void init();
-        std::vector<Value> next();
+        Tuple next();
 
         // child_executor_ is optional in case of projection for example : select 1 + 1 should work without a from clause.
         std::vector<ExpressionNode*> fields_ {};
@@ -220,10 +219,10 @@ struct SortExecutor : public Executor {
 
         void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor);
         void init();
-        std::vector<Value> next();
+        Tuple next();
 
         std::vector<int> order_by_list_;
-        std::vector<std::vector<Value>> tuples_;
+        std::vector<Tuple> tuples_;
         int idx_ = 0;
 };
 
@@ -231,7 +230,7 @@ struct DistinctExecutor : public Executor {
 
         void construct(QueryCTX* ctx, Executor* child_executor);
         void init();
-        std::vector<Value> next();
+        Tuple next();
 
         std::unordered_map<std::string, int> hashed_tuples_;
 };
@@ -240,11 +239,11 @@ struct SubQueryExecutor : public Executor {
 
         void construct(QueryCTX* ctx, Executor* child_executor);
         void init();
-        std::vector<Value> next();
+        Tuple next();
 
         // TODO: replace this with a tempory table.
-        std::list<std::vector<Value>> tuple_list_; 
-        std::list<std::vector<Value>>::iterator it_; 
+        std::list<Tuple> tuple_list_; 
+        std::list<Tuple>::iterator it_; 
         bool cached_ = false;
 };
 

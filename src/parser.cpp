@@ -772,8 +772,14 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
         if(!sub_query) {
             return nullptr;
         }
-        sub_query->is_corelated_ = is_corelated_subquery(ctx, sub_query, catalog_);
+        if(!sub_query->is_corelated_)
+            sub_query->is_corelated_ = is_corelated_subquery(ctx, sub_query, catalog_);
         std::cout << "is corelated: " << sub_query->is_corelated_ << "\n";
+        if(sub_query->is_corelated_){
+            auto parent = ctx.queries_call_stack_[sub_query->parent_idx_];
+            if(parent->parent_idx_ != -1)
+                parent->is_corelated_ = true;
+        }
         //SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
         SubQueryNode* sub_query_node = nullptr; 
         ALLOCATE_INIT(ctx.arena_, sub_query_node, SubQueryNode, sub_query->idx_, sub_query->parent_idx_);
@@ -792,8 +798,15 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
         if(!sub_query) {
             return nullptr;
         }
+        if(!sub_query->is_corelated_)
+            sub_query->is_corelated_ = is_corelated_subquery(ctx, sub_query, catalog_);
         sub_query->is_corelated_ = is_corelated_subquery(ctx, sub_query, catalog_);
         std::cout << "(IN)is corelated: " << sub_query->is_corelated_ << "\n";
+        if(sub_query->is_corelated_){
+            auto parent = ctx.queries_call_stack_[sub_query->parent_idx_];
+            if(parent->parent_idx_ != -1)
+                parent->is_corelated_ = true;
+        }
         //SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
         SubQueryNode* sub_query_node = nullptr; 
         ALLOCATE_INIT(ctx.arena_, sub_query_node, SubQueryNode, sub_query->idx_, sub_query->parent_idx_);

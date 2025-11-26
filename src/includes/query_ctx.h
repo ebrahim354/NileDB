@@ -51,6 +51,7 @@ struct QueryCTX {
     std::vector<TableIterator*> table_handles_ = {};
     std::vector<AlgebraOperation*> operators_call_stack_ = {};
     std::vector<Executor*> executors_call_stack_ = {};
+    std::vector<Tuple> query_inputs = {};
     Arena arena_;
     uint32_t cursor_ = 0;
     Error error_status_ = Error::NO_ERROR;

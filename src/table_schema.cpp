@@ -220,6 +220,29 @@ int TableSchema::translateToValuesOffset(Record& r, std::vector<Value>& values, 
     return 0;
 }
 
+int TableSchema::translateToTuple(Record& r, Tuple& tuple, int offset){
+    if( offset < 0 || offset + columns_.size() > tuple.size()) {
+        assert(0 && "Can't translate this record");
+        return 1;
+    }
+    for(int i = 0; i < columns_.size(); ++i){
+        // check the bitmap if this value is null.
+        char * bitmap_ptr = r.getFixedPtr(size_)+(i/8);  
+        int is_null = *bitmap_ptr & (1 << (i%8));
+        if(is_null) {
+            tuple.put_val_at(offset+i, Value(NULL_TYPE));
+            continue;
+        }
+        //val->type_ = columns_[i].getType();
+        uint16_t sz = 0;
+        char* content = getValue(columns_[i].getName(), r, &sz);
+        if(!content)
+            return 1;
+        tuple.put_val_at(offset+i, Value(content, columns_[i].getType(), sz));
+    }
+    return 0;
+}
+
 // translate a vector of values using the schema to a Record. 
 // return null in case of an error.
 // the user of the class should handle deleting the record after using it.
@@ -251,6 +274,43 @@ Record* TableSchema::translateToRecord(std::vector<Value>& values){
         }
         // initialize the bitmap, 1 means null and 0 means not null.
         if(values[i].isNull()){
+            char * bitmap_ptr = data+size_+(i/8);  
+            *bitmap_ptr = *bitmap_ptr | (1 << (i%8));
+        }
+    }
+
+    auto r = new Record(data, fixed_part_size + var_part_size, false); // false => record owns the data ptr now.
+    return r;
+}
+
+Record* TableSchema::translateToRecord(Tuple tuple){
+    if(tuple.size() != columns_.size()) return nullptr;
+    uint32_t fixed_part_size = size_;
+    uint32_t var_part_size = 0;
+    for(size_t i = 0; i < columns_.size(); ++i){
+        if(columns_[i].isVarLength()) var_part_size += tuple.get_val_at(i).size_;
+    }
+    // The bitmap bytes.
+    fixed_part_size += (columns_.size() / 8) + (columns_.size() % 8);
+    char* data = new char[fixed_part_size + var_part_size];
+    std::memset(data, 0, fixed_part_size + var_part_size);
+
+    uint16_t cur_var_offset = fixed_part_size; 
+    for(size_t i = 0; i < tuple.size(); i++){
+        Value cur_val = tuple.get_val_at(i);
+        if(columns_[i].isVarLength()){
+            // add 2 bytes for offset and 2 bytes for length
+            memcpy(data + columns_[i].getOffset(), &cur_var_offset, sizeof(cur_var_offset));
+            memcpy(data + columns_[i].getOffset() + 2, &cur_val.size_, sizeof(cur_var_offset));
+            // cpy the actual data and update the var offset pointer.
+            memcpy(data + cur_var_offset, cur_val.get_ptr(), cur_val.size_);
+            cur_var_offset+= cur_val.size_;
+        } else {
+            // just copy the data into its fixed offset.
+            memcpy(data + columns_[i].getOffset(), cur_val.get_ptr(), cur_val.size_);
+        }
+        // initialize the bitmap, 1 means null and 0 means not null.
+        if(cur_val.isNull()){
             char * bitmap_ptr = data+size_+(i/8);  
             *bitmap_ptr = *bitmap_ptr | (1 << (i%8));
         }

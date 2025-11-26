@@ -35,12 +35,16 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
         std::string cur_field   = table_field.second;
         if(table.size()) {  // the field is scoped.
             for(int k = 0; k < query->table_names_.size(); ++k){
-                if(table != query->table_names_[k]) continue;
+                if(table != query->table_names_[k] && k == query->table_names_[k].size() - 1)
+                    return true;
+                if(table != query->table_names_[k]) 
+                    continue;
                 table = query->tables_[k];
+                break;
             }
             TableSchema* schema = catalog->getTableSchema(table);
             if(!schema) return true;
-            if(!schema->isValidCol(fields[i])){
+            if(!schema->isValidCol(cur_field)){
                 return true; // the table does not contain this column => corelated.
             }
 

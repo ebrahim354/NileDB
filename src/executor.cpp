@@ -47,6 +47,7 @@ void Executor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema
     ctx_ = ctx; 
     plan_node_ = plan_node;
     output_schema_ = output_schema;
+    output_ = Tuple(output_schema_);
     type_ = type;
     assert(query_idx_ < ctx->queries_call_stack_.size() && plan_node != nullptr);
     query_idx_ = plan_node->query_idx_;
@@ -77,7 +78,7 @@ void NestedLoopJoinExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_nod
 
     auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
     output_schema_ = new(ptr) TableSchema("TMP_JOIN_TABLE", nullptr, lhs_columns, true);
-
+    output_ = Tuple(output_schema_);
 }
 
 void NestedLoopJoinExecutor::init() {
@@ -91,28 +92,26 @@ void NestedLoopJoinExecutor::init() {
     right_child_->init();
     error_status_ = left_child_->error_status_ || right_child_->error_status_;
     finished_ = left_child_->finished_;
-    output_.resize(left_child_->output_schema_->getColumns().size() + right_child_->output_schema_->getColumns().size()); 
+    // output_.resize(left_child_->output_schema_->getColumns().size() + right_child_->output_schema_->getColumns().size()); 
     if(!finished_){
-        left_output_ = left_child_->next();
-        if(left_output_.size() == 0 && left_child_->finished_) finished_ = true;
+        left_output_ = left_child_->next().duplicate();
+        if(left_output_.is_empty() && left_child_->finished_) finished_ = true;
     }
 }
 
-std::vector<Value> NestedLoopJoinExecutor::next() {
+Tuple NestedLoopJoinExecutor::next() {
     if(error_status_ || finished_)  return {};
 
     while(true){
-        std::vector<Value> right_output = right_child_->next();
+        Tuple right_output = right_child_->next();
         if(right_child_->finished_){
             if(!left_output_visited_ && (join_type_ == LEFT_JOIN || join_type_ == FULL_JOIN)){
                 left_output_visited_ = true;
-                for(int i = 0; i < left_output_.size(); ++i)
-                    output_[i] = left_output_[i];
-                for(int i = left_output_.size(); i < output_.size(); ++i)
-                    output_[i] = Value(NULL_TYPE);
+                output_.put_tuple_at_start(&left_output_);
+                output_.nullify(left_output_.size(), -1);
                 return output_;
             }
-            left_output_ = left_child_->next();
+            left_output_ = left_child_->next().duplicate();
             left_output_visited_ = false;
             if(left_child_->finished_){
                 finished_ = true;
@@ -122,28 +121,24 @@ std::vector<Value> NestedLoopJoinExecutor::next() {
             right_child_have_reset_ = true;
             right_output = right_child_->next();
         } 
-        if(right_output.size() == 0) {
+        if(right_output.is_empty()) {
             finished_ = true;
             return {};
         }
 
-        for(int i = 0; i < left_output_.size(); ++i)
-            output_[i] = left_output_[i];
-        for(int i = 0;i < right_output.size(); ++i)
-            output_[i+(output_.size() - right_output.size())] = right_output[i];
+        output_.put_tuple_at_start(&left_output_);
+        output_.put_tuple_at_end(&right_output);
 
         finished_ = left_child_->finished_;
-        Value v = evaluate_expression(ctx_, filter_, this);
+        Value v = evaluate_expression(ctx_, filter_, output_);
         if(!v.isNull() && v.getBoolVal() == true){
             left_output_visited_ = true;
             return output_;
         }
         if((join_type_ == RIGHT_JOIN || join_type_ == FULL_JOIN) && !right_child_have_reset_) {
-            for(int i = 0; i < left_output_.size(); ++i)
-                output_[i] = Value(NULL_TYPE);
+            output_.nullify(0, left_output_.size());
             return output_;
         }
-        //return output_;
     }
 }
 
@@ -166,6 +161,7 @@ void ProductExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Exec
 
     auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
     output_schema_ = new(ptr) TableSchema("TMP_PRODUCT_TABLE", nullptr, lhs_columns, true);
+    output_ = Tuple(output_schema_);
 }
 
 void ProductExecutor::init() {
@@ -179,19 +175,17 @@ void ProductExecutor::init() {
     right_child_->init();
     error_status_ = left_child_->error_status_ || right_child_->error_status_;
     finished_ = left_child_->finished_;
-    output_.resize(left_child_->output_schema_->getColumns().size() + right_child_->output_schema_->getColumns().size()); 
     if(!finished_){
         auto left_output = left_child_->next();
-        if(left_output.size() == 0 && left_child_->finished_) finished_ = true;
-        for(int i = 0; i < left_output.size(); ++i)
-            output_[i] = left_output[i];
+        if(left_output.is_empty() && left_child_->finished_) finished_ = true;
+        output_.put_tuple_at_start(&left_output);
     }
 }
 
-std::vector<Value> ProductExecutor::next() {
+Tuple ProductExecutor::next() {
     if(error_status_ || finished_)  return {};
-    std::vector<Value> left_output;
-    std::vector<Value> right_output = right_child_->next();
+    Tuple left_output;
+    Tuple right_output = right_child_->next();
     if(right_child_->finished_){
         left_output = left_child_->next();
         if(left_child_->finished_){
@@ -201,15 +195,13 @@ std::vector<Value> ProductExecutor::next() {
         right_child_->init();
         right_output = right_child_->next();
     } 
-    if(right_output.size() == 0) {
+    if(right_output.is_empty()) {
         finished_ = true;
         return {};
     }
 
-    for(int i = 0; i < left_output.size(); ++i)
-        output_[i] = left_output[i];
-    for(int i = 0;i < right_output.size(); ++i)
-        output_[i+(output_.size() - right_output.size())] = right_output[i];
+    output_.put_tuple_at_start(&left_output);
+    output_.put_tuple_at_end(&right_output);
 
     finished_ = left_child_->finished_;
     return output_;
@@ -236,6 +228,7 @@ void HashJoinExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Exe
 
     auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
     output_schema_ = new(ptr) TableSchema("TMP_JOIN_TABLE", nullptr, lhs_columns, true);
+    output_ = Tuple(output_schema_);
 }
 
 void HashJoinExecutor::init() {
@@ -249,7 +242,6 @@ void HashJoinExecutor::init() {
     right_child_->init();
     error_status_ = left_child_->error_status_ || right_child_->error_status_;
     finished_ = left_child_->finished_;
-    output_.resize(left_child_->output_schema_->getColumns().size() + right_child_->output_schema_->getColumns().size()); 
     prev_key_ = "";
     duplicated_idx_ = -1;
     hashed_left_child_.clear();
@@ -289,18 +281,12 @@ void HashJoinExecutor::init() {
     }
     // build the hash table.
     while(!left_child_->finished_ && !left_child_->error_status_){
-        std::vector<Value> left_output = left_child_->next();
-        if(left_output.size() == 0) continue;
+        Tuple left_output = left_child_->next();
+        //Tuple left_output = left_child_->next();
+        if(left_output.is_empty()) continue;
+        left_output = left_output.duplicate();
         // build the hash key and assume non-unique keys.
-        std::string key = "";
-        for(int i = 0; i < left_child_fields_.size(); ++i){
-            int idx = left_child_fields_[i]; 
-            if(idx >= left_output.size()){
-                error_status_ = 1;
-                return;
-            }
-            key += left_output[idx].toString();
-        }
+        std::string key = left_output.build_hash_key(left_child_fields_);
         if(hashed_left_child_.count(key)) 
             hashed_left_child_[key].push_back(left_output);
         else {
@@ -310,50 +296,41 @@ void HashJoinExecutor::init() {
     }
 }
 
-// TODO: implement merg and nested loop joines, 
+// TODO: implement merge and nested loop joines, 
 // hash join is not good for cases of none equality conditions, and full outer joins.
-std::vector<Value> HashJoinExecutor::next() {
+Tuple HashJoinExecutor::next() {
     if(error_status_ || finished_)  return {};
 
     while(!right_child_->finished_){
         if(duplicated_idx_ != -1){
             duplicated_idx_++;
             // no need to change the right output.
-            for(int i = 0; i < hashed_left_child_[prev_key_][duplicated_idx_].size(); ++i){
-                output_[i] = hashed_left_child_[prev_key_][duplicated_idx_][i];
-            }
+            output_.put_tuple_at_start(&hashed_left_child_[prev_key_][duplicated_idx_]);
+
             if(duplicated_idx_+1 >= hashed_left_child_[prev_key_].size())
                 duplicated_idx_ = -1;
             //finished_ = right_child_->finished_ && duplicated_idx_ == -1;
-            Value v = evaluate_expression(ctx_, filter_, this);
+            Value v = evaluate_expression(ctx_, filter_, output_);
             if(!v.isNull() && v.getBoolVal() == true)
                 return output_;
             continue;
         }
 
-        std::vector<Value> right_output;
+        Tuple right_output;
         while(true){
             right_output = right_child_->next();
-            if(right_output.size() == 0) {
+            //right_output = right_child_->next();
+            if(right_output.is_empty()) {
                 //finished_ = true;
                 //return {};
                 break;
             }
-            // build the hash key. 
-            std::string key = "";
-            for(int i = 0; i < right_child_fields_.size(); ++i){
-                int idx = right_child_fields_[i]; 
-                if(idx >= right_output.size()){
-                    error_status_ = 1;
-                    return {};
-                }
-                key += right_output[idx].toString();
-            }
+            right_output = right_output.duplicate();
+            std::string key = right_output.build_hash_key(right_child_fields_);
             if(!hashed_left_child_.count(key) && (join_type_ == RIGHT_JOIN || join_type_ == FULL_JOIN)){
                 int start = output_.size()-right_output.size();
-                for(int i = 0; i < output_.size(); ++i){
-                    output_[i] = (i < start) ? Value(NULL_TYPE) : right_output[i-start];
-                }
+                output_.nullify(0, start);
+                output_.put_tuple_at_end(&right_output);
                 return output_;
             } else if(!hashed_left_child_.count(key)){
                 continue;
@@ -361,24 +338,21 @@ std::vector<Value> HashJoinExecutor::next() {
             // this key is now visited so no need to count it for left joins.
             if(non_visited_left_keys_.count(key)) non_visited_left_keys_.erase(key);
 
-            for(int i = 0;i < right_output.size(); ++i)
-                output_[i+(output_.size() - right_output.size())] = right_output[i];
+            output_.put_tuple_at_end(&right_output);
 
             int duplications = hashed_left_child_[key].size();
-            for(int i = 0; i < hashed_left_child_[key][0].size(); ++i){
-                output_[i] = hashed_left_child_[key][0][i];
-            }
+            output_.put_tuple_at_start(&hashed_left_child_[key][0]);
             if(duplications > 1){
                 duplicated_idx_ = 0;
                 prev_key_ = key;
             }
             break;
         }
-        if(right_output.size() == 0) break;
+        if(right_output.is_empty()) break;
         // if this is an outer join don't finish yet, 
         // we still need to look at the non visited left keys.
         // finished_ = right_child_->finished_ && duplicated_idx_ == -1;
-        Value v = evaluate_expression(ctx_, filter_, this);
+        Value v = evaluate_expression(ctx_, filter_, output_);
         if(!v.isNull() && v.getBoolVal() == true)
             return output_;
     }
@@ -393,13 +367,9 @@ std::vector<Value> HashJoinExecutor::next() {
     int duplications = hashed_left_child_[key].size();
     if(duplicated_idx_ == -1)
         duplicated_idx_ = 0;
-    for(int i = 0; i < hashed_left_child_[key][duplicated_idx_].size(); ++i){
-        output_[i] = hashed_left_child_[key][duplicated_idx_][i];
-    }
+    output_.put_tuple_at_start(&hashed_left_child_[key][duplicated_idx_]);
     // TODO: redundent should be done onle once not on every iteration.
-    for(int i = hashed_left_child_[key][duplicated_idx_].size(); i < output_.size(); ++i) {
-        output_[i] = Value(NULL_TYPE);
-    }
+    output_.nullify(hashed_left_child_[key][duplicated_idx_].size(), output_.size());
     duplicated_idx_++;
     if(duplicated_idx_ == duplications){
         non_visited_left_keys_.erase(key);
@@ -435,13 +405,13 @@ void UnionExecutor::init() {
     finished_ = left_child_->finished_ && right_child_->finished_;
 }
 
-std::vector<Value> UnionExecutor::next() {
+Tuple UnionExecutor::next() {
     if(error_status_ || finished_)  return {};
 
     if(!left_child_->finished_){
         output_ = left_child_->next();
         error_status_ = left_child_->error_status_;
-        if(left_child_->finished_ && output_.size() == 0) {
+        if(left_child_->finished_ && output_.is_empty()) {
             return next();
         }
     }
@@ -480,24 +450,22 @@ void ExceptExecutor::init() {
     error_status_ = left_child_->error_status_ || right_child_->error_status_;
     finished_ = left_child_->finished_;
     while(!right_child_->finished_ && !error_status_){
-        std::vector<Value> tuple = right_child_->next();
+        Tuple right_tuple = right_child_->next();
         error_status_ = error_status_ && right_child_->error_status_;
-        std::string stringified_tuple = "";
-        for(size_t i = 0; i < tuple.size(); i++) stringified_tuple += tuple[i].toString();
+        std::string stringified_tuple = right_tuple.stringify();
         hashed_tuples_[stringified_tuple] =  1;
     } 
 }
 
-std::vector<Value> ExceptExecutor::next() {
+Tuple ExceptExecutor::next() {
     if(error_status_ || finished_)  return {};
     while(true){
-        std::vector<Value> tuple = left_child_->next();
-        if(finished_ || error_status_ || tuple.size() == 0) return {};
-        std::string stringified_tuple = "";
-        for(size_t i = 0; i < tuple.size(); i++) stringified_tuple += tuple[i].toString();
+        Tuple left_tuple = left_child_->next();
+        if(finished_ || error_status_ || left_tuple.is_empty()) return {};
+        std::string stringified_tuple = left_tuple.stringify();
         if(hashed_tuples_.count(stringified_tuple)) 
             continue; // tuple exists on both relations => skip it.
-        output_ = tuple;
+        output_ = left_tuple;
         return output_;
     }
 }
@@ -528,24 +496,22 @@ void IntersectExecutor::init() {
     error_status_ = left_child_->error_status_ || right_child_->error_status_;
     finished_ = left_child_->finished_;
     while(!right_child_->finished_ && !error_status_){
-        std::vector<Value> tuple = right_child_->next();
+        Tuple right_tuple = right_child_->next();
         error_status_ = error_status_ && right_child_->error_status_;
-        std::string stringified_tuple = "";
-        for(size_t i = 0; i < tuple.size(); i++) stringified_tuple += tuple[i].toString();
+        std::string stringified_tuple = right_tuple.stringify();
         hashed_tuples_[stringified_tuple] =  1;
     } 
 }
 
-std::vector<Value> IntersectExecutor::next() {
+Tuple IntersectExecutor::next() {
     if(error_status_ || finished_)  return {};
     while(true){
-        std::vector<Value> tuple = left_child_->next();
-        if(finished_ || error_status_ || tuple.size() == 0) return {};
-        std::string stringified_tuple = "";
-        for(size_t i = 0; i < tuple.size(); i++) stringified_tuple += tuple[i].toString();
+        Tuple left_tuple = left_child_->next();
+        if(finished_ || error_status_ || left_tuple.is_empty()) return {};
+        std::string stringified_tuple = left_tuple.stringify();
         if(!hashed_tuples_.count(stringified_tuple)) 
             continue; // tuple does not exists on both relations => skip it.
-        output_ = tuple;
+        output_ = left_tuple;
         return output_;
     }
 }
@@ -556,6 +522,7 @@ void SeqScanExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Tabl
     ctx_ = ctx; 
     plan_node_ = plan_node;
     output_schema_ = table;
+    output_ = Tuple(output_schema_);
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
@@ -565,20 +532,20 @@ void SeqScanExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Tabl
 void SeqScanExecutor::init() {
     error_status_ = 0;
     finished_ = 0;
-    output_.resize(output_schema_->numOfCols());
+    //output_.resize(output_schema_->numOfCols());
     //delete it_;
     it_ = table_->getTable()->begin();
     ctx_->table_handles_.push_back(it_);
 }
 
-std::vector<Value> SeqScanExecutor::next() {
+Tuple SeqScanExecutor::next() {
     // no more records.
     if(!it_->advance()) {
         finished_ = 1;
         return {};
     };
     Record* r = it_->getCurRecordCpyPtr();
-    int err = table_->translateToValuesOffset(*r, output_, 0);
+    int err = table_->translateToTuple(*r, output_, 0);
     delete r;
     if(err) {
         error_status_ = 1;
@@ -595,6 +562,7 @@ void IndexScanExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Ta
     ctx_ = ctx; 
     plan_node_ = plan_node;
     output_schema_ = table;
+    output_ = Tuple(output_schema_);
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
@@ -628,9 +596,9 @@ void IndexScanExecutor::assign_iterators() {
                             assert(key.size() == 1);
 
                             if(key_on_left)
-                                val = evaluate_expression(ctx_, right, this);
+                                val = evaluate_expression(ctx_, right, output_);
                             else
-                                val = evaluate_expression(ctx_, left, this);
+                                val = evaluate_expression(ctx_, left, output_);
                             std::vector<Value> key_vals = {val};
                             IndexKey search_key = temp_index_key_from_values(key_vals);
                             search_key.sort_order_ = create_sort_order_bitmap(index_header_.fields_numbers_);
@@ -675,14 +643,14 @@ void IndexScanExecutor::assign_iterators() {
 void IndexScanExecutor::init() {
     error_status_ = 0;
     finished_ = 0;
-    output_.resize(output_schema_->numOfCols());
+    //output_.resize(output_schema_->numOfCols());
 
     start_it_.clear();
     end_it_.clear();
     assign_iterators();
 }
 
-std::vector<Value> IndexScanExecutor::next() {
+Tuple IndexScanExecutor::next() {
     // no more records.
     if(start_it_ == end_it_) {
         finished_ = 1;
@@ -694,7 +662,7 @@ std::vector<Value> IndexScanExecutor::next() {
         error_status_ = 1;
         return {};
     }
-    int err = table_->translateToValuesOffset(*r, output_, 0);
+    int err = table_->translateToTuple(*r, output_, 0);
     delete r;
     if(err) {
         error_status_ = 1;
@@ -718,6 +686,8 @@ void InsertionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Ta
     table_ = table;
     indexes_ = indexes;
     select_idx_ = select_idx;
+
+    output_ = Tuple(output_schema_);
 }
 
 void InsertionExecutor::init() {
@@ -727,7 +697,7 @@ void InsertionExecutor::init() {
         error_status_ = 1;
         return;
     }
-    vals_.resize(table_->numOfCols());
+    //vals_.resize(table_->numOfCols());
     statement = reinterpret_cast<InsertStatementData*>(ctx_->queries_call_stack_[query_idx_]);
     // fields
     if(!statement->fields_.size() || statement->fields_.size() < table_->getCols().size()){
@@ -763,34 +733,33 @@ void InsertionExecutor::init() {
 
 }
 
-std::vector<Value> InsertionExecutor::next() {
+Tuple InsertionExecutor::next() {
     if(error_status_ || finished_) return {};
-    // TODO: replace alot of vector copying.
     if(child_executor_){
-        std::vector<Value> values = child_executor_->next();
+        Tuple values = child_executor_->next();
         if(child_executor_->finished_) {
             finished_ = 1;
             return {};
         }
-        if(child_executor_->error_status_ || values.size() != statement->fields_.size()){
+        if(child_executor_->error_status_ || output_schema_->numOfCols() != statement->fields_.size()){
             error_status_ = 1;
             return {};
         }
         for(int i = 0; i < values.size(); ++i){
             int idx = table_->colExist(statement->fields_[i]); 
-            vals_[idx] = values[i];
+            output_.put_val_at(idx, values.get_val_at(i));
         }
 
     } else {
         for(int i = 0; i < statement->values_.size(); ++i){
             ExpressionNode* val_exp = statement->values_[i];
             int idx = table_->colExist(statement->fields_[i]); 
-            vals_[idx] = evaluate_expression(ctx_, val_exp, this);
+            output_.put_val_at(idx, evaluate_expression(ctx_, val_exp, output_));
         }
     }
 
     RecordID* rid = new RecordID();
-    Record* record = table_->translateToRecord(vals_);
+    Record* record = table_->translateToRecord(output_);
     int err = table_->getTable()->insertRecord(rid, *record);
     if(err){
         error_status_ = 1;
@@ -798,7 +767,7 @@ std::vector<Value> InsertionExecutor::next() {
     }
     // loop over table indexes.
     for(int i = 0; i < indexes_.size(); ++i){
-        IndexKey k = getIndexKeyFromTuple(indexes_[i].fields_numbers_, vals_);
+        IndexKey k = getIndexKeyFromTuple(indexes_[i].fields_numbers_, output_);
         if(k.size_ == 0) {
             error_status_ = 1;
             break;
@@ -820,7 +789,7 @@ std::vector<Value> InsertionExecutor::next() {
     }
     if(!child_executor_ || child_executor_->finished_)
         finished_ = 1;
-    return vals_;
+    return output_;
 }
 
 void AggregationExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor) {
@@ -857,12 +826,13 @@ void AggregationExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, 
 
     auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
     output_schema_ = new(ptr) TableSchema("agg_tmp_schema", nullptr, new_cols, true);
+    output_ = Tuple(output_schema_, Value(0));
 }
 
 void AggregationExecutor::init() {
     finished_ = 0;
     error_status_ = 0;
-    aggregated_values_.clear();
+    //aggregated_values_.clear();
     for(int i = 0; i < aggregates_.size(); ++i) {
         if(aggregates_[i]->distinct_) distinct_counters_["PREFIX_"][i] = std::set<std::string>();
     }
@@ -871,19 +841,23 @@ void AggregationExecutor::init() {
     if(child_executor_){
         child_executor_->init();
     }
-    int total_size = output_schema_->getCols().size() + 1;
-    aggregated_values_["PREFIX_"] = std::vector<Value> (total_size, Value(NULL_TYPE));
+    int total_size = output_schema_->getCols().size();
+    aggregated_values_["PREFIX_"] = {
+        Tuple(output_schema_),
+        0
+    };
 
-    int agg_base_idx = total_size - (1+aggregates_.size());
+    int agg_base_idx = total_size - aggregates_.size();
     for(int i = 0;i < aggregates_.size(); ++i) {
         if(aggregates_[i]->type_ == COUNT)
-            aggregated_values_["PREFIX_"][i+agg_base_idx] = Value(0); // count can't be null.
+            aggregated_values_["PREFIX_"].first.put_val_at(i+agg_base_idx, Value(0)); // count can't be null.
     }
 
     while(true){
         // we always maintain rows count even if the user did not ask for it, that's why the size is | colmuns | + 1
-        output_ = std::vector<Value> (output_schema_->getCols().size() + 1, Value(0));
-        std::vector<Value> child_output; 
+        //output_ = std::vector<Value> (output_schema_->getCols().size() + 1, Value(0));
+        output_ = Tuple(output_schema_, Value(0));
+        Tuple child_output; 
         if(child_executor_){
             child_output = child_executor_->next();
             if(child_executor_->error_status_)  {
@@ -894,51 +868,52 @@ void AggregationExecutor::init() {
                 break;
             }
         } 
-        for(int i = 0; i < child_output.size(); i++){
-            output_[i] = child_output[i];
-        }
+        output_.put_tuple_at_start(&child_output);
 
         // build the search key for the hash table.
         std::string hash_key = "PREFIX_"; // prefix to ensure we have at least one entry in the hash table.
         for(int i = 0; i < group_by_.size(); i++){
-            Value cur = evaluate_expression(ctx_, group_by_[i], this);
+            Value cur = evaluate_expression(ctx_, group_by_[i], output_);
             hash_key += cur.toString();
         }
 
         // if the hash key exists we need to load it first.
         if(aggregated_values_.count(hash_key)){
-            output_ = aggregated_values_[hash_key];
+            output_ = aggregated_values_[hash_key].first;
         } else if(hash_key != "PREFIX_"){
             for(int i = 0; i < aggregates_.size(); ++i) {
                 if(aggregates_[i]->distinct_) distinct_counters_[hash_key][i] = std::set<std::string>();
             }
 
-            int total_size = output_schema_->getCols().size() + 1;
-            aggregated_values_[hash_key] = std::vector<Value> (total_size, Value(NULL_TYPE));
+            //int total_size = output_schema_->getCols().size() + 1;
+            //aggregated_values_[hash_key] = std::vector<Value> (total_size, Value(NULL_TYPE));
+            aggregated_values_[hash_key] = {
+                Tuple(output_schema_),
+                0
+            };
 
-            int agg_base_idx = total_size - (1+aggregates_.size());
+            int agg_base_idx = total_size - (aggregates_.size());
             for(int i = 0;i < aggregates_.size(); ++i) {
                 if(aggregates_[i]->type_ == COUNT)
-                    aggregated_values_[hash_key][i+agg_base_idx] = Value(0); // count can't be null.
+                    aggregated_values_[hash_key].first.put_val_at(i+agg_base_idx, Value(0)); // count can't be null.
             }
-            output_ = aggregated_values_[hash_key];
+            output_ = aggregated_values_[hash_key].first;
         }
 
-        for(int i = 0; i < child_output.size(); i++){
-            output_[i] = child_output[i];
-        }
-
+        output_.put_tuple_at_start(&child_output);
 
         // update the extra counter.
-        if(output_[output_.size() - 1].isNull()) output_[output_.size() - 1] = Value(0);
-        output_[output_.size() - 1] += 1; 
-        Value* counter = &output_[output_.size() - 1];
+        //if(output_[output_.size() - 1].isNull()) output_[output_.size() - 1] = Value(0);
+        //output_[output_.size() - 1] += 1; 
+        //Value* counter = &output_[output_.size() - 1];
+        int* counter = &aggregated_values_[hash_key].second;
+        *counter += 1;
 
         int base_size = child_output.size();
         for(int i = 0; i < aggregates_.size(); i++){
             ExpressionNode* exp = aggregates_[i]->exp_;
             if(exp){
-                Value val = evaluate_expression(ctx_, exp, this);
+                Value val = evaluate_expression(ctx_, exp, output_);
                 if(aggregates_[i]->distinct_){
                     if(distinct_counters_[hash_key][i].count(val.toString())) continue;
                     distinct_counters_[hash_key][i].insert(val.toString());
@@ -949,23 +924,23 @@ void AggregationExecutor::init() {
                 case COUNT:
                     {
                         if(exp == nullptr){
-                            ++output_[idx];
+                            ++output_.get_val_at(idx);
                             break;
                         }
-                        Value val = evaluate_expression(ctx_, exp, this);
+                        Value val = evaluate_expression(ctx_, exp, output_);
                         if(!val.isNull()){
-                            ++output_[idx];
+                            ++output_.get_val_at(idx);
                         }
                     }
                     break;
                 case AVG:
                 case SUM:
                     {
-                        Value val = evaluate_expression(ctx_, exp, this);
-                        if(output_[idx].isNull() 
-                                && !val.isNull()) output_[idx] = Value(0);
+                        Value val = evaluate_expression(ctx_, exp, output_);
+                        if(output_.get_val_at(idx).isNull() 
+                                && !val.isNull()) output_.put_val_at(idx, Value(0));
                         if(!val.isNull()) {
-                            output_[idx] += val;
+                            output_.get_val_at(idx) += val;
                         }
                         else if(val.isNull())
                             *counter += -1;
@@ -973,20 +948,20 @@ void AggregationExecutor::init() {
                     break;
                 case MIN:
                     {
-                        Value val = evaluate_expression(ctx_, exp, this);
+                        Value val = evaluate_expression(ctx_, exp, output_);
                         if(!val.isNull()) {
-                            if(output_[idx].isNull() || output_[idx] > val) 
-                                output_[idx] = val;
+                            if(output_.get_val_at(idx).isNull() || output_.get_val_at(idx) > val) 
+                                output_.put_val_at(idx, val);
                             //output_[idx] = std::min<Value>(output_[idx], val);
                         }
                     }
                     break;
                 case MAX:
                     {
-                        Value val = evaluate_expression(ctx_, exp, this);
+                        Value val = evaluate_expression(ctx_, exp, output_);
                         if(!val.isNull()) {
-                            if(output_[idx].isNull() || output_[idx] < val) 
-                                output_[idx] = val;
+                            if(output_.get_val_at(idx).isNull() || output_.get_val_at(idx) < val) 
+                                output_.put_val_at(idx, val);
                             //output_[idx] = std::max<Value>(output_[i], val);
                         }
                     }
@@ -996,40 +971,38 @@ void AggregationExecutor::init() {
             }
             if(error_status_)  return;
         }
-        aggregated_values_[hash_key] = output_;
+        aggregated_values_[hash_key].first = output_;
         if(!child_executor_) break;
     }
     if(aggregated_values_.size() > 1) aggregated_values_.erase("PREFIX_");
     it_ = aggregated_values_.begin();
 }
 
-std::vector<Value> AggregationExecutor::next() {
+Tuple AggregationExecutor::next() {
     if(error_status_ || finished_)  return {};
     if(it_== aggregated_values_.end()){
         finished_ = true;
         return {};
     }
-    output_ = it_->second;
+    output_ = it_->second.first;
+    int cnt = it_->second.second;
     for(int i = 0; i < aggregates_.size(); i++){
-        int idx = (i + output_.size() - aggregates_.size())- 1;
-        if(aggregates_[i]->type_ == AVG && output_[output_.size()-1].getIntVal() != 0) {
-            if(output_[idx].isNull() || output_[output_.size() - 1].isNull()) output_[idx] = Value(NULL_TYPE);
+        int idx = (i + output_schema_->numOfCols() - aggregates_.size());
+        if(aggregates_[i]->type_ == AVG && cnt != 0) {
+            if(output_.get_val_at(idx).isNull()){
+                break;
+            } 
             else {
-                float denom = (float) output_[output_.size()-1].getIntVal();
+                float denom = cnt;
                 if(aggregates_[i]->distinct_) 
                     denom = distinct_counters_[it_->first][i].size();
-                if(denom == 0) { // maybe too much checking?
-                    output_[idx] = Value(NULL_TYPE);
-                    continue;
-                }
-                output_[idx] /= Value(denom);
+                output_.get_val_at(idx) /= Value(denom);
             }
         }
     }
     ++it_;
     if(it_== aggregated_values_.end())
         finished_ = true;
-    output_.pop_back(); // remove the custom counter.
     return output_;
 }
 
@@ -1041,50 +1014,70 @@ void ProjectionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, E
     plan_node_ = plan_node;
     child_executor_ = child_executor;
 
-    if(child_executor)
-        output_schema_ = child_executor_->output_schema_;
-
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
     
     fields_ = ((ProjectionOperation*)plan_node_)->fields_;
+    // TODO: build the output schema using fields.
+    //output_ = Tuple(output_schema_);
+
+    // build the new output schema.
+    std::vector<Column> new_cols;
+    for(int i = 0; i < fields_.size(); i++){
+        // can't use (select *) syntanx without a child.
+        // either the field exists or the child exist.
+        assert(fields_[i] || (child_executor_ && child_executor_->output_schema_)); 
+        if(!fields_[i]){
+            // TODO: do we need to update the offset of each column in the schema?
+            for(auto& col : child_executor_->output_schema_->getColumns())
+                new_cols.push_back(col);
+            continue;
+        }
+        std::string col_name = "?column?";
+        new_cols.push_back(Column(col_name, INVALID, 0));
+    }
+
+    auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
+    output_schema_ = new(ptr) TableSchema("tmp_projection_schema", nullptr, new_cols, true);
+    output_ = Tuple(output_schema_, Value(0));
 }
 
 void ProjectionExecutor::init() {
     finished_ = 0;
     error_status_ = 0;
-    output_ = {};
     if(child_executor_) {
         child_executor_->init();
     }
 }
 
-std::vector<Value> ProjectionExecutor::next() {
+Tuple ProjectionExecutor::next() {
     if(error_status_ || finished_)  return {};
 
+    Tuple child_output = {};
 
     if(child_executor_){
-        output_ = child_executor_->next();
+        child_output = child_executor_->next();
         error_status_ = child_executor_->error_status_;
         finished_ = child_executor_->finished_;
     } else {
         finished_ = true;
     }
 
-    std::vector<Value> tmp_output;
-    if(child_executor_ && ((finished_ || error_status_) && output_.size() == 0)) return {};
+    if(child_executor_ && ((finished_ || error_status_) && child_output.is_empty())) return {};
 
+
+    int cur_idx = 0;
     for(int i = 0; i < fields_.size(); i++){
         if(fields_[i] == nullptr){
-            for(auto& val : output_){
-                tmp_output.push_back(val);
-            }
+            output_.put_tuple_at_end(&child_output);
+            cur_idx += child_output.size();
         } else {
-            tmp_output.push_back(evaluate_expression(ctx_, fields_[i], this));
+            output_.put_val_at(cur_idx, evaluate_expression(ctx_, fields_[i], child_output));
+            cur_idx++;
         }
     }
-    return tmp_output;
+    return output_;
 }
 
 void SortExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor) {
@@ -1102,6 +1095,8 @@ void SortExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executo
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
     
     order_by_list_ = ((SortOperation*)plan_node_)->order_by_list_;
+
+    output_ = Tuple(output_schema_);
 }
 
 void SortExecutor::init() {
@@ -1114,36 +1109,38 @@ void SortExecutor::init() {
     child_executor_->init();
 
     while(true){
-        std::vector<Value> tuple; 
-        tuple = child_executor_->next();
+        Tuple t; 
+        t = child_executor_->next();
         error_status_ = child_executor_->error_status_;
         if(error_status_)  return;
-        if(tuple.size())
-            tuples_.push_back(tuple);
+        if(!t.is_empty())
+            tuples_.push_back(t);
         if(child_executor_->finished_) break;
     }
 
     std::vector<int> order_by = order_by_list_;
 
     std::sort(tuples_.begin(), tuples_.end(), 
-            [&order_by](std::vector<Value>& lhs, std::vector<Value>& rhs){
+            [&order_by](Tuple& lhs, Tuple& rhs){
             for(int i = 0; i < order_by.size(); i++){
-            if(lhs[order_by[i]].isNull() && !rhs[order_by[i]].isNull()) return true;
-            if(!lhs[order_by[i]].isNull()&& rhs[order_by[i]].isNull()) return false;
-            if(lhs[order_by[i]].isNull() && rhs[order_by[i]].isNull()) return false;
-            if(lhs[order_by[i]] != rhs[order_by[i]]) {
-            return lhs[order_by[i]] < rhs[order_by[i]];
+            auto lhs_val = lhs.get_val_at(order_by[i]);
+            auto rhs_val = rhs.get_val_at(order_by[i]);
+            if(lhs_val.isNull() && !rhs_val.isNull()) return true;
+            if(!lhs_val.isNull()&& rhs_val.isNull()) return false;
+            if(lhs_val.isNull() && rhs_val.isNull()) return false;
+            if(lhs_val != rhs_val) {
+            return lhs_val < rhs_val;
             }
             }
             return false;
             });
 }
 
-std::vector<Value> SortExecutor::next() {
+Tuple SortExecutor::next() {
     finished_ = (idx_ >= tuples_.size());
     if(error_status_ || finished_)  return {};
-    output_ = tuples_[idx_];
-    return tuples_[idx_++];
+    output_ = tuples_[idx_++];
+    return output_;
 }
 
 void DistinctExecutor::construct(QueryCTX* ctx, Executor* child_executor) {
@@ -1156,6 +1153,8 @@ void DistinctExecutor::construct(QueryCTX* ctx, Executor* child_executor) {
 
     query_idx_ = child_executor_->query_idx_;
     parent_query_idx_ = child_executor_->parent_query_idx_; 
+    
+    output_ = Tuple(output_schema_);
 }
 
 void DistinctExecutor::init() {
@@ -1164,25 +1163,21 @@ void DistinctExecutor::init() {
     child_executor_->init();
 }
 
-std::vector<Value> DistinctExecutor::next() {
+Tuple DistinctExecutor::next() {
     if(error_status_ || finished_)  return {};
     while(true){
         if(finished_ || error_status_) return {};
-        std::vector<Value> tuple = child_executor_->next();
-        if(tuple.size() == 0) {
+        Tuple t = child_executor_->next();
+        if(t.is_empty()) {
             finished_ = true;
             return {};
         }
         error_status_ = child_executor_->error_status_;
         finished_ = child_executor_->finished_;
-        std::string stringified_tuple = "";
-        for(size_t i = 0; i < tuple.size(); i++) {
-            stringified_tuple += ",";
-            stringified_tuple += tuple[i].toString();
-        }
+        std::string stringified_tuple = t.stringify();
         if(hashed_tuples_.count(stringified_tuple)) continue; // duplicated tuple => skip it.
         hashed_tuples_[stringified_tuple] =  1;
-        output_ = tuple;
+        output_ = t;
         return output_;
     }
 }
@@ -1197,6 +1192,8 @@ void SubQueryExecutor::construct(QueryCTX* ctx, Executor* child_executor) {
 
     query_idx_ = child_executor_->query_idx_;
     parent_query_idx_ = child_executor_->parent_query_idx_; 
+
+    output_ = Tuple(output_schema_);
 }
 
 void SubQueryExecutor::init() {
@@ -1209,21 +1206,21 @@ void SubQueryExecutor::init() {
     }
 }
 
-std::vector<Value> SubQueryExecutor::next() {
+Tuple SubQueryExecutor::next() {
     if(finished_ || error_status_) {
         return {};
     }
     if(!cached_){
-        std::vector<Value> tuple = child_executor_->next();
-        if(tuple.size() == 0) {
+        Tuple t = child_executor_->next();
+        if(t.is_empty()) {
             cached_ = true;
             finished_ = true;
             return {};
         }
         error_status_ = child_executor_->error_status_;
         finished_ = child_executor_->finished_;
-        tuple_list_.push_back(tuple);
-        output_ = tuple;
+        tuple_list_.push_back(t);
+        output_ = t;
     } else {
         if(it_ == tuple_list_.end()) {
             error_status_ = child_executor_->error_status_;
@@ -1244,7 +1241,13 @@ void FilterExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Execu
     ctx_ = ctx; 
     plan_node_ = plan_node;
     child_executor_ = child_executor;
-    if(child_executor_) output_schema_ = child_executor_->output_schema_;
+    if(child_executor_) {
+        output_schema_ = child_executor_->output_schema_;
+    } else {
+        auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
+        output_schema_ = new(ptr) TableSchema("TMP_FILTER_SCHEMA", nullptr, {Column("?column?", INVALID, 0)}, true);
+    }
+
 
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
@@ -1253,20 +1256,21 @@ void FilterExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Execu
     fields_      = ((FilterOperation*)plan_node_)->fields_;
     field_names_ = ((FilterOperation*)plan_node_)->field_names_;
     filter_      = ((FilterOperation*)plan_node_)->filter_;
+
+    output_ = Tuple(output_schema_);
 }
 
 
 void FilterExecutor::init() {
     error_status_ = 0;
     finished_ = 0;
-    output_ = {};
     if(child_executor_) {
         child_executor_->init();
     }
 }
 
 
-std::vector<Value> FilterExecutor::next() {
+Tuple FilterExecutor::next() {
     while(true){
         if(error_status_ || finished_)  return {};
         if(child_executor_) {
@@ -1277,14 +1281,14 @@ std::vector<Value> FilterExecutor::next() {
             finished_ = true;
         }
 
-        if(child_executor_ && ((finished_ || error_status_) && output_.size() == 0)) return {};
+        if(child_executor_ && ((finished_ || error_status_) && output_.is_empty())) return {};
 
-        Value exp = evaluate_expression(ctx_, filter_, this, true, true).getBoolVal();
+        Value exp = evaluate_expression(ctx_, filter_, output_, true, true).getBoolVal();
         if(!exp.isNull() && exp != false){
-            if(child_executor_){
-                return output_;
+            if(!child_executor_){
+                output_.put_val_at(0, exp);
             }
-            return {exp};
+            return output_;
         }
     }
 }

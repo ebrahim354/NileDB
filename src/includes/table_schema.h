@@ -7,6 +7,7 @@
 
 class Table;
 struct Record;
+struct Tuple;
 
 
 
@@ -38,11 +39,13 @@ class TableSchema {
         // values is the output.
         int translateToValues(Record& r, std::vector<Value>& values);
         int translateToValuesOffset(Record& r, std::vector<Value>& values, int offset);
+        int translateToTuple(Record& r, Tuple& tuple, int offset);
         // translate a vector of values using the schema to a Record. 
         // return null in case of an error.
         // the user of the class should handle deleting the record after using it.
         // we assume that the variable length columns are represented first.
         Record* translateToRecord(std::vector<Value>& values);
+        Record* translateToRecord(Tuple tuple);
         Table* getTable();
     private:
         bool tmp_schema_ = false;

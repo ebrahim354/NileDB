@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include "tuple.cpp"
 struct IndexKey;
 bool is_desc_order(char* bitmap, int idx);
 int index_key_cmp(IndexKey lhs,IndexKey rhs);
@@ -290,6 +291,18 @@ IndexKey getIndexKeyFromTuple(std::vector<NumberedIndexField>& fields, std::vect
         if(fields[i].idx_ >= values.size()) 
             return {};
         keys.push_back(values[fields[i].idx_]);
+    }
+    IndexKey res = temp_index_key_from_values(keys);
+    res.sort_order_ = create_sort_order_bitmap(fields);
+    return res;
+}
+
+IndexKey getIndexKeyFromTuple(std::vector<NumberedIndexField>& fields, Tuple tuple) {
+    std::vector<Value> keys;
+    for(int i = 0; i < fields.size(); ++i){
+        if(fields[i].idx_ >= tuple.size()) 
+            return {};
+        keys.push_back(tuple.get_val_at(fields[i].idx_));
     }
     IndexKey res = temp_index_key_from_values(keys);
     res.sort_order_ = create_sort_order_bitmap(fields);

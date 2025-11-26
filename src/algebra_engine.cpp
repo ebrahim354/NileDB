@@ -125,7 +125,7 @@ class AlgebraEngine {
                 }
             }
             if(data->has_star_ &&  data->tables_.size() == 0) {
-                std::cout << "[ERROR] no table spicified for SELECT *";
+                std::cout << "[ERROR] no table spicified for SELECT *\n";
                 return false;
             }
             for(int order_by : data->order_by_list_){

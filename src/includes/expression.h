@@ -7,8 +7,8 @@
 #include <string>
 #include <unordered_map>
 
-Value evaluate(QueryCTX* ctx, Executor* this_exec, ASTNode* item);
-Value evaluate_subquery(QueryCTX* ctx, Executor* this_exec, ASTNode* item);
+Value evaluate(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item);
+Value evaluate_subquery(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item);
 
 
 Value abs_func(std::vector<Value> vals){
@@ -52,7 +52,7 @@ std::unordered_map<std::string, std::function<Value(std::vector<Value>)>> reserv
 Value evaluate_expression(
         QueryCTX* ctx, 
         ASTNode* expression, 
-        Executor* this_exec,
+        Tuple cur_tuple,
         bool only_one = true,
         bool eval_sub_query = true
         ) {
@@ -60,25 +60,25 @@ Value evaluate_expression(
         case EXPRESSION  : 
             {
                 ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(expression);
-                return evaluate_expression(ctx, ex->cur_, this_exec, false, eval_sub_query);
+                return evaluate_expression(ctx, ex->cur_, cur_tuple, false, eval_sub_query);
             }
         case CASE_EXPRESSION  : 
             {
                 CaseExpressionNode* case_ex = reinterpret_cast<CaseExpressionNode*>(expression);
                 Value initial_value;
                 if(case_ex->initial_value_){
-                    initial_value = evaluate_expression(ctx, case_ex->initial_value_, this_exec, true, eval_sub_query);
+                    initial_value = evaluate_expression(ctx, case_ex->initial_value_, cur_tuple, true, eval_sub_query);
                 }
                 for(auto& [when, then] : case_ex->when_then_pairs_){
-                    Value evaluated_when = evaluate_expression(ctx, when, this_exec, true, eval_sub_query);
+                    Value evaluated_when = evaluate_expression(ctx, when, cur_tuple, true, eval_sub_query);
                     if(evaluated_when.isNull()) continue;
                     if(case_ex->initial_value_ && !initial_value.isNull() && evaluated_when == initial_value){
-                        return evaluate_expression(ctx, then, this_exec, true, eval_sub_query);
+                        return evaluate_expression(ctx, then, cur_tuple, true, eval_sub_query);
                     }
                     else if(!case_ex->initial_value_ && evaluated_when.getBoolVal()) 
-                        return evaluate_expression(ctx, then, this_exec, true, eval_sub_query);
+                        return evaluate_expression(ctx, then, cur_tuple, true, eval_sub_query);
                 }
-                if(case_ex->else_) return evaluate_expression(ctx, case_ex->else_, this_exec, true, eval_sub_query);
+                if(case_ex->else_) return evaluate_expression(ctx, case_ex->else_, cur_tuple, true, eval_sub_query);
                 return Value(NULL_TYPE);
             }
         case NULLIF_EXPRESSION  : 
@@ -86,10 +86,10 @@ Value evaluate_expression(
                 NullifExpressionNode* nullif_ex = reinterpret_cast<NullifExpressionNode*>(expression);
                 assert(nullif_ex->lhs_ && nullif_ex->rhs_); // if you are here they must not be null pointers.
 
-                Value lhs_val = evaluate_expression(ctx, nullif_ex->lhs_, this_exec, true, eval_sub_query);
+                Value lhs_val = evaluate_expression(ctx, nullif_ex->lhs_, cur_tuple, true, eval_sub_query);
                 // lhs is already null no need to check the rhs.
                 if(lhs_val.isNull()) return Value(NULL_TYPE); 
-                Value rhs_val = evaluate_expression(ctx, nullif_ex->rhs_, this_exec, true, eval_sub_query);
+                Value rhs_val = evaluate_expression(ctx, nullif_ex->rhs_, cur_tuple, true, eval_sub_query);
 
                 if(rhs_val.isNull() || lhs_val != rhs_val)
                     return lhs_val;
@@ -98,12 +98,12 @@ Value evaluate_expression(
         case IN  : 
             {
                 InNode* in = reinterpret_cast<InNode*>(expression);
-                Value val = evaluate_expression(ctx, in->val_, this_exec, false, eval_sub_query);
+                Value val = evaluate_expression(ctx, in->val_, cur_tuple, false, eval_sub_query);
                 //if(val.isNull()) return val;
                 bool answer = false;
                 bool null_ret = false;
                 for(int i = 0; i < in->list_.size(); ++i){
-                    Value tmp = evaluate_expression(ctx, in->list_[i], this_exec, false, false);
+                    Value tmp = evaluate_expression(ctx, in->list_[i], cur_tuple, false, false);
                     if(tmp.type_ == Type::EXECUTOR_ID){
                         int idx = tmp.getIntVal();
                         Executor* sub_query_executor = ctx->executors_call_stack_[idx]; 
@@ -115,28 +115,26 @@ Value evaluate_expression(
                         }
 
                         while(!answer && !sub_query_executor->finished_ && !sub_query_executor->error_status_){
-                            std::vector<Value> sub_query_output = sub_query_executor->next();
+                            Tuple sub_query_output = sub_query_executor->next();
                             if(sub_query_output.size() == 0 && sub_query_executor->finished_) {
                                 break;
                             }
 
                             if(sub_query_executor->error_status_) {
                                 std::cout << "[ERROR] could not execute sub-query" << std::endl;
-                                this_exec->error_status_ = 1;
-                                //ctx->error_status_ = 1; // TODO: better error handling.
+                                ctx->error_status_ = (Error)1; // TODO: better error handling.
                                 return Value();
                             }
 
                             if(sub_query_output.size() != 1) {
                                 std::cout << "[ERROR] sub-query should return exactly 1 column" << std::endl;
-                                this_exec->error_status_ = 1;
-                                //ctx->error_status_ = 1; // TODO: better error handling.
+                                ctx->error_status_ = (Error)1; // TODO: better error handling.
                                 return Value();
                             }
-                            if(sub_query_output[0].isNull()){
+                            if(sub_query_output.get_val_at(0).isNull()){
                                 null_ret = true;
                             }
-                            else if(val == sub_query_output[0]){
+                            else if(val == sub_query_output.get_val_at(0)){
                                 answer = true;
                                 null_ret = false;
                                 break;
@@ -160,11 +158,11 @@ Value evaluate_expression(
                 bool answer = false;
                 bool null_return = false;
                 BetweenNode* between = reinterpret_cast<BetweenNode*>(expression);
-                Value val = evaluate_expression(ctx, between->val_, this_exec, false, eval_sub_query);
+                Value val = evaluate_expression(ctx, between->val_, cur_tuple, false, eval_sub_query);
                 if(val.isNull()) return val; 
 
-                Value lhs = evaluate_expression(ctx, between->lhs_, this_exec, false, eval_sub_query);
-                Value rhs = evaluate_expression(ctx, between->rhs_, this_exec, false, eval_sub_query);
+                Value lhs = evaluate_expression(ctx, between->lhs_, cur_tuple, false, eval_sub_query);
+                Value rhs = evaluate_expression(ctx, between->rhs_, cur_tuple, false, eval_sub_query);
 
                 if(lhs.isNull() && rhs.isNull()) return lhs;  // both null => null
 
@@ -190,7 +188,7 @@ Value evaluate_expression(
         case NOT  : 
             {
                 NotNode* lnot = reinterpret_cast<NotNode*>(expression);
-                Value val = evaluate_expression(ctx, lnot->cur_, this_exec, true, eval_sub_query);
+                Value val = evaluate_expression(ctx, lnot->cur_, cur_tuple, true, eval_sub_query);
                 if(val.isNull()) return val; 
                 return Value((bool)(lnot->effective_^val.getBoolVal())); // 1 1 = 0, 1 0 = 1, 0 1 = 1, 0 0 = 0
             }
@@ -200,14 +198,14 @@ Value evaluate_expression(
                 ASTNode* ptr = lor;
                 Value lhs; 
                 while(ptr){
-                    lhs = evaluate_expression(ctx, lor->cur_, this_exec, true, eval_sub_query);
+                    lhs = evaluate_expression(ctx, lor->cur_, cur_tuple, true, eval_sub_query);
                     if(lhs.getBoolVal() != 0) break;
                     ptr = lor->next_;
                     if(!ptr) break;
                     if(ptr->category_ == OR){
                         lor = reinterpret_cast<OrNode*>(ptr);
                     } else {
-                        lhs = evaluate_expression(ctx, ptr, this_exec, true, eval_sub_query);
+                        lhs = evaluate_expression(ctx, ptr, cur_tuple, true, eval_sub_query);
                         break;
                     };
                 }
@@ -220,7 +218,7 @@ Value evaluate_expression(
                 ASTNode* ptr = land;
                 Value lhs;
                 while(ptr){
-                    lhs = evaluate_expression(ctx, land->cur_, this_exec, true, eval_sub_query);
+                    lhs = evaluate_expression(ctx, land->cur_, cur_tuple, true, eval_sub_query);
                     if(lhs.isNull()) break; 
                     if(lhs.getBoolVal() == 0) break;
                     ptr = land->next_;
@@ -228,7 +226,7 @@ Value evaluate_expression(
                     if(ptr->category_ == AND){
                         land = reinterpret_cast<AndNode*>(land->next_);
                     } else {
-                        lhs = evaluate_expression(ctx, ptr, this_exec, true, eval_sub_query);
+                        lhs = evaluate_expression(ctx, ptr, cur_tuple, true, eval_sub_query);
                         break;
                     }
                 }
@@ -239,12 +237,12 @@ Value evaluate_expression(
             {
                 EqualityNode* eq = reinterpret_cast<EqualityNode*>(expression);
                 TokenType op = eq->token_.type_;
-                Value lhs = evaluate_expression(ctx, eq->cur_, this_exec, 
+                Value lhs = evaluate_expression(ctx, eq->cur_, cur_tuple, 
                         eq->cur_->category_ == EQUALITY, 
                         eval_sub_query);
                 ASTNode* ptr = eq->next_;
                 while(ptr){
-                    Value rhs = evaluate_expression(ctx, ptr, this_exec, 
+                    Value rhs = evaluate_expression(ctx, ptr, cur_tuple, 
                             eq->cur_->category_ == EQUALITY, 
                             eval_sub_query);
                     bool is_or_isnot = (op == TokenType::IS || op == TokenType::ISNOT);
@@ -278,11 +276,11 @@ Value evaluate_expression(
             {
                 ComparisonNode* comp = reinterpret_cast<ComparisonNode*>(expression);
                 TokenType op = comp->token_.type_;
-                Value lhs = evaluate_expression(ctx, comp->cur_, this_exec, 
+                Value lhs = evaluate_expression(ctx, comp->cur_, cur_tuple, 
                         comp->cur_->category_ == COMPARISON, eval_sub_query);
                 ASTNode* ptr = comp->next_;
                 while(ptr){
-                    Value rhs = evaluate_expression(ctx, ptr, this_exec, 
+                    Value rhs = evaluate_expression(ctx, ptr, cur_tuple, 
                             comp->cur_->category_ == COMPARISON, 
                             eval_sub_query);
                     if(lhs.isNull() || rhs.isNull()) return Value(NULL_TYPE);
@@ -310,7 +308,7 @@ Value evaluate_expression(
             } 
         case SUB_QUERY:
             {
-                if(eval_sub_query) return evaluate_subquery(ctx, this_exec, expression);
+                if(eval_sub_query) return evaluate_subquery(ctx, cur_tuple, expression);
                 auto sub_query = reinterpret_cast<SubQueryNode*>(expression);
                 auto v = Value(sub_query->idx_);
                 v.type_ = Type::EXECUTOR_ID;
@@ -319,13 +317,13 @@ Value evaluate_expression(
         case TERM : 
             {
                 TermNode* t = reinterpret_cast<TermNode*>(expression);
-                Value lhs = evaluate_expression(ctx, t->cur_, this_exec, 
+                Value lhs = evaluate_expression(ctx, t->cur_, cur_tuple, 
                         t->cur_->category_ == TERM, eval_sub_query);
                 if(only_one) return lhs;
                 TokenType op = t->token_.type_;
                 ASTNode* ptr = t->next_;
                 while(ptr){
-                    Value rhs = evaluate_expression(ctx, ptr, this_exec, ptr->category_ == TERM, eval_sub_query);
+                    Value rhs = evaluate_expression(ctx, ptr, cur_tuple, ptr->category_ == TERM, eval_sub_query);
                     if(lhs.isNull()) return lhs;
                     if(rhs.isNull()) return rhs;
                     //int lhs_num = lhs.getIntVal();
@@ -345,13 +343,13 @@ Value evaluate_expression(
             } 
         case FACTOR : {
                           FactorNode* f = reinterpret_cast<FactorNode*>(expression);
-                          Value lhs = evaluate_expression(ctx, f->cur_, this_exec, 
+                          Value lhs = evaluate_expression(ctx, f->cur_, cur_tuple, 
                                   f->cur_->category_ == FACTOR, eval_sub_query);
                           if(only_one) return lhs;
                           TokenType op = f->token_.type_;
                           ASTNode* ptr = f->next_;
                           while(ptr){
-                              Value rhs = evaluate_expression(ctx, ptr, this_exec, 
+                              Value rhs = evaluate_expression(ctx, ptr, cur_tuple, 
                                       ptr->category_ == FACTOR, eval_sub_query);
                               if(lhs.isNull()) return lhs;
                               if(rhs.isNull()) return rhs;
@@ -372,7 +370,7 @@ Value evaluate_expression(
         case UNARY : 
                       {
                           UnaryNode* u = reinterpret_cast<UnaryNode*>(expression);
-                          Value cur = evaluate_expression(ctx, u->cur_, this_exec, true, eval_sub_query);
+                          Value cur = evaluate_expression(ctx, u->cur_, cur_tuple, true, eval_sub_query);
                           if(cur.isNull()) return cur;
                           if(u->token_.type_ == TokenType::MINUS){
                               cur *= Value(-1);
@@ -391,14 +389,14 @@ Value evaluate_expression(
                           }
                           std::vector<Value> vals;
                           for(int i = 0; i < sfn->args_.size(); ++i){
-                              vals.emplace_back(evaluate_expression(ctx, sfn->args_[i], this_exec, true, eval_sub_query));
+                              vals.emplace_back(evaluate_expression(ctx, sfn->args_[i], cur_tuple, true, eval_sub_query));
                           }
                           return reserved_functions[name](vals);
                       } 
         case TYPE_CAST: 
                       {
                           TypeCastNode* cast = reinterpret_cast<TypeCastNode*>(expression);
-                          Value val = evaluate_expression(ctx, cast->exp_, this_exec, true, eval_sub_query);
+                          Value val = evaluate_expression(ctx, cast->exp_, cur_tuple, true, eval_sub_query);
                           if(val.type_ == NULL_TYPE) return val; // NULL values can't be casted? 
                           if(val.type_ == cast->type_)
                               return val;
@@ -450,7 +448,7 @@ Value evaluate_expression(
                       }
         default:
                       {
-                          return evaluate(ctx, this_exec, expression);
+                          return evaluate(ctx, cur_tuple, expression);
                       }
     }
 }
@@ -875,7 +873,11 @@ void accessed_fields(ASTNode* expression ,std::vector<std::string>& fields, bool
                        fields.push_back(field);
                        return;
                    }
-
+        case AGG_FUNC:{
+                          AggregateFuncNode* func = (AggregateFuncNode*)expression;
+                          accessed_fields(func->exp_, fields);
+                          return;
+                      }
         case STRING_CONSTANT: 
         case FLOAT_CONSTANT: 
         case INTEGER_CONSTANT: 
@@ -885,20 +887,21 @@ void accessed_fields(ASTNode* expression ,std::vector<std::string>& fields, bool
     }
 }
 
-Value evaluate_subquery(QueryCTX* ctx, Executor* this_exec, ASTNode* item) {
+Value evaluate_subquery(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item) {
     auto sub_query = reinterpret_cast<SubQueryNode*>(item);
     bool used_with_exists = sub_query->used_with_exists_;
     Executor* sub_query_executor = ctx->executors_call_stack_[sub_query->idx_]; 
+    ctx->query_inputs.push_back(cur_tuple);
     sub_query_executor->init();
     if(sub_query_executor->error_status_){
         std::cout << "[ERROR] could not initialize sub-query" << std::endl;
-        this_exec->error_status_ = 1;
         ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: put a better error_status_.
         return Value();
     }
 
-    std::vector<Value> tmp = sub_query_executor->next();
+    Tuple tmp = sub_query_executor->next();
     if(tmp.size() == 0 && sub_query_executor->finished_) {
+        ctx->query_inputs.pop_back();
         if(used_with_exists) 
             return Value(false);
         return Value();
@@ -906,50 +909,38 @@ Value evaluate_subquery(QueryCTX* ctx, Executor* this_exec, ASTNode* item) {
 
     if(sub_query_executor->error_status_) {
         std::cout << "[ERROR] could not execute sub-query" << std::endl;
-        this_exec->error_status_ = 1;
         ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: put a better error_status_.
         return Value();
     }
     if(used_with_exists) return Value(tmp.size() != 0);
     if(tmp.size() != 1) {
         std::cout << "[ERROR] sub-query should return exactly 1 column" << std::endl;
-        this_exec->error_status_ = 1;
         ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: put a better error_status_.
         return Value();
     }
-    return tmp[0];
+    ctx->query_inputs.pop_back();
+    return tmp.get_val_at(0);
 }
 
 
-Value evaluate_field(QueryCTX* ctx, Executor* this_exec, ASTNode* item) {
+Value evaluate_field(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item) {
 
     std::string field = item->token_.val_;
-    //TableSchema* schema_ptr = output_schema_;
-    TableSchema* schema_ptr = this_exec->output_schema_;
-    int cur_query_idx = this_exec->query_idx_;
-    //int cur_query_parent = parent_query_idx_;
-    int cur_query_parent = this_exec->parent_query_idx_;
     int idx = -1;
+    int query_input_idx = ctx->query_inputs.size() - 1;
     while(true){
-        if(!schema_ptr && cur_query_parent != -1){
-            Executor* parent_query = ctx->executors_call_stack_[cur_query_parent]; 
-            schema_ptr = parent_query->output_schema_;
-            cur_query_idx = parent_query->query_idx_;
-            cur_query_parent = parent_query->parent_query_idx_;
+        if(cur_tuple.schema_ == nullptr && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()) {
+            cur_tuple = ctx->query_inputs[query_input_idx--];
             continue;
-        } else if(!schema_ptr){
-            std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
-            this_exec->error_status_ = 1;
-            ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: make a better error_status_.
-            return Value();
         }
+        if(!cur_tuple.schema_) break;
+
         int num_of_matches = 0;
-        auto columns = schema_ptr->getColumns();
+        auto columns = cur_tuple.schema_->getColumns();
         for(size_t i = 0; i < columns.size(); ++i){
             std::vector<std::string> splittedStr = strSplit(columns[i].getName(), '.');
             if(splittedStr.size() != 2) {
                 std::cout << "[ERROR] Invalid schema " << std::endl;
-                this_exec->error_status_ = 1;
                 ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: make a better error_status_.
                 return Value();
             }
@@ -960,148 +951,65 @@ Value evaluate_field(QueryCTX* ctx, Executor* this_exec, ASTNode* item) {
         }
         if(num_of_matches > 1){
             std::cout << "[ERROR] Ambiguous field name: " << field << std::endl;
-            this_exec->error_status_ = 1;
             ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: make a better error_status_.
             return Value();
         }
-        if(this_exec->type_ == FILTER_EXECUTOR){ // TODO: check why only filter executor type has field renames?
-            // if it doesn't match any fields check for renames.
-            if(idx < 0){
-                for(int i = 0; i < ((FilterExecutor*)this_exec)->field_names_.size(); ++i){
-                    if(field == ((FilterExecutor*)this_exec)->field_names_[i]) 
-                        return evaluate_expression(ctx, ((FilterExecutor*)this_exec)->fields_[i], this_exec);
-                }
-            }
-        }
-        // can't find the field in current context,
-        // search for it in context of the parent till the top level query.
-        if(num_of_matches == 0 && cur_query_parent != -1){
-            Executor* parent_query = ctx->executors_call_stack_[cur_query_parent]; 
-            schema_ptr = parent_query->output_schema_;
-            cur_query_idx = parent_query->query_idx_;
-            cur_query_parent = ctx->executors_call_stack_[cur_query_idx]->parent_query_idx_;
+
+        if((idx < 0 || idx >= cur_tuple.size()) 
+                && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()){
+            cur_tuple = ctx->query_inputs[query_input_idx--];
             continue;
         }
-        std::vector<Value> cur_output;
-        if(this_exec->type_ == FILTER_EXECUTOR){ // TODO: test why do we need to do this?.
-            Executor* cur_exec = nullptr;
-            if(cur_query_idx == this_exec->query_idx_){
-                cur_exec  = this_exec;
-            } else {
-                Executor* cur_exec = ctx->executors_call_stack_[cur_query_idx];
-
-                while(cur_exec != nullptr && cur_exec->type_ != FILTER_EXECUTOR){
-                    cur_exec = cur_exec->child_executor_;
-                }
-            }
-            if(!cur_exec){
-                std::cout << "[ERROR] Invalid filter operation"<< std::endl;
-                this_exec->error_status_ = 1;
-                ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
-                return Value();
-            }
-
-            cur_output  = cur_exec->output_;
-        } else {
-            //if(cur_query_parent == -1)
-            cur_output = this_exec->output_;
-            //else
-            //   cur_output = ctx->executors_call_stack_[cur_query_idx]->output_; 
-        }
-
-        if(idx < 0 || idx >= cur_output.size()) {
-            std::string prefix = AGG_FUNC_IDENTIFIER_PREFIX;
-            if(field.rfind(prefix, 0) == 0)
-                std::cout << "[ERROR] aggregate functions should not be used in here"<< std::endl;
-            else 
-                std::cout << "[ERROR] Invalid field name " << field << std::endl;
-            this_exec->error_status_ = 1;
-            ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
-            return Value();
-        }
-        return cur_output[idx];
+        break;
     }
+
+    if(idx < 0 || idx >= cur_tuple.size()) {
+        std::string prefix = AGG_FUNC_IDENTIFIER_PREFIX;
+        if(field.rfind(prefix, 0) == 0)
+            std::cout << "[ERROR] aggregate functions should not be used in here"<< std::endl;
+        else 
+            std::cout << "[ERROR] Invalid field name " << field << std::endl;
+        ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
+        return Value();
+    }
+    return cur_tuple.get_val_at(idx);
 }
 
-Value evaluate_scoped_field(QueryCTX* ctx, Executor* this_exec, ASTNode* item) {
+Value evaluate_scoped_field(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item) {
 
     std::string field = item->token_.val_;
-    //TableSchema* schema_ptr = output_schema_;
-    TableSchema* schema_ptr = this_exec->output_schema_;
-    int cur_query_idx = this_exec->query_idx_;
-    //int cur_query_parent = parent_query_idx_;
+    std::string table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
+    std::string col = table;col += "."; col+= field;
 
-    int cur_query_parent = this_exec->parent_query_idx_;
     int idx = -1;
+    int query_input_idx = ctx->query_inputs.size() - 1;
     while(true){
-        if(!schema_ptr && cur_query_parent != -1){
-            Executor* parent_query = ctx->executors_call_stack_[cur_query_parent]; 
-            schema_ptr = parent_query->output_schema_;
-            cur_query_idx = parent_query->query_idx_;
-            cur_query_parent = parent_query->parent_query_idx_;
-            continue;
-        } else if(!schema_ptr){
-            std::cout << "[ERROR] Cant access field name without schema " << field << std::endl;
-            this_exec->error_status_ = 1;
-            ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
-            return Value();
-        }
-        std::string table = schema_ptr->getTableName();
-        table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
-        std::string col = table;col += "."; col+= field;
-        idx = schema_ptr->colExist(col);
-
-        if(idx < 0 && cur_query_parent != -1){
-            Executor* parent_query = ctx->executors_call_stack_[cur_query_parent]; 
-            schema_ptr = parent_query->output_schema_;
-            cur_query_idx = parent_query->query_idx_;
-            cur_query_parent = ctx->executors_call_stack_[cur_query_idx]->parent_query_idx_;
+        if(cur_tuple.schema_ == nullptr && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()) {
+            cur_tuple = ctx->query_inputs[query_input_idx--];
             continue;
         }
+        idx = cur_tuple.schema_->colExist(col);
 
-        std::vector<Value> cur_output;
-        if(this_exec->type_ == FILTER_EXECUTOR){
-            Executor* cur_exec = nullptr;
-            if(cur_query_idx == this_exec->query_idx_){
-                cur_exec = this_exec;
-            } else {
-                cur_exec = ctx->executors_call_stack_[cur_query_idx];
-
-                while(cur_exec && cur_exec->type_ != SEQUENTIAL_SCAN_EXECUTOR && cur_exec->type_ != PRODUCT_EXECUTOR){
-                    cur_exec = cur_exec->child_executor_;
-                }
-            }
-            if(!cur_exec){
-                std::cout << "[ERROR] Invalid scoped operation"<< std::endl;
-                this_exec->error_status_ = 1;
-                ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
-                return Value();
-            }
-            cur_output  = cur_exec->output_;
-        } else if(this_exec->type_ == PROJECTION_EXECUTOR) {
-            if(this_exec->query_idx_ == 0)
-                cur_output = this_exec->output_;
-            else
-                cur_output = ctx->executors_call_stack_[cur_query_idx]->output_; 
-        } else {
-            cur_output = this_exec->output_;
+        if((idx < 0 || idx >= cur_tuple.size()) 
+                && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()){
+            cur_tuple = ctx->query_inputs[query_input_idx--];
+            continue;
         }
-
-
-        if(idx < 0 || idx >= cur_output.size()) {
-            std::cout << "[ERROR] Invalid scoped field name " << col << std::endl;
-            this_exec->error_status_ = 1;
-            ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
-            return Value();
-        }
-        return cur_output[idx];
+        break;
     }
+
+    if(idx < 0 || idx >= cur_tuple.size()) {
+        std::cout << "[ERROR] Invalid scoped field name " << col << std::endl;
+        ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
+        return Value();
+    }
+    return cur_tuple.get_val_at(idx);
 }
 
-Value evaluate(QueryCTX* ctx, Executor* this_exec, ASTNode* item){
-    if(item->category_ == FIELD) return evaluate_field(ctx, this_exec, item);
-    if(item->category_ == SCOPED_FIELD) return evaluate_scoped_field(ctx, this_exec, item);
-    if(item->category_ == SUB_QUERY) return evaluate_scoped_field(ctx, this_exec, item);
+Value evaluate(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item){
+    if(item->category_ == FIELD) return evaluate_field(ctx, cur_tuple, item);
+    if(item->category_ == SCOPED_FIELD) return evaluate_scoped_field(ctx, cur_tuple, item);
+    if(item->category_ == SUB_QUERY) return evaluate_scoped_field(ctx, cur_tuple, item);
     std::cout << "?????[ERROR] Item type is not supported!" << std::endl;
     // error_status_ = 1;
     ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: put a better error_status_.
