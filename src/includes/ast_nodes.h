@@ -2,6 +2,7 @@
 #define AST_NODES_H
 
 #include "defines.h"
+#include "tokenizer.h"
 
 struct ExpressionNode;
 struct AggregateFuncNode;
@@ -117,7 +118,7 @@ enum CategoryType {
 };
 
 struct ASTNode {
-    void init(CategoryType ct,Token val = {});
+    void init(CategoryType ct, Token val = {});
 
     CategoryType category_;
     Token token_; 

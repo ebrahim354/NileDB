@@ -99,7 +99,7 @@ enum class TokenType {
 struct Token {
     std::string val_ = "";
     TokenType type_ = TokenType::INVALID_TOKEN;
-    Token(TokenType type, std::string val);
+    Token(TokenType type = TokenType::INVALID_TOKEN, std::string val = "");
 };
 
 class Tokenizer {

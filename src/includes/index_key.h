@@ -8,12 +8,11 @@
 #include "tuple.h"
 
 struct IndexKey;
+class BTreeIndex;
 bool is_desc_order(char* bitmap, int idx);
 int index_key_cmp(IndexKey lhs,IndexKey rhs);
 IndexKey temp_index_key_from_values(std::vector<Value>& vals);
 #define EPS 1e-6
-
-
 
 struct IndexField {
     std::string name_;
@@ -23,7 +22,15 @@ struct IndexField {
 struct NumberedIndexField {
     int  idx_ = -1;
     bool desc_ = false;
+
 };
+
+struct IndexHeader {
+    BTreeIndex* index_;
+    std::string index_name_;
+    std::vector<NumberedIndexField> fields_numbers_;
+};
+
 
 
 /*

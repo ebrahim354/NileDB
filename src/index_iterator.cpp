@@ -92,7 +92,7 @@ RecordID IndexIterator::getCurRecordID() {
     return cur_entry.second;
 }
 
-Record IndexIterator::getCurRecordCpy() {
+Record IndexIterator::getCurRecordCpy(Arena* arena) {
     if(isNull()) return Record(nullptr, 0);
     char* cur_data = nullptr;
     uint32_t rsize = 0;
@@ -105,30 +105,16 @@ Record IndexIterator::getCurRecordCpy() {
     auto table_page = reinterpret_cast<TableDataPage*>(cache_manager_->fetchPage(rid.page_id_));
     if(!table_page) return Record(nullptr, 0);
     int err = table_page->getRecord(&cur_data, &rsize, rid.slot_number_);
-    cache_manager_->unpinPage(rid.page_id_, false);
-    //---------------------------------------------------------------------
-    if(err) return Record(nullptr, 0);
-    return  Record(cur_data, rsize);
-}
+    if(err || !cur_data || rsize <= 0) {
+        cache_manager_->unpinPage(rid.page_id_, false);
+        return Record(nullptr, 0);
+    }
 
-// TODO: Fix copy pasta.
-Record* IndexIterator::getCurRecordCpyPtr() {
-    if(isNull()) return nullptr; 
-    char* cur_data = nullptr;
-    uint32_t rsize = 0;
-    RecordID rid = getCurRecordID();
-    if(rid.page_id_ == INVALID_PAGE_ID) return nullptr; 
-    //---------------------------------------------------------------------
-    // TODO: usually you don't need to unpin the table page because you will mostly need it for future records,
-    // so figure out a good way to optemize this. 
-    // maybe remember all table pages and unpin them in the denstructor? (can be dangerous for larg tables).
-    auto table_page = reinterpret_cast<TableDataPage*>(cache_manager_->fetchPage(rid.page_id_));
-    if(!table_page) return nullptr; 
-    int err = table_page->getRecord(&cur_data, &rsize, rid.slot_number_);
+    char* data_cpy = (char*) arena->alloc(rsize);
+    memcpy(data_cpy, cur_data, rsize);
     cache_manager_->unpinPage(rid.page_id_, false);
-    //---------------------------------------------------------------------
-    if(err) return nullptr;
-    return  new Record(cur_data, rsize);
+
+    return  Record(data_cpy, rsize);
 }
 
 bool IndexIterator::operator==(IndexIterator& rhs) {

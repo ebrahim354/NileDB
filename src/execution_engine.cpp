@@ -67,11 +67,11 @@ class ExecutionEngine {
                     primary_key_cols.push_back({col_names[i], false}); // primary key can only be asc.
                 offset_ptr += Column::getSizeFromType(col_types[i]);
             }
-            TableSchema* sch = catalog_->createTable(table_name, columns);
+            TableSchema* sch = catalog_->createTable(&ctx, table_name, columns);
             if(sch == nullptr) return false;
             if(!primary_key_cols.empty()) {
                 std::cout << "create idx from create pkey\n";
-              int err = catalog_->createIndex(table_name, table_name+"_pkey", primary_key_cols);
+              int err = catalog_->createIndex(&ctx, table_name, table_name+"_pkey", primary_key_cols);
               // TODO: use CTX error status instead of this.
               if(err) return false;
             }
@@ -83,7 +83,7 @@ class ExecutionEngine {
             std::string index_name = create_index->index_name_;
             std::string table_name = create_index->table_name_;
             std::vector<IndexField> fields = create_index->fields_;
-            bool err = catalog_->createIndex(table_name, index_name, fields);
+            bool err = catalog_->createIndex(&ctx, table_name, index_name, fields);
             if(err) return false;
             return true;
         }

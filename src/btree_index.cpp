@@ -20,13 +20,13 @@ void BTreeIndex::init(CacheManager* cm, FileID fid, PageID root_page_id, TableSc
 }
 void BTreeIndex::destroy(){}
 
-void BTreeIndex::update_index_root(FileID fid, PageNum new_root_pid) {
-    //TableSchema* indexes_meta_schema = tables_["NDB_INDEX_META"];
+void BTreeIndex::update_index_root(QueryCTX* ctx, FileID fid, PageNum new_root_pid) {
     TableSchema* indexes_meta_schema = index_meta_schema_; 
-    TableIterator* it_meta = indexes_meta_schema->getTable()->begin();
+    TableIterator it_meta = indexes_meta_schema->getTable()->begin();
 
-    while(it_meta->advance()){
-        Record r = it_meta->getCurRecordCpy();
+    it_meta.init();
+    while(it_meta.advance()){
+        Record r = it_meta.getCurRecordCpy(&ctx->arena_);
         std::vector<Value> values;
         int err = indexes_meta_schema->translateToValues(r, values);
         assert(err == 0 && "Could not traverse the indexes schema.");
@@ -37,27 +37,27 @@ void BTreeIndex::update_index_root(FileID fid, PageNum new_root_pid) {
         PageNum root_pid = values[3].getIntVal();
         if(index_fid != fid) continue;
 
-        RecordID rid = it_meta->getCurRecordID();
+        RecordID rid = it_meta.getCurRecordID();
 
         values[3] = Value(new_root_pid);
-        Record* new_record = indexes_meta_schema->translateToRecord(values);
-        err = indexes_meta_schema->getTable()->updateRecord(&rid, *new_record);
+        Record new_record = indexes_meta_schema->translateToRecord(&ctx->arena_, values);
+        assert(new_record.isInvalidRecord() == false);
+        err = indexes_meta_schema->getTable()->updateRecord(&rid, new_record);
         assert(err == 0 && "Could not update record.");
-        delete new_record;
     }
-    delete it_meta;
+    it_meta.destroy();
 }
 
-void BTreeIndex::SetRootPageId(PageID root_page_id, int insert_record) {
+void BTreeIndex::SetRootPageId(QueryCTX* ctx, PageID root_page_id, int insert_record) {
     // TODO: fix dead lock.
     //std::unique_lock locker(this->root_page_id_lock_);
     root_page_id_ = root_page_id;
     assert(index_meta_schema_ != 0);
-    update_index_root(fid_, root_page_id.page_num_);
+    update_index_root(ctx, fid_, root_page_id.page_num_);
 }
 
 // true means value is returned.
-bool BTreeIndex::GetValue(IndexKey &key, std::vector<RecordID> *result) {
+bool BTreeIndex::GetValue(QueryCTX* ctx, IndexKey &key, std::vector<RecordID> *result) {
     // read lock on the root_page_id_
     // std::cerr << "GET VALUE CALL\n";
     // TODO: fix dead lock.
@@ -134,7 +134,7 @@ BTreeInternalPage* BTreeIndex::create_internal_page(PageID parent_pid, Page** ne
 
 
 // return true if inserted successfully.
-bool BTreeIndex::Insert(const IndexKey &key, const RecordID &value) {
+bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key, const RecordID &value) {
     std::unique_lock locker(root_page_id_lock_);
     if((key.size_ + 16) * 3 > BTreePage::get_max_key_size()){
       std::cout << "Key can't fit in one page\n";
@@ -158,7 +158,7 @@ bool BTreeIndex::Insert(const IndexKey &key, const RecordID &value) {
         leaf->Init(leaf_page->page_id_, INVALID_PAGE_ID);
         leaf->SetPageType(BTreePageType::LEAF_PAGE);
         root = leaf;
-        SetRootPageId(leaf_page->page_id_, 1);
+        SetRootPageId(ctx, leaf_page->page_id_, 1);
     } else {
         auto *root_page = cache_manager_->fetchPage(root_page_id_);
         // could not fetch a page.
@@ -271,7 +271,7 @@ bool BTreeIndex::Insert(const IndexKey &key, const RecordID &value) {
               new_root->SetValAt(0, cur->GetPageId(fid_));
               new_root->SetKeyAt(1, current_key);
               new_root->SetValAt(1, new_page_id);
-              SetRootPageId(tmp_root_id);
+              SetRootPageId(ctx, tmp_root_id);
               new_root_raw->mutex_.unlock();
               cache_manager_->unpinPage(root_page_id_, true);
 
@@ -421,7 +421,7 @@ bool BTreeIndex::Insert(const IndexKey &key, const RecordID &value) {
                 new_root->SetKeyAt(1, current_key);
                 new_root->SetValAt(1, current_internal_value);
 
-                SetRootPageId(tmp_root_id);
+                SetRootPageId(ctx, tmp_root_id);
                 new_root_raw->mutex_.unlock();
                 cache_manager_->unpinPage(root_page_id_, true);
 
@@ -449,7 +449,7 @@ bool BTreeIndex::Insert(const IndexKey &key, const RecordID &value) {
 }
 
 
-void BTreeIndex::Remove(const IndexKey &key) {
+void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
     std::unique_lock locker(root_page_id_lock_);
     //  std::cerr << "removing " << key << std::endl;
     if (root_page_id_ == INVALID_PAGE_ID) {
@@ -689,7 +689,7 @@ void BTreeIndex::Remove(const IndexKey &key) {
                 break;
             }
             if (cur->IsRootPage()) {
-                SetRootPageId(cur->ValueAt(0, fid_));
+                SetRootPageId(ctx, cur->ValueAt(0, fid_));
 
                 auto *child_page = cache_manager_->fetchPage(cur->ValueAt(0, fid_));
                 lock_cnt++;

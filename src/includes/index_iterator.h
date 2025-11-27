@@ -25,10 +25,7 @@ class IndexIterator {
 
         IndexKey getCurKey();
         RecordID getCurRecordID();
-        Record getCurRecordCpy();
-
-        // TODO: Fix copy pasta.
-        Record* getCurRecordCpyPtr();
+        Record getCurRecordCpy(Arena* arena);
 
         bool operator==(IndexIterator& rhs);
 

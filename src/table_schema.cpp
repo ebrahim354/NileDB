@@ -15,10 +15,7 @@ void TableSchema::init(std::string name, Table* table, const std::vector<Column>
         size_ += c.getSize();
     }
 }
-void TableSchema::destroy() {
-    //if(!tmp_schema_)
-        //delete table_; 
-}
+void TableSchema::destroy() {}
 
 std::string TableSchema::getTableName(){
     return table_name_;
@@ -243,11 +240,11 @@ int TableSchema::translateToTuple(Record& r, Tuple& tuple, int offset){
 }
 
 // translate a vector of values using the schema to a Record. 
-// return null in case of an error.
+// return invalid record in case of an error.
 // the user of the class should handle deleting the record after using it.
 // we assume that the variable length columns are represented first.
-Record* TableSchema::translateToRecord(std::vector<Value>& values){
-    if(values.size() != columns_.size()) return nullptr;
+Record TableSchema::translateToRecord(Arena* arena, std::vector<Value>& values) {
+    if(values.size() != columns_.size()) return Record(nullptr, 0);
     uint32_t fixed_part_size = size_;
     uint32_t var_part_size = 0;
     for(size_t i = 0; i < columns_.size(); ++i){
@@ -255,7 +252,7 @@ Record* TableSchema::translateToRecord(std::vector<Value>& values){
     }
     // The bitmap bytes.
     fixed_part_size += (columns_.size() / 8) + (columns_.size() % 8);
-    char* data = new char[fixed_part_size + var_part_size];
+    char* data = (char*)arena->alloc(fixed_part_size + var_part_size); 
     std::memset(data, 0, fixed_part_size + var_part_size);
 
     uint16_t cur_var_offset = fixed_part_size; 
@@ -278,12 +275,12 @@ Record* TableSchema::translateToRecord(std::vector<Value>& values){
         }
     }
 
-    auto r = new Record(data, fixed_part_size + var_part_size, false); // false => record owns the data ptr now.
+    auto r = Record(data, fixed_part_size + var_part_size, false); // false => record owns the data ptr now.
     return r;
 }
 
-Record* TableSchema::translateToRecord(Tuple tuple){
-    if(tuple.size() != columns_.size()) return nullptr;
+Record TableSchema::translateToRecord(Arena* arena, Tuple tuple){
+    if(tuple.size() != columns_.size()) return Record(nullptr, 0);
     uint32_t fixed_part_size = size_;
     uint32_t var_part_size = 0;
     for(size_t i = 0; i < columns_.size(); ++i){
@@ -291,7 +288,7 @@ Record* TableSchema::translateToRecord(Tuple tuple){
     }
     // The bitmap bytes.
     fixed_part_size += (columns_.size() / 8) + (columns_.size() % 8);
-    char* data = new char[fixed_part_size + var_part_size];
+    char* data = (char*)arena->alloc(fixed_part_size + var_part_size); 
     std::memset(data, 0, fixed_part_size + var_part_size);
 
     uint16_t cur_var_offset = fixed_part_size; 
@@ -315,7 +312,7 @@ Record* TableSchema::translateToRecord(Tuple tuple){
         }
     }
 
-    auto r = new Record(data, fixed_part_size + var_part_size, false); // false => record owns the data ptr now.
+    auto r = Record(data, fixed_part_size + var_part_size, false); // false => record owns the data ptr now.
     return r;
 }
 Table* TableSchema::getTable(){

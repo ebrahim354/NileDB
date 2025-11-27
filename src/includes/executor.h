@@ -154,7 +154,7 @@ struct SeqScanExecutor : public Executor {
     Tuple next();
 
     TableSchema* table_ = nullptr;
-    TableIterator* it_ = nullptr;
+    TableIterator it_;
 };
 
 struct IndexScanExecutor : public Executor {

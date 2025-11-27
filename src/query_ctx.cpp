@@ -58,7 +58,7 @@ void QueryCTX::clean() {
         index_handles_[i]->clear();
     }
     for(int i = 0; i < table_handles_.size(); ++i){
-        table_handles_[i]->clear();
+        table_handles_[i]->destroy();
     }
     /*
     for(int i = 0; i < executors_call_stack_.size(); ++i)

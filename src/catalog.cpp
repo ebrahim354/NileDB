@@ -68,10 +68,12 @@ void Catalog::init(CacheManager *cm) {
     ALLOCATE_INIT(arena_, meta_table_schema_, TableSchema, META_DATA_TABLE, meta_data_table, meta_data_columns);
     tables_[META_DATA_TABLE] = meta_table_schema_;
 
+
     // loading TableSchema of each table into memory.
-    TableIterator* it = meta_data_table->begin();
-    while(it->advance()){
-        Record r = it->getCurRecordCpy();
+    TableIterator it = meta_data_table->begin();
+    it.init();
+    while(it.advance()){
+        Record r = it.getCurRecord();
         std::vector<Value> values;
         int err = meta_table_schema_->translateToValues(r, values);
         if(err) break;
@@ -116,7 +118,7 @@ void Catalog::init(CacheManager *cm) {
 
         tables_[table_name]->addColumn(Column(col_name, col_type, col_offset, cons));
     }
-    delete it;
+    it.destroy();
     // load indexes meta data:
     // indexes_meta_data (text index_name, text table_name, int fid, int root_page_num).
     // indexs_keys      (text index_name, int field_number_in_table, int field_number_in_index).
@@ -124,12 +126,15 @@ void Catalog::init(CacheManager *cm) {
     if(tables_.count(INDEX_META_TABLE)){
         load_indexes();
     } else {
+        // create a pseudo context and destroy it after.
+        QueryCTX pctx;
+        pctx.init(0);
         std::vector<Column> index_meta_columns;
         index_meta_columns.emplace_back(Column("index_name"    , VARCHAR, 0));
         index_meta_columns.emplace_back(Column("table_name"    , VARCHAR, 4));
         index_meta_columns.emplace_back(Column("fid"           , INT    , 8));
         index_meta_columns.emplace_back(Column("root_page_num" , INT    , 12));
-        TableSchema* ret = createTable(INDEX_META_TABLE, index_meta_columns); 
+        TableSchema* ret = createTable(&pctx, INDEX_META_TABLE, index_meta_columns); 
         assert(ret != nullptr);
 
         std::vector<Column> index_keys_columns;
@@ -137,8 +142,9 @@ void Catalog::init(CacheManager *cm) {
         index_keys_columns.emplace_back(Column("field_number_in_table" , INT       , 4));
         index_keys_columns.emplace_back(Column("field_number_in_index" , INT       , 8));
         index_keys_columns.emplace_back(Column("is_desc_order"         , BOOLEAN   , 12));
-        ret = createTable(INDEX_KEYS_TABLE, index_keys_columns); 
+        ret = createTable(&pctx, INDEX_KEYS_TABLE, index_keys_columns); 
         assert(ret != nullptr);
+        pctx.clean();
     }
 }
 
@@ -146,7 +152,7 @@ void Catalog::destroy () {
     arena_.destroy();
 }
 
-TableSchema* Catalog::createTable(const std::string &table_name, std::vector<Column> &columns) {
+TableSchema* Catalog::createTable(QueryCTX* ctx, const std::string &table_name, std::vector<Column> &columns) {
     FileID nfid = fid_to_fname.size();// TODO: Dropping tables is going to break this method.
     assert(fid_to_fname.count(nfid) == 0 && "[FATAL] fid already exists!"); // TODO: Remove this assertion.
     if (tables_.count(table_name) || fid_to_fname.count(nfid))
@@ -181,7 +187,8 @@ TableSchema* Catalog::createTable(const std::string &table_name, std::vector<Col
         vals.emplace_back(Value(c.isForeignKey()));
         vals.emplace_back(Value(c.isUnique()));
         // translate the vals to a record and persist them.
-        Record* record = meta_table_schema_->translateToRecord(vals);
+        Record record = meta_table_schema_->translateToRecord(&ctx->arena_, vals);
+        assert(record.isInvalidRecord() == false);
 
         /*
            if(record == nullptr) std::cout << " invalid record " << std::endl;
@@ -195,14 +202,13 @@ TableSchema* Catalog::createTable(const std::string &table_name, std::vector<Col
 
         // rid is not used for now.
         RecordID rid = RecordID();
-        int err = meta_table_schema_->getTable()->insertRecord(&rid, *record);
-        delete record;
+        int err = meta_table_schema_->getTable()->insertRecord(&rid, record);
         if(err) return nullptr;
     }
     return schema;
 }
 
-bool Catalog::createIndex(const std::string &table_name, const std::string& index_name, std::vector<IndexField> &fields) {
+bool Catalog::createIndex(QueryCTX* ctx, const std::string &table_name, const std::string& index_name, std::vector<IndexField> &fields) {
     if (!tables_.count(table_name) || indexes_.count(index_name))
         return 1;
     TableSchema* table = tables_[table_name];
@@ -246,10 +252,10 @@ bool Catalog::createIndex(const std::string &table_name, const std::string& inde
     vals.emplace_back(Value(table_name));
     vals.emplace_back(Value(nfid));
     vals.emplace_back(Value(-1)); // -1 means no root yet.
-    Record* record = index_meta_data->translateToRecord(vals);
+    Record record = index_meta_data->translateToRecord(&ctx->arena_, vals);
+    assert(record.isInvalidRecord() == false);
     RecordID rid = RecordID();
-    int err = index_meta_data->getTable()->insertRecord(&rid, *record);
-    delete record;
+    int err = index_meta_data->getTable()->insertRecord(&rid, record);
     assert(err == 0);
 
     // store index_keys.
@@ -262,28 +268,29 @@ bool Catalog::createIndex(const std::string &table_name, const std::string& inde
         vals.emplace_back(Value(i));              // i is the offset inside of the index  key.
         vals.emplace_back(Value((bool)c.desc_));  // asc or desc ordering.
         // translate the vals to a record and persist them.
-        Record* record = index_keys->translateToRecord(vals);
-        int err = index_keys->getTable()->insertRecord(&rid, *record);
+        Record record = index_keys->translateToRecord(&ctx->arena_, vals);
+        assert(record.isInvalidRecord() == false);
+        int err = index_keys->getTable()->insertRecord(&rid, record);
         assert(err == 0);
-        delete record;
         if(err) return false;
     }
 
     // insert rows of the table.
-    TableIterator* table_it = table->getTable()->begin();
-    while(table_it->advance()) {
-        Record r = table_it->getCurRecordCpy();
-        rid = table_it->getCurRecordID();
+    TableIterator table_it = table->getTable()->begin();
+    table_it.init();
+    while(table_it.advance()) {
+        Record r = table_it.getCurRecord();
+        rid = table_it.getCurRecordID();
         std::vector<Value> vals;
         int err = table->translateToValues(r, vals);
         assert(err == 0 && "Could not traverse the table.");
         IndexKey k = getIndexKeyFromTuple(indexes_[index_name].fields_numbers_, vals);
         assert(k.size_ != 0);
-        bool success = indexes_[index_name].index_->Insert(k, rid);
+        bool success = indexes_[index_name].index_->Insert(ctx, k, rid);
         assert(success);
         delete k.data_;
     }
-    delete table_it;
+    table_it.destroy();
     return false;
 }
 
@@ -331,11 +338,12 @@ std::vector<IndexHeader> Catalog::getIndexesOfTable(std::string& tname) {
 bool Catalog::load_indexes() {
     // indexes_meta_data (text index_name, text table_name, int fid, int root_page_num).
     TableSchema* indexes_meta_schema = tables_[INDEX_META_TABLE];
-    TableIterator* it_meta = indexes_meta_schema->getTable()->begin();
+    TableIterator it_meta = indexes_meta_schema->getTable()->begin();
     bool success = true;
 
-    while(it_meta->advance()){
-        Record r = it_meta->getCurRecordCpy();
+    it_meta.init();
+    while(it_meta.advance()){
+        Record r = it_meta.getCurRecord();
         std::vector<Value> values;
         int err = indexes_meta_schema->translateToValues(r, values);
         assert(err == 0 && "Could not traverse the indexes schema.");
@@ -367,16 +375,19 @@ bool Catalog::load_indexes() {
         else 
             indexes_of_table_[table_name] = {index_name};
     }
-    delete it_meta;
-    if(!success) return false;
+    it_meta.destroy();
+    if(!success) {
+        return false;
+    }
 
     // indexs_keys      (text index_name, int field_number_in_table, int field_number_in_index).
     // this table holds the data for all key mappings of all indexes of the system.
     TableSchema* index_keys_schema = tables_[INDEX_KEYS_TABLE];
-    TableIterator* it_keys = index_keys_schema->getTable()->begin();
+    TableIterator it_keys = index_keys_schema->getTable()->begin();
+    it_keys.init();
 
-    while(it_keys->advance()){
-        Record r = it_keys->getCurRecordCpy();
+    while(it_keys.advance()){
+        Record r = it_keys.getCurRecord();
         std::vector<Value> values;
         int err = index_keys_schema->translateToValues(r, values);
         assert(err == 0 && "Could not traverse the indexes keys.");
@@ -401,9 +412,10 @@ bool Catalog::load_indexes() {
             .desc_ = is_desc_order
         };
     }
-    delete it_keys;
+    it_keys.destroy();
     return success;
 }
+
 IndexHeader Catalog::getIndexHeader(std::string& iname) {
     if(indexes_.count(iname)) return indexes_[iname];
     std::cout << iname << std::endl;

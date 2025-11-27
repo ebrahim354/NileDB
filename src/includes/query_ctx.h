@@ -7,7 +7,6 @@
 #include "algebra_operation.h"
 #include "query_data.h"
 #include "arena.h"
-//#include "../arena.cpp"
 
 // assuming average token size is 4.
 #define AVG_TOKEN_SIZE 4

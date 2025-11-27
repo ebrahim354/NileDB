@@ -3,7 +3,7 @@
 #include "tokenizer.h"
 #include <map>
 
-Token::Token(TokenType type = TokenType::INVALID_TOKEN, std::string val = ""): type_(type), val_(val)
+Token::Token(TokenType type, std::string val): type_(type), val_(val)
 {}
 
 Tokenizer::Tokenizer() {

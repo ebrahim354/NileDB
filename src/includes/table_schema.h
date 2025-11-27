@@ -44,8 +44,8 @@ class TableSchema {
         // return null in case of an error.
         // the user of the class should handle deleting the record after using it.
         // we assume that the variable length columns are represented first.
-        Record* translateToRecord(std::vector<Value>& values);
-        Record* translateToRecord(Tuple tuple);
+        Record translateToRecord(Arena* arena, std::vector<Value>& values);
+        Record translateToRecord(Arena* arena, Tuple tuple);
         Table* getTable();
     private:
         bool tmp_schema_ = false;

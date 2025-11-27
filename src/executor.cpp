@@ -533,18 +533,18 @@ void SeqScanExecutor::init() {
     //output_.resize(output_schema_->numOfCols());
     //delete it_;
     it_ = table_->getTable()->begin();
-    ctx_->table_handles_.push_back(it_);
+    it_.init();
+    ctx_->table_handles_.push_back(&it_);
 }
 
 Tuple SeqScanExecutor::next() {
     // no more records.
-    if(!it_->advance()) {
+    if(!it_.advance()) {
         finished_ = 1;
         return {};
     };
-    Record* r = it_->getCurRecordCpyPtr();
-    int err = table_->translateToTuple(*r, output_, 0);
-    delete r;
+    Record r = it_.getCurRecordCpy(&ctx_->arena_);
+    int err = table_->translateToTuple(r, output_, 0);
     if(err) {
         error_status_ = 1;
         return {};
@@ -654,14 +654,13 @@ Tuple IndexScanExecutor::next() {
         finished_ = 1;
         return {};
     };
-    Record* r = start_it_.getCurRecordCpyPtr();
-    if(!r){
+    Record r = start_it_.getCurRecordCpy(&ctx_->arena_);
+    if(r.isInvalidRecord()){
         std::cout << "Could not translate record\n";
         error_status_ = 1;
         return {};
     }
-    int err = table_->translateToTuple(*r, output_, 0);
-    delete r;
+    int err = table_->translateToTuple(r, output_, 0);
     if(err) {
         error_status_ = 1;
         return {};
@@ -756,9 +755,9 @@ Tuple InsertionExecutor::next() {
         }
     }
 
-    RecordID* rid = new RecordID();
-    Record* record = table_->translateToRecord(output_);
-    int err = table_->getTable()->insertRecord(rid, *record);
+    RecordID rid = RecordID();
+    Record record = table_->translateToRecord(&ctx_->arena_, output_);
+    int err = table_->getTable()->insertRecord(&rid, record);
     if(err){
         error_status_ = 1;
         return {};
@@ -770,7 +769,7 @@ Tuple InsertionExecutor::next() {
             error_status_ = 1;
             break;
         }
-        bool success = indexes_[i].index_->Insert(k, *rid);
+        bool success = indexes_[i].index_->Insert(ctx_, k, rid);
         delete k.data_;
         //indexes_[i].index_->See();
         if(!success){
@@ -779,8 +778,6 @@ Tuple InsertionExecutor::next() {
             break;
         }
     }
-    delete record;
-    delete rid;
     if(err || error_status_) {
         error_status_ = 1;
         return {};

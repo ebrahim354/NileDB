@@ -131,6 +131,6 @@ int Table::updateRecord(RecordID *rid, Record &new_record){
     return this->insertRecord(rid, new_record);
 }
 // we allow only forward scans for now via tableIterator.advance().
-TableIterator* Table::begin() {
-    return new TableIterator(cache_manager_, first_page_id_);
+TableIterator Table::begin() {
+    return TableIterator(cache_manager_, first_page_id_);
 }

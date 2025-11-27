@@ -1,8 +1,10 @@
 #ifndef QUERY_DATA_H
 #define QUERY_DATA_H
 
+#include "catalog.h"
 #include "ast_nodes.h"
 
+class Catalog;
 
 
 enum QueryType {

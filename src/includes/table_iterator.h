@@ -12,16 +12,17 @@
 class TableIterator {
     public:
         TableIterator(CacheManager *cm, PageID page_id);
-        ~TableIterator();
-        void clear();
+        TableIterator();
+        void init(); // this method pins the associated page.
+        void destroy(); // thiss method releases the page.
 
         bool hasNext();
 
         // 0 in case of no more records.
         int advance();
 
-        Record getCurRecordCpy();
-        Record* getCurRecordCpyPtr();
+        Record getCurRecord();
+        Record getCurRecordCpy(Arena* arena);
         RecordID getCurRecordID();
     private:
         CacheManager *cache_manager_ = nullptr;

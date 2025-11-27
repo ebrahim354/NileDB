@@ -6,11 +6,13 @@
 #include "record.cpp"
 #include <cstdint>
 
+TableIterator::TableIterator(){}
 
-TableIterator::TableIterator(CacheManager *cm, PageID page_id): 
-    cache_manager_(cm),
-    cur_page_id_(page_id)
-{
+TableIterator::TableIterator(CacheManager *cm, PageID page_id): cache_manager_(cm), cur_page_id_(page_id)
+{}
+
+void TableIterator::init() {
+    assert(cache_manager_ != nullptr && cur_page_id_ != INVALID_PAGE_ID);
     cur_page_ = reinterpret_cast<TableDataPage*>(cache_manager_->fetchPage(cur_page_id_));
     if(cur_page_){
         cur_num_of_slots_ = cur_page_->getNumOfSlots();
@@ -18,14 +20,13 @@ TableIterator::TableIterator(CacheManager *cm, PageID page_id):
         prev_page_number_ = cur_page_->getPrevPageNumber();
     }
 }
-TableIterator::~TableIterator(){
-    if(cur_page_)
-        cache_manager_->unpinPage(cur_page_id_, false);
-}
 
-void TableIterator::clear() {
+void TableIterator::destroy() {
     if(cur_page_) {
         cache_manager_->unpinPage(cur_page_id_, false);
+        cur_page_ = nullptr;
+        cache_manager_ = nullptr;
+        cur_page_id_ = INVALID_PAGE_ID;
     }
 }
 
@@ -35,7 +36,6 @@ bool TableIterator::hasNext() {
     char* tmp = nullptr;
     int32_t next_slot = cur_slot_idx_+1;
     uint32_t rsize =  0;
-    //uint32_t* rsize =  new uint32_t(0);
     // iterate through records of the current page.
     while(next_slot < cur_num_of_slots_ && cur_page_->getRecord(&tmp, &rsize, next_slot)){
         cur_slot_idx_ = next_slot;
@@ -71,20 +71,25 @@ int TableIterator::advance(){
     return 1;
 }
 
-Record TableIterator::getCurRecordCpy(){
+// gets a view over the current record (the caller should make sure that the page is pinned after using this).
+Record TableIterator::getCurRecord() {
     char* cur_data = nullptr;
-    //uint32_t* rsize = new uint32_t(0);
     uint32_t rsize = 0;
     int err = cur_page_->getRecord(&cur_data, &rsize, cur_slot_idx_);
-    if(err) return Record(nullptr, 0);
+    if(err || rsize <= 0 || !cur_data) return Record(nullptr, 0);
     return  Record(cur_data, rsize);
 }
-Record* TableIterator::getCurRecordCpyPtr(){
+
+// gets a copy of the current record (the caller doesn't need to make sure that the page is pinned).
+Record TableIterator::getCurRecordCpy(Arena* arena){
     char* cur_data = nullptr;
     uint32_t rsize = 0;
     int err = cur_page_->getRecord(&cur_data, &rsize, cur_slot_idx_);
-    if(err) return nullptr;
-    return  new Record(cur_data, rsize);
+    if(err || rsize <= 0 || !cur_data) return Record(nullptr, 0);
+
+    char* data_cpy = (char*) arena->alloc(rsize);
+    memcpy(data_cpy, cur_data, rsize);
+    return  Record(data_cpy, rsize);
 }
 
 RecordID TableIterator::getCurRecordID(){

@@ -12,23 +12,24 @@
 #include "btree_leaf_page.h"
 #include "btree_internal_page.h"
 #include "table_schema.h"
+#include "query_ctx.h"
 
 class BTreeIndex {
     public:
         void init(CacheManager* cm, FileID fid, PageID root_page_id, TableSchema* index_meta_schema);
         void destroy();
 
-        void update_index_root(FileID fid, PageNum new_root_pid);
-        void SetRootPageId(PageID root_page_id, int insert_record = 0);
+        void update_index_root(QueryCTX* ctx, FileID fid, PageNum new_root_pid);
+        void SetRootPageId(QueryCTX* ctx, PageID root_page_id, int insert_record = 0);
         // true means value is returned.
-        bool GetValue(IndexKey &key, std::vector<RecordID> *result);
+        bool GetValue(QueryCTX* ctx, IndexKey &key, std::vector<RecordID> *result);
         // new_page_raw (output).
         BTreeLeafPage* create_leaf_page(PageID parent_pid, Page** new_page_raw);
         // new_page_raw (output).
         BTreeInternalPage* create_internal_page(PageID parent_pid, Page** new_page_raw);
         // return true if inserted successfully.
-        bool Insert(const IndexKey &key, const RecordID &value);
-        void Remove(const IndexKey &key);
+        bool Insert(QueryCTX* ctx, const IndexKey &key, const RecordID &value);
+        void Remove(QueryCTX* ctx, const IndexKey &key);
         IndexIterator begin();
         // for range queries
         IndexIterator begin(const IndexKey &key);

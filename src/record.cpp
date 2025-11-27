@@ -32,11 +32,7 @@ Record::Record(char* data, uint32_t r_size, bool read_only):
     record_size_(r_size),
     read_only_(read_only)
 {}
-Record::~Record() {
-    // read only ptr can't be deleted.
-    if(!read_only_)
-        delete data_;
-}
+Record::~Record() {}
 
 uint32_t Record::getRecordSize(){
     return record_size_;

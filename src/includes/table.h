@@ -51,7 +51,7 @@ class Table {
         int updateRecord(RecordID *rid, Record &new_record);
 
         // we allow only forward scans for now via tableIterator.advance().
-        TableIterator* begin();
+        TableIterator begin();
     private:
         CacheManager* cache_manager_ = nullptr;
         PageID first_page_id_ = INVALID_PAGE_ID;

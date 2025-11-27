@@ -7,9 +7,10 @@
 #include "column.h"
 #include "value.h"
 #include "tokenizer.h"
-#include "../btree_index.cpp"
+#include "btree_index.h"
 #include "table_schema.h"
 #include "arena.h"
+#include "index_key.h"
 #include <sstream>
 #include <algorithm>
 #include <cstdint>
@@ -41,22 +42,16 @@
 #define INDEX_META_TABLE "NDB_INDEX_META"
 
 
-struct  IndexHeader{
-    BTreeIndex* index_;
-    std::string index_name_;
-    std::vector<NumberedIndexField> fields_numbers_;
-};
-
 class Catalog {
     public:
 
         void init(CacheManager *cm);
         void destroy ();
 
-        TableSchema* createTable(const std::string &table_name, std::vector<Column> &columns);
+        TableSchema* createTable(QueryCTX* ctx, const std::string &table_name, std::vector<Column> &columns);
         TableSchema* getTableSchema(const std::string &table_name);
 
-        bool createIndex(const std::string &table_name, const std::string& index_name, std::vector<IndexField> &fields);
+        bool createIndex(QueryCTX* ctx, const std::string &table_name, const std::string& index_name, std::vector<IndexField> &fields);
         bool load_indexes();
         IndexHeader getIndexHeader(std::string& iname);
 
