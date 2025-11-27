@@ -8,13 +8,13 @@
 #include "record.cpp"
 #include "table_data_page.cpp"
 
-Table::Table(CacheManager* cm, PageID first_page_id, FreeSpaceMap* fsm):
-    cache_manager_(cm),
-    first_page_id_(first_page_id),
-    free_space_map_(fsm)
-{}
-Table::~Table(){
-    delete free_space_map_;
+void Table::init(CacheManager* cm, PageID first_page_id, FreeSpaceMap* fsm) {
+    cache_manager_  = cm;
+    first_page_id_  = first_page_id;
+    free_space_map_ = fsm;
+}
+void Table::destroy(){
+    // delete free_space_map_;
 }
 
 // should use the free space map to find the closest free space inside of the file

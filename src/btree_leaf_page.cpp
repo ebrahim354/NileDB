@@ -4,61 +4,40 @@
 
 #include "btree_page.cpp"
 #include "record.cpp"
+#include "btree_leaf_page.h"
 
-class BTreeLeafPage : public BTreePage {
- public:
-  void Init(PageID page_id, PageID parent_id = INVALID_PAGE_ID);
-
-  PageID GetNextPageId(FileID fid);
-  void SetNextPageId(PageID next_page_id);
-  PageNum get_next_page_number();
-  void set_next_page_number(PageNum next_page_num);
-
-  bool split_with_and_insert(BTreeLeafPage* new_page, IndexKey k, RecordID v) {
+bool BTreeLeafPage::split_with_and_insert(BTreeLeafPage* new_page, IndexKey k, RecordID v) {
     int sz = get_num_of_slots();
     int md = std::ceil(static_cast<float>(sz) / 2);
     md--;
     for (int i = md + 1, j = 0; i < sz; i++, j++) {
-      new_page->increase_size(1);
-      new_page->SetKeyAt(j, KeyAt(i));
-      new_page->SetValAt(j, ValAt(i));
+        new_page->increase_size(1);
+        new_page->SetKeyAt(j, KeyAt(i));
+        new_page->SetValAt(j, ValAt(i));
     }
     sz = md+1;
     set_num_of_slots(sz);
     assert(sz > 0 && "Key couldn't fit in an empty page");
     auto last_key = KeyAt(md);
     if(k <= last_key && !IsFull(k)) 
-      return Insert(k, v);
+        return Insert(k, v);
     else if(!new_page->IsFull(k))
-      return new_page->Insert(k, v);
+        return new_page->Insert(k, v);
     return false;
-  }
+}
 
-  inline IndexKey get_last_key_cpy() {
+inline IndexKey BTreeLeafPage::get_last_key_cpy() {
     auto k = KeyAt(get_num_of_slots() - 1);
     char* data = (char*)malloc(k.size_);
     memcpy(data, k.data_, k.size_);
     return {
-      .data_ = data,
-      .size_ = k.size_,
+        .data_ = data,
+            .size_ = k.size_,
     };
-  }
-
-  bool IsFull(IndexKey k) { 
+}
+bool BTreeLeafPage::IsFull(IndexKey k) { 
     return ((LEAF_SLOT_ENTRY_SIZE_ + k.size_) >= get_free_space_size());
-  }
-
-  //IndexKey KeyAt(int index);
-  RecordID ValAt(int index);
-  void SetValAt(int index, RecordID v);
-  bool GetValue(IndexKey k, std::vector<RecordID> *result);
-  int GetPos(IndexKey k);
-  void Draw();
-
-  bool Insert(IndexKey key, RecordID v);
-  bool Remove(IndexKey k);
-  std::pair<IndexKey, RecordID> getPointer(int pos);
-};
+}
 
 void BTreeLeafPage::Init(PageID page_id, PageID parent_id) {
   SetPageType(BTreePageType::LEAF_PAGE);

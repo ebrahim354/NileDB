@@ -5,7 +5,9 @@
 #include <math.h>
 #include <cstring>
 
-FreeSpaceMap::FreeSpaceMap(CacheManager* cm, PageID first_page_id): cm_(cm), first_page_id_(first_page_id){
+void FreeSpaceMap::init(CacheManager* cm, PageID first_page_id) {
+    cm_ = cm;
+    first_page_id_ = first_page_id;
     Page* page = cm_->fetchPage(first_page_id_);
     if(!page)
         return;
@@ -29,7 +31,8 @@ FreeSpaceMap::FreeSpaceMap(CacheManager* cm, PageID first_page_id): cm_(cm), fir
     if(i != 0) 
         cm_->unpinPage(page_id_ptr, false);
 }
-FreeSpaceMap::~FreeSpaceMap(){
+
+void FreeSpaceMap::destroy(){
     if(array_){
         free(array_);
     }

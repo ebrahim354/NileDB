@@ -5,20 +5,19 @@
 
 
 
-TableSchema::TableSchema(std::string name, Table* table, const std::vector<Column> columns, bool tmp_schema)
-    : table_name_(name),
-    table_(table),
-    columns_(columns),
-    tmp_schema_(tmp_schema) 
-{
+void TableSchema::init(std::string name, Table* table, const std::vector<Column> columns, bool tmp_schema) {
+    table_name_ = name;
+    table_ = table;
+    columns_ = columns;
+    tmp_schema_ = tmp_schema;
     size_ = 0;
     for(auto c : columns){
         size_ += c.getSize();
     }
 }
-TableSchema::~TableSchema() {
-    if(!tmp_schema_)
-        delete table_; 
+void TableSchema::destroy() {
+    //if(!tmp_schema_)
+        //delete table_; 
 }
 
 std::string TableSchema::getTableName(){

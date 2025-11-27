@@ -2,6 +2,7 @@
 #define TOKENIZER_H
 
 #include <map>
+#include <vector>
 
 enum class TokenType {
     // only these require the val_  property.

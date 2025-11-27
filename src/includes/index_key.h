@@ -1,9 +1,12 @@
-#pragma once
+#ifndef INDEX_KEY_H
+#define INDEX_KEY_H
+
 
 #include <cassert>
 #include <cstdint>
 #include <cstring>
-#include "tuple.cpp"
+#include "tuple.h"
+
 struct IndexKey;
 bool is_desc_order(char* bitmap, int idx);
 int index_key_cmp(IndexKey lhs,IndexKey rhs);
@@ -308,3 +311,5 @@ IndexKey getIndexKeyFromTuple(std::vector<NumberedIndexField>& fields, Tuple tup
     res.sort_order_ = create_sort_order_bitmap(fields);
     return res;
 }
+
+#endif //INDEX_KEY_H

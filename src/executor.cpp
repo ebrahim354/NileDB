@@ -3,6 +3,7 @@
 #include "catalog.cpp"
 #include "expression.h"
 #include "string"
+#include "tuple.cpp"
 
 struct QueryCTX;
 
@@ -76,8 +77,7 @@ void NestedLoopJoinExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_nod
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
-    auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
-    output_schema_ = new(ptr) TableSchema("TMP_JOIN_TABLE", nullptr, lhs_columns, true);
+    ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema, "TMP_JOIN_TABLE", nullptr, lhs_columns, true);
     output_ = Tuple(output_schema_);
 }
 
@@ -159,8 +159,7 @@ void ProductExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Exec
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
-    auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
-    output_schema_ = new(ptr) TableSchema("TMP_PRODUCT_TABLE", nullptr, lhs_columns, true);
+    ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema, "TMP_PRODUCT_TABLE", nullptr, lhs_columns, true);
     output_ = Tuple(output_schema_);
 }
 
@@ -226,8 +225,7 @@ void HashJoinExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Exe
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
-    auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
-    output_schema_ = new(ptr) TableSchema("TMP_JOIN_TABLE", nullptr, lhs_columns, true);
+    ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema, "TMP_JOIN_TABLE", nullptr, lhs_columns, true);
     output_ = Tuple(output_schema_);
 }
 
@@ -824,8 +822,7 @@ void AggregationExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, 
         offset_ptr += Column::getSizeFromType(INT);
     }
 
-    auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
-    output_schema_ = new(ptr) TableSchema("agg_tmp_schema", nullptr, new_cols, true);
+    ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema, "agg_tmp_schema", nullptr, new_cols, true);
     output_ = Tuple(output_schema_, Value(0));
 }
 
@@ -1038,8 +1035,7 @@ void ProjectionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, E
         new_cols.push_back(Column(col_name, INVALID, 0));
     }
 
-    auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
-    output_schema_ = new(ptr) TableSchema("tmp_projection_schema", nullptr, new_cols, true);
+    ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema, "tmp_projection_schema", nullptr, new_cols, true);
     output_ = Tuple(output_schema_, Value(0));
 }
 
@@ -1244,8 +1240,8 @@ void FilterExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Execu
     if(child_executor_) {
         output_schema_ = child_executor_->output_schema_;
     } else {
-        auto ptr = ALLOCATE(ctx_->arena_, TableSchema);
-        output_schema_ = new(ptr) TableSchema("TMP_FILTER_SCHEMA", nullptr, {Column("?column?", INVALID, 0)}, true);
+        ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema,
+                "TMP_FILTER_SCHEMA", nullptr, {Column("?column?", INVALID, 0)}, true);
     }
 
 

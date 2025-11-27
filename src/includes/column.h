@@ -1,6 +1,7 @@
 #ifndef COLUMN_H
 #define COLUMN_H
 
+#include "tokenizer.h"
 #include <cstdint>
 #include <vector>
 #include <string>
@@ -14,9 +15,12 @@
 //
 // EXECUTOR_ID is integer index that points to the executor inside of the QueryCTX object.
 enum Type { INVALID = -1, BOOLEAN, INT, BIGINT, FLOAT, DOUBLE, TIMESTAMP, VARCHAR, NULL_TYPE, EXECUTOR_ID};
-bool checkSameType(Type lhs, Type rhs);
 
 enum Constraint { NOT_NULL = 0, PRIMARY_KEY, FOREIGN_KEY, UNIQUE };
+
+Type tokenTypeToColType(TokenType t);
+bool checkSameType(Type lhs, Type rhs);
+
 
 class Column {
     public:

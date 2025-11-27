@@ -5,6 +5,27 @@
 #include <string>
 #include "column.h"
 
+Type tokenTypeToColType(TokenType t){
+    switch(t){
+        case TokenType::BOOLEAN:
+            return Type::BOOLEAN;
+        case TokenType::INTEGER:
+            return Type::INT;
+        case TokenType::BIGINT:
+            return Type::BIGINT;
+        case TokenType::FLOAT:
+            return Type::FLOAT;
+        case TokenType::REAL:
+            return Type::DOUBLE;
+        case TokenType::TIMESTAMP:
+            return Type::TIMESTAMP;
+        case TokenType::VARCHAR:
+            return Type::VARCHAR;
+        default:
+            return INVALID;
+    }
+}
+
 Column::Column(std::string name, Type type, uint8_t col_offset, std::vector<Constraint> constraints): 
     name_(name), 
     type_(type), 

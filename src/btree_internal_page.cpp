@@ -1,39 +1,14 @@
 #pragma once
-#include "./btree_page.cpp"
+#include "btree_page.cpp"
 #include "math.h"
 #include "page.cpp"
+#include "btree_internal_page.h"
 
-struct IndexKey;
 
 
-class BTreeInternalPage : public BTreePage {
- public:
-  void Init(PageID page_id, PageID parent_id = INVALID_PAGE_ID);
-  void insert_key_at_start(IndexKey key, PageID);
-  void remove_from_start();
-  void SetValAt(int index, const PageID &v);
-  PageID NextPage(IndexKey key, FileID fid);
-  PageID ValueAt(int index, FileID fid);
-  int InsertionPosition(IndexKey k);
-
-  bool IsFull(IndexKey k) { 
+bool BTreeInternalPage::IsFull(IndexKey k) { 
     return (INTERNAL_SLOT_ENTRY_SIZE_ + k.size_ >= get_free_space_size());
-  }
-
-  /*
-   
-  bool TooShortBefore() const;
-
-  */
-  bool Insert(IndexKey key, PageID v);
-
-  int NextPageOffset(IndexKey k);
-  int PrevPageOffset(IndexKey k);
-
-  //void InsertKeyAtStart(IndexKey k, PageID start_val);
-  //void RemoveFromStart();
-
-};
+}
 
 void BTreeInternalPage::Init(PageID page_id, PageID parent_id) {
   SetPageType(BTreePageType::INTERNAL_PAGE);

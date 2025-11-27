@@ -13,8 +13,8 @@ struct Tuple;
 
 class TableSchema {
     public:
-        TableSchema(std::string name, Table* table,const std::vector<Column> columns,bool tmp_schema = false);
-        ~TableSchema();
+        void init(std::string name, Table* table, const std::vector<Column> columns, bool tmp_schema = false);
+        void destroy();
 
         std::string getTableName();
         int numOfCols();

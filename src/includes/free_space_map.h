@@ -16,8 +16,8 @@
 
 class FreeSpaceMap {
     public:
-        FreeSpaceMap(CacheManager* cm, PageID first_page_id);
-        ~FreeSpaceMap();
+        void init(CacheManager* cm, PageID first_page_id);
+        void destroy();
 
         int addPage(uint8_t fraction);
         Page* getPageAtOffset(uint32_t offset);

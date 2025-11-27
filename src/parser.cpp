@@ -5,7 +5,7 @@
 #include "utils.h"
 #include "query_ctx.cpp"
 #include "query_data.cpp"
-#include "index_key.cpp"
+#include "index_key.h"
 #include <cmath>
 
 class Parser {
