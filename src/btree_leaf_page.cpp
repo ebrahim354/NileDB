@@ -26,9 +26,9 @@ bool BTreeLeafPage::split_with_and_insert(BTreeLeafPage* new_page, IndexKey k, R
     return false;
 }
 
-inline IndexKey BTreeLeafPage::get_last_key_cpy() {
+inline IndexKey BTreeLeafPage::get_last_key_cpy(Arena* arena) {
     auto k = KeyAt(get_num_of_slots() - 1);
-    char* data = (char*)malloc(k.size_);
+    char* data = (char*)arena->alloc(k.size_);
     memcpy(data, k.data_, k.size_);
     return {
         .data_ = data,

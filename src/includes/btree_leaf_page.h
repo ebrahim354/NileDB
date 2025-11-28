@@ -18,7 +18,7 @@ class BTreeLeafPage : public BTreePage {
   void set_next_page_number(PageNum next_page_num);
 
   bool split_with_and_insert(BTreeLeafPage* new_page, IndexKey k, RecordID v);
-  inline IndexKey get_last_key_cpy();
+  inline IndexKey get_last_key_cpy(Arena* arena);
 
   bool IsFull(IndexKey k);
 

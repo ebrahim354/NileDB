@@ -208,12 +208,12 @@ int index_key_cmp(IndexKey lhs,IndexKey rhs) {
 }
 
 // user has ownership over the return value.
-IndexKey temp_index_key_from_values(std::vector<Value>& vals) {
+IndexKey temp_index_key_from_values(Arena* arena, std::vector<Value>& vals) {
     int buf_size = 128; // TODO: test small value.
     if(vals.size() >= buf_size || vals.size() > 255) assert(0 && "TOO MANY VALUES FOR AN INDEX KEY!");
     if(vals.size() < 1) return {};
 
-    char* buf = (char*)malloc(buf_size);
+    char* buf = (char*)arena->alloc(buf_size);
     char* bound = buf+buf_size;
 
     char* header_ptr = buf;
@@ -246,9 +246,9 @@ IndexKey temp_index_key_from_values(std::vector<Value>& vals) {
             int payload_offset = payload_ptr - buf;
             int header_offset  = header_ptr - buf;
 
-            char* new_buf = (char*)malloc(buf_size * 2);
+            char* new_buf = (char*)arena->alloc(buf_size * 2);
             memcpy(new_buf, buf, buf_size);
-            free(buf);
+            //free(buf);
             buf_size *= 2; 
             buf = new_buf;
 
@@ -267,8 +267,8 @@ IndexKey temp_index_key_from_values(std::vector<Value>& vals) {
 }
 
 // user has ownership over the return value.
-IndexKey null_index_key (uint8_t size) {
-    char* buf = (char*)malloc(size+1);
+IndexKey null_index_key (Arena* arena, uint8_t size) {
+    char* buf = (char*)arena->alloc(size+1);
     memset(buf, (char)SerialType::NIL, size+1);
     *buf = size;
     return {
@@ -282,10 +282,9 @@ bool is_desc_order(char* bitmap, int idx) {
     char* cur_byte = bitmap+(idx/8);  
     return *cur_byte & (1 << (idx%8));
 }
-// TODO: this leaks memory, should be fixed on the index side.
-char* create_sort_order_bitmap(std::vector<NumberedIndexField>& fields) { 
+char* create_sort_order_bitmap(Arena* arena, std::vector<NumberedIndexField>& fields) { 
     int size = (fields.size() / 8) + (fields.size() % 8);
-    char* bitmap = (char*) malloc(size);
+    char* bitmap = (char*) arena->alloc(size);
     for(int i = 0; i < fields.size(); ++i){
         if(fields[i].desc_) {
             char* cur_byte = bitmap+(i/8);  
@@ -295,27 +294,27 @@ char* create_sort_order_bitmap(std::vector<NumberedIndexField>& fields) {
     return bitmap;
 }
 
-IndexKey getIndexKeyFromTuple(std::vector<NumberedIndexField>& fields, std::vector<Value>& values) {
+IndexKey getIndexKeyFromTuple(Arena* arena, std::vector<NumberedIndexField>& fields, std::vector<Value>& values) {
     std::vector<Value> keys;
     for(int i = 0; i < fields.size(); ++i){
         if(fields[i].idx_ >= values.size()) 
             return {};
         keys.push_back(values[fields[i].idx_]);
     }
-    IndexKey res = temp_index_key_from_values(keys);
-    res.sort_order_ = create_sort_order_bitmap(fields);
+    IndexKey res = temp_index_key_from_values(arena, keys);
+    res.sort_order_ = create_sort_order_bitmap(arena, fields);
     return res;
 }
 
-IndexKey getIndexKeyFromTuple(std::vector<NumberedIndexField>& fields, Tuple tuple) {
+IndexKey getIndexKeyFromTuple(Arena* arena, std::vector<NumberedIndexField>& fields, Tuple tuple) {
     std::vector<Value> keys;
     for(int i = 0; i < fields.size(); ++i){
         if(fields[i].idx_ >= tuple.size()) 
             return {};
         keys.push_back(tuple.get_val_at(fields[i].idx_));
     }
-    IndexKey res = temp_index_key_from_values(keys);
-    res.sort_order_ = create_sort_order_bitmap(fields);
+    IndexKey res = temp_index_key_from_values(arena, keys);
+    res.sort_order_ = create_sort_order_bitmap(arena, fields);
     return res;
 }
 

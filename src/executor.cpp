@@ -598,8 +598,8 @@ void IndexScanExecutor::assign_iterators() {
                             else
                                 val = evaluate_expression(ctx_, left, output_);
                             std::vector<Value> key_vals = {val};
-                            IndexKey search_key = temp_index_key_from_values(key_vals);
-                            search_key.sort_order_ = create_sort_order_bitmap(index_header_.fields_numbers_);
+                            IndexKey search_key = temp_index_key_from_values(&ctx_->arena_, key_vals);
+                            search_key.sort_order_ = create_sort_order_bitmap(&ctx_->arena_, index_header_.fields_numbers_);
                             if(cat == EQUALITY){
                                 start_it_ = index_header_.index_->begin(search_key);
                                 end_it_ = index_header_.index_->begin(search_key);
@@ -764,13 +764,12 @@ Tuple InsertionExecutor::next() {
     }
     // loop over table indexes.
     for(int i = 0; i < indexes_.size(); ++i){
-        IndexKey k = getIndexKeyFromTuple(indexes_[i].fields_numbers_, output_);
+        IndexKey k = getIndexKeyFromTuple(&ctx_->arena_, indexes_[i].fields_numbers_, output_);
         if(k.size_ == 0) {
             error_status_ = 1;
             break;
         }
         bool success = indexes_[i].index_->Insert(ctx_, k, rid);
-        delete k.data_;
         //indexes_[i].index_->See();
         if(!success){
             std::cout << "Could Not insert into index\n";

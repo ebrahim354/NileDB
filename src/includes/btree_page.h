@@ -49,7 +49,7 @@ class BTreePage {
 
   char* get_key_ptr(int idx);
   uint16_t get_key_size(int idx);
-  IndexKey KeyAtCpy(int index);
+  IndexKey KeyAtCpy(Arena* arena, int index);
   IndexKey KeyAt(int index);
 
   void SetKeyAt(int index, IndexKey k);

@@ -250,7 +250,7 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key, const RecordID &valu
 
             inserted = cur->split_with_and_insert(new_page, current_key, current_value);
             assert(inserted == true);
-            IndexKey middle_key = cur->get_last_key_cpy(); // TODO: fix leak.
+            IndexKey middle_key = cur->get_last_key_cpy(&ctx->arena_); // TODO: fix leak.
             current_key = middle_key;
             current_internal_value = new_page_id;
 
@@ -360,7 +360,7 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key, const RecordID &valu
             }
             IndexKey middle_key = current_key;
             if (inserted_on_new != 0) {
-                middle_key = cur->KeyAtCpy(md);
+                middle_key = cur->KeyAtCpy(&ctx->arena_, md);
             }
             cur->set_num_of_slots(md);
             if (inserted_on_new == -1) {
@@ -872,7 +872,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                     auto *child = reinterpret_cast<BTreePage *>(child_page->data_);
                     child->SetParentPageId(cur_page_id);
 
-                    cur->insert_key_at_start(parent_key, prev->ValueAt(prev_size - 1, fid_));
+                    cur->insert_key_at_start(&ctx->arena_, parent_key, prev->ValueAt(prev_size - 1, fid_));
                     cur_size++;
                     parent->SetKeyAt(pos, prev->KeyAt(prev_size - 1));
                     prev->increase_size(-1);

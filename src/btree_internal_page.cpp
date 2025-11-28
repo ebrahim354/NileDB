@@ -162,7 +162,7 @@ void BTreeInternalPage::InsertKeyAtStart(IndexKey k, PageID start_val) {
   increase_size(1);
 } */
 
-void BTreeInternalPage::insert_key_at_start(IndexKey key, PageID start_val) {
+void BTreeInternalPage::insert_key_at_start(Arena* arena, IndexKey key, PageID start_val) {
   int sz = get_num_of_slots();
   int entry_sz = INTERNAL_SLOT_ENTRY_SIZE_;
   // move the slot array by 1 slot.
@@ -171,7 +171,7 @@ void BTreeInternalPage::insert_key_at_start(IndexKey key, PageID start_val) {
   increase_size(1);
   SetKeyAt(1, key);
   if(key.data_)
-    SetKeyAt(0, null_index_key(*(key.data_)));
+    SetKeyAt(0, null_index_key(arena, *(key.data_)));
   SetValAt(0, start_val);
 }
 

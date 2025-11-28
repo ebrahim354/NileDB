@@ -10,7 +10,7 @@ struct IndexKey;
 class BTreeInternalPage : public BTreePage {
  public:
   void Init(PageID page_id, PageID parent_id = INVALID_PAGE_ID);
-  void insert_key_at_start(IndexKey key, PageID);
+  void insert_key_at_start(Arena* arena, IndexKey key, PageID);
   void remove_from_start();
   void SetValAt(int index, const PageID &v);
   PageID NextPage(IndexKey key, FileID fid);

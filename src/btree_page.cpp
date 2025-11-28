@@ -75,11 +75,11 @@ uint16_t BTreePage::get_key_size(int idx) {
             (idx * (type == BTreePageType::INTERNAL_PAGE ? INTERNAL_SLOT_ENTRY_SIZE_ : LEAF_SLOT_ENTRY_SIZE_)));
 }
 
-IndexKey BTreePage::KeyAtCpy(int index) {
+IndexKey BTreePage::KeyAtCpy(Arena* arena, int index) {
     char* ptr = get_key_ptr(index);
     unsigned int sz = get_key_size(index);
     if(!ptr) return IndexKey();
-    char* k = (char*) malloc(sz);
+    char* k = (char*) arena->alloc(sz);
     memcpy(k, ptr, sz);
     return {
         .data_ = k,

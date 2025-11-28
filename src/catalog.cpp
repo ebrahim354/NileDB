@@ -284,11 +284,12 @@ bool Catalog::createIndex(QueryCTX* ctx, const std::string &table_name, const st
         std::vector<Value> vals;
         int err = table->translateToValues(r, vals);
         assert(err == 0 && "Could not traverse the table.");
-        IndexKey k = getIndexKeyFromTuple(indexes_[index_name].fields_numbers_, vals);
+        ArenaTemp tmp = ctx->arena_.start_temp_arena();
+        IndexKey k = getIndexKeyFromTuple(tmp.arena_, indexes_[index_name].fields_numbers_, vals);
         assert(k.size_ != 0);
         bool success = indexes_[index_name].index_->Insert(ctx, k, rid);
         assert(success);
-        delete k.data_;
+        ctx->arena_.clear_temp_arena(tmp);
     }
     table_it.destroy();
     return false;

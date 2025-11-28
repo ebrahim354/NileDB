@@ -32,11 +32,7 @@ void FreeSpaceMap::init(CacheManager* cm, PageID first_page_id) {
         cm_->unpinPage(page_id_ptr, false);
 }
 
-void FreeSpaceMap::destroy(){
-    if(array_){
-        free(array_);
-    }
-}
+void FreeSpaceMap::destroy(){}
 
 
 int FreeSpaceMap::addPage(uint8_t fraction){

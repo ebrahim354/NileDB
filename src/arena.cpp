@@ -105,7 +105,7 @@ void Arena::clear() {
 ArenaTemp Arena::start_temp_arena() {
     return { 
         .arena_ = this, 
-            .pos_   = alloc_pos_
+        .pos_   = alloc_pos_
     };
 }
 
