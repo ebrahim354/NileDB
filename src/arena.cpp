@@ -89,7 +89,7 @@ void* Arena::alloc(size_t size) {
 void Arena::dealloc(u64 size) {
     if(size > alloc_pos_)
         size = alloc_pos_;
-    alloc_pos_ = size;
+    alloc_pos_ -= size;
 }
 
 void Arena::dealloc_to(u64 pos) {

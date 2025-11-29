@@ -16,13 +16,12 @@ int Tuple::size(){
 }
 // the usual copy constructor makes a shallow copy that only lasts for the lifetime of a pull,
 // a pull is the time between two next() calls of the same executor.
-// this function makes a deep copy that can last for a custom lifetime based on the passed allocator,
-// TODO: use an allocator instead of malloc.
-Tuple Tuple::duplicate(){
+// this function makes a deep copy that can last for a custom lifetime based on the passed allocator.
+Tuple Tuple::duplicate(Arena* arena){
     if(!schema_) return *this;
     auto t = Tuple(schema_);
     for(int i = 0; i < values_.size(); ++i)
-        t.values_[i] = values_[i].get_copy();
+        t.values_[i] = values_[i].get_copy(arena);
     return t;
 }
 

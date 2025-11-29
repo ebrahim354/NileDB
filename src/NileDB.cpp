@@ -37,7 +37,10 @@ class NileDB {
             delete cache_manager_;
             delete disk_manager_;
         }
-        bool SQL(std::string query, QueryResult* result){
+        void flush(){
+            cache_manager_->flushAllPages();
+        }
+        bool SQL(QueryCTX& query_ctx, std::string query, Executor** execution_root){
             std::cout << "[INFO] runing the following query: " << query << std::endl;
             /*
             int diff = 'A' - 'a';
@@ -48,8 +51,7 @@ class NileDB {
                     query[i] += diff;
                 }
             }*/
-            bool res =  query_processor_->handleQuery(query, result);
-            cache_manager_->flushAllPages(); // TODO: delete this.
+            bool res =  query_processor_->handleQuery(query_ctx, query, execution_root);
             return res;
         }
         bool CMD(std::string command){

@@ -15,6 +15,7 @@ void QueryCTX::init(int query_string_size) {
     int avg_num_of_tokens = query_string_size / AVG_TOKEN_SIZE;
     tokens_.reserve(avg_num_of_tokens);
     arena_.init();
+    temp_arena_.init();
 }
 
 inline bool QueryCTX::matchTokenType(TokenType type){
@@ -60,15 +61,6 @@ void QueryCTX::clean() {
     for(int i = 0; i < table_handles_.size(); ++i){
         table_handles_[i]->destroy();
     }
-    /*
-    for(int i = 0; i < executors_call_stack_.size(); ++i)
-        delete executors_call_stack_[i];
-       for(int i = 0; i < operators_call_stack_.size(); ++i)
-       delete operators_call_stack_[i];
-       for(int i = 0; i < set_operations_.size(); ++i)
-       delete set_operations_[i];
-       for(int i = 0; i < queries_call_stack_.size(); ++i)
-       delete queries_call_stack_[i];*/
     arena_.destroy();
-    // TODO: clean specific pointers when dealing with set operations?
+    temp_arena_.destroy();
 }

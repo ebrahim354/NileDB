@@ -5,11 +5,12 @@
 
 
 int main() {
-    // ndb is heap allocated to allow multi-threading(TODO).    
     NileDB *ndb = new NileDB();
     bool prompt_is_running = true;
+    bool show_results = true;
     std::string outer_query = "";
     while(prompt_is_running){
+        ndb->flush(); // TODO: remove this.
         if(!outer_query.size())
             std::cout << "> ";
         std::string tmp = "";
@@ -23,39 +24,70 @@ int main() {
         tmp.pop_back();
         query += tmp;
         outer_query = "";
-        QueryResult result =  QueryResult();
+        Executor* result = nullptr; 
         if(query == "quit") break;
-        if(query[0] == '\\')
+        if(query[0] == '\\'){
+            if(query == "\\s") {// toggle show results on and off
+                show_results = !show_results;
+                continue;
+            }
             std::cout << (ndb->CMD(query) ? "SUCCESS" : "FAIL") << std::endl;
-        else{
+        } else{
             // linux only timers.
             struct timespec start, finish;
             double elapsed;
             clock_gettime(CLOCK_MONOTONIC, &start);
 
-            bool status = ndb->SQL(query, &result);
+            QueryCTX query_ctx;
+            query_ctx.init(query.size());
+            bool status = ndb->SQL(query_ctx, query, &result);
             if(!status){
                 std::cout << "FAIL" << std::endl;
+                query_ctx.clean();
                 continue;
             }
+            std::vector<std::vector<std::string>> full_result;
 
+            u64 row_cnt = 0;
+            while(result && !result->error_status_ && !result->finished_){
+                Tuple res = result->next();
+                if(res.size() == 0 || result->error_status_) break;
+                row_cnt++;
+                if(show_results){
+                    size_t sz = res.size();
+                    std::vector<std::string> cur_tuple;
+                    cur_tuple.resize(sz);
+                    for(int i = 0; i < sz; ++i) {
+                        cur_tuple[i] = res.get_val_at(i).toString();
+                    }
+                    full_result.push_back(cur_tuple);
+                }
+                query_ctx.temp_arena_.clear();
+            }
             // linux only timers.
             clock_gettime(CLOCK_MONOTONIC, &finish);
             elapsed = (finish.tv_nsec - start.tv_nsec);
             elapsed += (finish.tv_sec - start.tv_sec) * 1000000000.0;
             double elapsed_in_ms = elapsed / 1000000.0;
-            std::cout << "rows: " << result.size() << std::endl;
-            for(int i = 0; i < result.size(); i++){
-                for(int j = 0; j < result[i].size(); j++){
-                    std::cout << result[i][j].toString();
-                    if(j+1 != result[i].size()) std::cout << "|";
-                }
-                std::cout << std::endl;
+
+            if(result && result->error_status_) {
+                std::cout << "[ERROR] Query finished with an error!\n";
+                query_ctx.clean();
+                continue;
             }
+
+            for(int j = 0; j < full_result.size(); ++j) {
+                for(int i = 0; i < full_result[j].size(); ++i) {
+                    std::cout << " " << full_result[j][i] << " ";
+                    if(i+1 != full_result[j].size()) std::cout << "|";
+                }
+                std::cout << "\n";
+            }
+            std::cout << "rows: " << row_cnt << std::endl;
             std::cout << "SUCCESS\n";
             std::cout << "Time: " << elapsed_in_ms << " ms" << std::endl;
+            query_ctx.clean();
         }
-        result = QueryResult();
     }
     delete ndb;
     return 0;

@@ -47,10 +47,10 @@ class Value {
         Value operator-(Value rhs);
 
         void setValue(Type t, char* content);
-        Value get_copy(); // TODO: pass an allocator. 
+        Value get_copy(Arena* arena);
         Value(char* content, Type t, uint16_t size);
         Value(char* str, uint16_t size);
-        Value(const std::string& str);
+        Value(Arena* arena, const std::string& str);
         Value(bool val);
         Value(int val);
         Value(long long val);

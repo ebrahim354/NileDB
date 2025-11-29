@@ -15,8 +15,7 @@ struct Tuple {
     // the usual copy constructor makes a shallow copy that only lasts for the lifetime of a pull,
     // a pull is the time between two next() calls of the same executor.
     // this function makes a deep copy that can last for a custom lifetime based on the passed allocator,
-    // TODO: use an allocator instead of malloc.
-    Tuple duplicate();
+    Tuple duplicate(Arena* arena);
     std::string build_hash_key(std::vector<int>& fields);
     std::string stringify();
     void put_tuple_at_end(const Tuple* t);

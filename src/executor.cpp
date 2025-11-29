@@ -94,7 +94,7 @@ void NestedLoopJoinExecutor::init() {
     finished_ = left_child_->finished_;
     // output_.resize(left_child_->output_schema_->getColumns().size() + right_child_->output_schema_->getColumns().size()); 
     if(!finished_){
-        left_output_ = left_child_->next().duplicate();
+        left_output_ = left_child_->next().duplicate(&ctx_->arena_);
         if(left_output_.is_empty() && left_child_->finished_) finished_ = true;
     }
 }
@@ -111,7 +111,7 @@ Tuple NestedLoopJoinExecutor::next() {
                 output_.nullify(left_output_.size(), -1);
                 return output_;
             }
-            left_output_ = left_child_->next().duplicate();
+            left_output_ = left_child_->next().duplicate(&ctx_->arena_);
             left_output_visited_ = false;
             if(left_child_->finished_){
                 finished_ = true;
@@ -282,7 +282,7 @@ void HashJoinExecutor::init() {
         Tuple left_output = left_child_->next();
         //Tuple left_output = left_child_->next();
         if(left_output.is_empty()) continue;
-        left_output = left_output.duplicate();
+        left_output = left_output.duplicate(&ctx_->arena_);
         // build the hash key and assume non-unique keys.
         std::string key = left_output.build_hash_key(left_child_fields_);
         if(hashed_left_child_.count(key)) 
@@ -323,7 +323,7 @@ Tuple HashJoinExecutor::next() {
                 //return {};
                 break;
             }
-            right_output = right_output.duplicate();
+            right_output = right_output.duplicate(&ctx_->arena_);
             std::string key = right_output.build_hash_key(right_child_fields_);
             if(!hashed_left_child_.count(key) && (join_type_ == RIGHT_JOIN || join_type_ == FULL_JOIN)){
                 int start = output_.size()-right_output.size();
@@ -543,7 +543,7 @@ Tuple SeqScanExecutor::next() {
         finished_ = 1;
         return {};
     };
-    Record r = it_.getCurRecordCpy(&ctx_->arena_);
+    Record r = it_.getCurRecordCpy(&ctx_->temp_arena_);
     int err = table_->translateToTuple(r, output_, 0);
     if(err) {
         error_status_ = 1;
@@ -598,8 +598,9 @@ void IndexScanExecutor::assign_iterators() {
                             else
                                 val = evaluate_expression(ctx_, left, output_);
                             std::vector<Value> key_vals = {val};
-                            IndexKey search_key = temp_index_key_from_values(&ctx_->arena_, key_vals);
-                            search_key.sort_order_ = create_sort_order_bitmap(&ctx_->arena_, index_header_.fields_numbers_);
+                            IndexKey search_key = temp_index_key_from_values(&ctx_->temp_arena_, key_vals);
+                            search_key.sort_order_ = 
+                                create_sort_order_bitmap(&ctx_->temp_arena_, index_header_.fields_numbers_);
                             if(cat == EQUALITY){
                                 start_it_ = index_header_.index_->begin(search_key);
                                 end_it_ = index_header_.index_->begin(search_key);
@@ -654,7 +655,7 @@ Tuple IndexScanExecutor::next() {
         finished_ = 1;
         return {};
     };
-    Record r = start_it_.getCurRecordCpy(&ctx_->arena_);
+    Record r = start_it_.getCurRecordCpy(&ctx_->temp_arena_);
     if(r.isInvalidRecord()){
         std::cout << "Could not translate record\n";
         error_status_ = 1;
@@ -756,7 +757,7 @@ Tuple InsertionExecutor::next() {
     }
 
     RecordID rid = RecordID();
-    Record record = table_->translateToRecord(&ctx_->arena_, output_);
+    Record record = table_->translateToRecord(&ctx_->temp_arena_, output_);
     int err = table_->getTable()->insertRecord(&rid, record);
     if(err){
         error_status_ = 1;
@@ -764,7 +765,7 @@ Tuple InsertionExecutor::next() {
     }
     // loop over table indexes.
     for(int i = 0; i < indexes_.size(); ++i){
-        IndexKey k = getIndexKeyFromTuple(&ctx_->arena_, indexes_[i].fields_numbers_, output_);
+        IndexKey k = getIndexKeyFromTuple(&ctx_->temp_arena_, indexes_[i].fields_numbers_, output_);
         if(k.size_ == 0) {
             error_status_ = 1;
             break;

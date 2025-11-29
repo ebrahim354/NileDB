@@ -60,16 +60,16 @@ char* Value::get_ptr() {
     return (char*)&content_;
 }
 
-Value::Value(const std::string& str){ // TODO: either pass an allocator or remove this.
+Value::Value(Arena* arena, const std::string& str){
     size_ = str.size(); 
-    this->content_ = (uintptr_t) malloc(size_);
+    this->content_ = (uintptr_t) arena->alloc(size_);
     memcpy((char*)content_, str.c_str(), size_);
     type_ = VARCHAR;
 }
 
-Value Value::get_copy() { // TODO: pass an allocator. 
+Value Value::get_copy(Arena* arena) { 
     if(type_ != VARCHAR) return *this; // copy by value if we don't have a var length type.
-    char* tmp = (char*)malloc(size_);
+    char* tmp = (char*)arena->alloc(size_);
     memcpy(tmp, (char*)content_, size_);
     return Value(tmp, VARCHAR, size_);
 }

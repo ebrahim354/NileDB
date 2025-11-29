@@ -51,7 +51,8 @@ struct QueryCTX {
     std::vector<AlgebraOperation*> operators_call_stack_ = {};
     std::vector<Executor*> executors_call_stack_ = {};
     std::vector<Tuple> query_inputs = {};
-    Arena arena_;
+    Arena arena_;  // this arena lasts for the entire duration of the query.
+    Arena temp_arena_; // this arena gets cleaned up after every call to next().
     uint32_t cursor_ = 0;
     Error error_status_ = Error::NO_ERROR;
     bool direct_execution_ = 0;    // directly execeute without translating to algebra, Usually set to true for DDL.

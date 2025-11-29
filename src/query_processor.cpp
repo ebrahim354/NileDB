@@ -10,10 +10,10 @@ class QueryProcessor{
     {}
         ~QueryProcessor(){}
 
-        bool handleQuery(std::string& query, QueryResult* result){
+        bool handleQuery(QueryCTX& query_ctx, std::string& query, Executor** execution_root){
             std::cout << "[INFO] Parsing query" << std::endl;
-            QueryCTX query_ctx;
-            query_ctx.init(query.size());
+            //QueryCTX query_ctx;
+            //query_ctx.init(query.size());
             parser_->parse(query, query_ctx);
             if(!query_ctx.queries_call_stack_.size() || query_ctx.error_status_ != Error::NO_ERROR || query_ctx.cursor_ != query_ctx.tokens_.size()){
                 std::cout << (int)query_ctx.getCurrentToken().type_ << " " << query_ctx.cursor_ << " " << query_ctx.tokens_.size() << std::endl;
@@ -22,13 +22,13 @@ class QueryProcessor{
                 }
                 std::cout << "\n";
                 std::cout << "[ERROR] Invalid query data, status: " << (int) query_ctx.error_status_ << std::endl;
-                query_ctx.clean();
+                //query_ctx.clean();
                 return false;
             }
             if(query_ctx.direct_execution_){
                 // DDL commands that operate directly on the system catalog such as create table, create index etc...
                 bool status =  engine_->directExecute(query_ctx);
-                query_ctx.clean();
+                //query_ctx.clean();
                 return status;
             }
             std::cout << "[INFO] Creating logical plan" << std::endl;
@@ -36,14 +36,14 @@ class QueryProcessor{
             if(query_ctx.operators_call_stack_.size() < query_ctx.queries_call_stack_.size() || 
                     query_ctx.error_status_ != Error::NO_ERROR){
                 std::cout << "[ERROR] Invalid logical algebra plan" << std::endl;
-                query_ctx.clean();
+                //query_ctx.clean();
                 return false;
             }
 
-            bool status = engine_->executePlan(query_ctx, result);
+            bool status = engine_->executePlan(query_ctx, execution_root);
             if(!status)
                 std::cout << "[ERROR] Query can't be executed" << std::endl;
-            query_ctx.clean();
+            //query_ctx.clean();
             return status;
         }
 

@@ -177,8 +177,8 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const std::string &table_name, 
     // then insert it to the meta table.
     for(auto c : columns){
         std::vector<Value> vals;
-        vals.emplace_back(Value(table_name));
-        vals.emplace_back(Value(c.getName()));
+        vals.emplace_back(Value(&ctx->arena_, table_name));
+        vals.emplace_back(Value(&ctx->arena_, c.getName()));
         vals.emplace_back(Value(nfid));
         vals.emplace_back(Value((int)c.getType()));
         vals.emplace_back(Value(c.getOffset()));
@@ -248,8 +248,8 @@ bool Catalog::createIndex(QueryCTX* ctx, const std::string &table_name, const st
 
     // store index_meta_data.
     std::vector<Value> vals;
-    vals.emplace_back(Value(index_name));
-    vals.emplace_back(Value(table_name));
+    vals.emplace_back(Value(&ctx->arena_, index_name));
+    vals.emplace_back(Value(&ctx->arena_, table_name));
     vals.emplace_back(Value(nfid));
     vals.emplace_back(Value(-1)); // -1 means no root yet.
     Record record = index_meta_data->translateToRecord(&ctx->arena_, vals);
@@ -263,7 +263,7 @@ bool Catalog::createIndex(QueryCTX* ctx, const std::string &table_name, const st
     for(int i = 0; i < cols.size(); ++i){
         NumberedIndexField c = cols[i];
         std::vector<Value> vals;
-        vals.emplace_back(Value(index_name));
+        vals.emplace_back(Value(&ctx->arena_, index_name));
         vals.emplace_back(Value(c.idx_));         // c is the offset inside of the table.
         vals.emplace_back(Value(i));              // i is the offset inside of the index  key.
         vals.emplace_back(Value((bool)c.desc_));  // asc or desc ordering.
