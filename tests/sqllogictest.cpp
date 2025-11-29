@@ -283,6 +283,8 @@ static int checkValue(const char *zKey, const char *zHash){
 }
 
 int test_file(const char* file_name){
+  system("rm ./*.ndb");
+  memset(aHash, 0, sizeof(aHash));
   int verifyMode = 0;                  /* True if in -verify mode */
   int haltOnError = 1;                 /* Stop on first error if true */
   int enableTrace = 0;                 /* Trace SQL statements if true */
@@ -442,8 +444,29 @@ int test_file(const char* file_name){
           sttmnt += zScript[idx++];
       }
       // what is the diff between a statement and a query ? TODO
-      QueryResult result; 
-      rc = !ndb->SQL(sttmnt, &result);
+      //QueryResult result = QueryResult(); 
+      //rc = !ndb->SQL(sttmnt, &result);
+      Executor* result_exec = nullptr; 
+      QueryCTX query_ctx;
+      query_ctx.init(sttmnt.size());
+      rc = !ndb->SQL(query_ctx, sttmnt, &result_exec);
+      std::vector<std::vector<std::string>> result;
+      while(result_exec && !result_exec->error_status_ && !result_exec->finished_){
+          Tuple res = result_exec->next();
+          if(res.size() == 0 || result_exec->error_status_) break;
+          size_t sz = res.size();
+          std::vector<std::string> cur_tuple;
+          cur_tuple.resize(sz);
+          for(int i = 0; i < sz; ++i) {
+              cur_tuple[i] = res.get_val_at(i).toString();
+          }
+          result.push_back(cur_tuple);
+          query_ctx.temp_arena_.clear();
+      }
+      if(result_exec)
+        rc = result_exec->error_status_;
+      query_ctx.clean();
+
       int tmp = 1;
       if(result.size() > 0) tmp = result[0].size();
       nResult = result.size()*tmp;
@@ -451,22 +474,20 @@ int test_file(const char* file_name){
       int azidx = 0;
       for(int i = 0; i < result.size(); i++){
           for(int j = 0; j < result[i].size(); j++){
-            //std::cout << result[i][j].toString() << " ";
-
             int sz = 0;
-            char c = result[i][j].toString().c_str()[sz];
+            char c = result[i][j].c_str()[sz];
             while(c != 0) {
                 sz++;
-                c = result[i][j].toString().c_str()[sz];
+                c = result[i][j].c_str()[sz];
             }
             char* col = (char*) malloc(sz * sizeof(char));
-            memcpy(col, result[i][j].toString().c_str(), sz*sizeof(char));
+            memcpy(col, result[i][j].c_str(), sz*sizeof(char));
             col[sz] = '\0';
             azResult[azidx++] = col;
           }
-          //std::cout << std::endl;
       }
       nCmd++;
+      result.clear();
 
       /* Check to see if we are expecting success or failure */
       if( bExpectOk ){
@@ -533,9 +554,30 @@ int test_file(const char* file_name){
       while(zScript[idx] != 0){
           sttmnt += zScript[idx++];
       }
-      QueryResult result; 
-      rc = !ndb->SQL(sttmnt, &result);
+      //QueryResult result = QueryResult(); 
+      //rc = !ndb->SQL(sttmnt, &result);
       //std::sort(result.begin(), result.end(), &cmp);
+      Executor* result_exec = nullptr; 
+      QueryCTX query_ctx;
+      query_ctx.init(sttmnt.size());
+      rc = !ndb->SQL(query_ctx, sttmnt, &result_exec);
+      std::vector<std::vector<std::string>> result;
+      while(result_exec && !result_exec->error_status_ && !result_exec->finished_){
+          Tuple res = result_exec->next();
+          if(res.size() == 0 || result_exec->error_status_) break;
+          size_t sz = res.size();
+          std::vector<std::string> cur_tuple;
+          cur_tuple.resize(sz);
+          for(int i = 0; i < sz; ++i) {
+              cur_tuple[i] = res.get_val_at(i).toString();
+          }
+          result.push_back(cur_tuple);
+          query_ctx.temp_arena_.clear();
+      }
+      if(result_exec)
+        rc = result_exec->error_status_;
+      query_ctx.clean();
+
       int tmp = 1;
       if(result.size() > 0) tmp = result[0].size();
       nResult = result.size()*tmp;
@@ -543,22 +585,23 @@ int test_file(const char* file_name){
       int azidx = 0;
       for(int i = 0; i < result.size(); i++){
           for(int j = 0; j < result[i].size(); j++){
-            //std::cout << result[i][j].toString().c_str() << " ";
+            //std::cout << result[i][j].toString() << " " << result[i][j].toString().size() << "\n";
             int sz = 0;
-            char c = result[i][j].toString().c_str()[sz];
+            char c = result[i][j].c_str()[sz];
             while(c != 0) {
                 sz++;
-                c = result[i][j].toString().c_str()[sz];
+                c = result[i][j].c_str()[sz];
             }
 
             char* col = (char*) malloc(sz * sizeof(char));
-            memcpy(col, result[i][j].toString().c_str(), sz*sizeof(char));
+            memcpy(col, result[i][j].c_str(), sz*sizeof(char));
             col[sz] = '\0';
             azResult[azidx++] = col;
           }
           //std::cout << std::endl;
       }
       nCmd++;
+      result.clear();
       if( rc ){
         fprintf(stderr, "%s:%d: query failed\n",
                 zScriptFile, sScript.startLine);
@@ -707,7 +750,7 @@ int test_file(const char* file_name){
   /* Shutdown the database connection.
   */
   //rc = pEngine->xDisconnect(pConn);
-  delete ndb;
+  // delete ndb;
   /* Report the number of errors and quit.
   */
   if( verifyMode || nErr || nSkipped){
@@ -722,6 +765,7 @@ int test_file(const char* file_name){
 }
 
 int test_directory(const char* dir_name){
+    system("rm ./*.ndb");
     DIR *dp = opendir(dir_name);
     struct dirent *ep;
 
@@ -748,6 +792,7 @@ int test_directory(const char* dir_name){
 
 
 int main(int argc, char **argv){
+    system("rm ./*.ndb");
     if(argc <= 2){
         std::cout << "usage: test [file | directory]\n";
     }
