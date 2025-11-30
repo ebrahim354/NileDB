@@ -29,6 +29,11 @@ struct QueryData {
     int idx_ = -1;          // every query must have an id starting from 0 even the top level query.
     int parent_idx_ = -1;   // -1 means this query is the top level query.
 
+    std::vector<std::string> tables_      = {};
+    std::vector<std::string> table_names_ = {};
+    std::vector<JoinedTablesData> joined_tables_ = {};
+    ExpressionNode* where_ = nullptr;
+
     // a mark for subqueries to indicate if they are corelated to their parent or not.
     // the top level query is always not corelated and has a parent_query_idx of -1.
     // TODO: if the top level query is corelated that is an error, indicate that.
@@ -39,16 +44,12 @@ struct QueryData {
 struct SelectStatementData : QueryData {
     void init (int parent_idx);
 
-    std::vector<ExpressionNode*> fields_ = {};
     std::vector<std::string> field_names_ = {};
-    std::vector<std::string> table_names_ = {};
-    std::vector<std::string> tables_ = {};
-    std::vector<JoinedTablesData> joined_tables_ = {};
+    std::vector<ExpressionNode*> fields_ = {};
     std::vector<AggregateFuncNode*> aggregates_;  
     std::vector<int> order_by_list_ = {};
     std::vector<ASTNode*> group_by_ = {}; 
     bool has_star_ = false;
-    ExpressionNode* where_ = nullptr;
     ExpressionNode* having_ = nullptr;
     bool distinct_ = false;
 
@@ -102,17 +103,17 @@ struct InsertStatementData : QueryData {
 struct DeleteStatementData : QueryData {
     void init(int parent_idx);
 
-    std::string table_name_ = {};
-    ExpressionNode* where_ = nullptr;
+    // the first table is always 
+    // the table to be deleted from.
 };
 
 struct UpdateStatementData : QueryData {
     void init(int parent_idx);
 
-    std::string table_name_ = {};
-    std::string  field_ = {}; 
-    ExpressionNode* value_ = nullptr;
-    ExpressionNode* where_ = nullptr;
+    // the first table is the always 
+    // the table to be updated.
+    std::vector<std::string> fields_ = {}; 
+    std::vector<ExpressionNode*> values_ = {};
 };
 
 JoinType token_type_to_join_type (TokenType t);

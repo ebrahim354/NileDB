@@ -77,6 +77,7 @@ enum class TokenType {
     DISTINCT,
     INSERT,
     FROM,
+    USING,
     WHERE,
     BETWEEN,
     AND,

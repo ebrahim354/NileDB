@@ -643,6 +643,7 @@ void IndexScanExecutor::init() {
     error_status_ = 0;
     finished_ = 0;
     //output_.resize(output_schema_->numOfCols());
+    if(ctx_->table_handles_.size() == 0) ctx_->index_first_ = true;
 
     start_it_.clear();
     end_it_.clear();
@@ -670,7 +671,212 @@ Tuple IndexScanExecutor::next() {
     return output_;
 }
 
-void InsertionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table, 
+        /*
+        bool delete_handler(ASTNode* statement_root){
+            DeleteStatementNode* delete_statement = reinterpret_cast<DeleteStatementNode*>(statement_root);
+
+            auto table_ptr = delete_statement->table_; 
+            // did not find any tables.
+            if(table_ptr == nullptr) return false;
+            std::string table_name = table_ptr->token_.val_;
+            TableSchema* schema = catalog_->getTableSchema(table_name);
+
+            TableIterator* it = schema->getTable()->begin();
+            while(it->advance()){
+                RecordID rid = it->getCurRecordID();
+                schema->getTable()->deleteRecord(rid);
+            }
+            // handle filters later.
+            
+            return true;
+        }
+
+        bool update_handler(ASTNode* statement_root){
+            UpdateStatementNode* update_statement = reinterpret_cast<UpdateStatementNode*>(statement_root);
+
+            std::string table_name = update_statement->table_->token_.val_;
+            TableSchema* schema = catalog_->getTableSchema(table_name);
+            // did not find any tables with that name.
+            if(schema == nullptr) return false;
+            auto field_ptr = update_statement->field_;
+            std::string field_name = field_ptr->token_.val_;
+            auto val_ptr = update_statement->expression_;
+            std::string val_str = val_ptr->token_.val_;
+            // check valid column.
+            if(!schema->isValidCol(field_name)) 
+                return false;
+            // we consider int and string types for now.
+            Type val_type = INVALID;
+            if(val_ptr->category_ == STRING_CONSTANT) val_type = VARCHAR;
+            else if(val_ptr->category_ == INTEGER_CONSTANT) val_type = INT;
+            // invalid or not supported type;
+            if( val_type == INVALID ) return false;
+            Value val;
+            if(val_type == INT) val = Value(stoi(val_str));
+            else if(val_type == VARCHAR) val = Value(val);
+
+            if(!schema->checkValidValue(field_name, val)) return false;
+
+
+            TableIterator* it = schema->getTable()->begin();
+            while(it->advance()){
+                RecordID rid = it->getCurRecordID();
+                // rid is not used for now.
+                Record cpy = it->getCurRecordCpy();
+                std::vector<Value> values;
+                int err = schema->translateToValues(cpy, values);
+                int idx = schema->getColIdx(field_name, val);
+                if(idx < 0) return false;
+                values[idx] = val;
+                Record* new_rec = schema->translateToRecord(values);
+
+                err = schema->getTable()->updateRecord(&rid, *new_rec);
+                if(err) return false;
+            }
+            return true;
+            // handle filters later.
+        }
+        */
+
+void DeletionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child, TableSchema* table,
+        std::vector<IndexHeader> indexes) {
+    assert(plan_node != nullptr && plan_node->type_ == DELETION);
+    type_ = DELETION_EXECUTOR;
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    assert(child != nullptr);
+    child_executor_ = child;
+    output_schema_ = table;
+    query_idx_ = plan_node->query_idx_;
+    assert(query_idx_ < ctx->queries_call_stack_.size());
+    parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
+
+    table_ = table;
+    indexes_ = indexes;
+
+    output_ = Tuple(output_schema_);
+}
+
+void DeletionExecutor::init() {
+    error_status_ = 0;
+    finished_ = 0;
+    if(!table_){
+        error_status_ = 1;
+        return;
+    }
+
+    child_executor_->init();
+    if(child_executor_->error_status_) {
+        error_status_ = 1;
+        return;
+    }
+}
+
+Tuple DeletionExecutor::next() {
+    if(error_status_ || finished_) return {};
+    Tuple values = child_executor_->next();
+    if(child_executor_->finished_) {
+        finished_ = 1;
+        return {};
+    }
+    if(child_executor_->error_status_) {
+        error_status_ = 1;
+        return {};
+    }
+
+
+    RecordID rid = RecordID();
+    Tuple t(output_schema_);
+    int err = 0;
+    if(ctx_->index_first_) {
+        rid = ctx_->index_handles_[0]->getCurRecordID();
+        Record r = ctx_->index_handles_[0]->getCurRecordCpy(&ctx_->temp_arena_);
+        assert(rid.page_id_ != INVALID_PAGE_ID);
+        err = table_->translateToTuple(r, t, 0);
+    } else {
+        rid  = ctx_->table_handles_[0]->getCurRecordID();
+        Record r = ctx_->table_handles_[0]->getCurRecordCpy(&ctx_->temp_arena_);
+        assert(rid.page_id_ != INVALID_PAGE_ID);
+        err = table_->translateToTuple(r, t, 0);
+    }
+    assert(err == 0);
+    err = table_->getTable()->deleteRecord(rid);
+    assert(err == 0);
+    if(err){
+        error_status_ = 1;
+        return {};
+    }
+    /*
+    // loop over table indexes.
+    for(int i = 0; i < indexes_.size(); ++i){
+        IndexKey k = getIndexKeyFromTuple(&ctx_->temp_arena_, indexes_[i].fields_numbers_, t);
+        assert(k.size_ != 0);
+        if(k.size_ == 0) {
+            error_status_ = 1;
+            break;
+        }
+        indexes_[i].index_->Remove(ctx_, k);
+        //indexes_[i].index_->See();
+    }*/
+    if(err || error_status_) {
+        error_status_ = 1;
+        return {};
+    }
+    if(!child_executor_ || child_executor_->finished_)
+        finished_ = 1;
+    return output_;
+}
+
+void UpdateExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child, TableSchema* table,
+        std::vector<IndexHeader> indexes) {
+    assert(plan_node != nullptr && plan_node->type_ == DELETION);
+    type_ = DELETION_EXECUTOR;
+    ctx_ = ctx; 
+    plan_node_ = plan_node;
+    assert(child != nullptr);
+    child_executor_ = child;
+    output_schema_ = table;
+    query_idx_ = plan_node->query_idx_;
+    assert(query_idx_ < ctx->queries_call_stack_.size());
+    parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
+
+    table_ = table;
+    indexes_ = indexes;
+
+    output_ = Tuple(output_schema_);
+}
+
+void UpdateExecutor::init() {
+    error_status_ = 0;
+    finished_ = 0;
+    if(!table_){
+        error_status_ = 1;
+        return;
+    }
+
+    child_executor_->init();
+    if(child_executor_->error_status_) {
+        error_status_ = 1;
+        return;
+    }
+}
+
+Tuple UpdateExecutor::next() {
+    if(error_status_ || finished_) return {};
+    Tuple values = child_executor_->next();
+    if(child_executor_->finished_) {
+        finished_ = 1;
+        return {};
+    }
+    if(child_executor_->error_status_) {
+        error_status_ = 1;
+        return {};
+    }
+    return values;
+}
+
+
+void InsertionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table,
         std::vector<IndexHeader> indexes, int select_idx) {
     assert(plan_node != nullptr && plan_node->type_ == INSERTION);
     type_ = INSERTION_EXECUTOR;
@@ -1246,8 +1452,10 @@ void FilterExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Execu
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
     
+    /*
     fields_      = ((FilterOperation*)plan_node_)->fields_;
     field_names_ = ((FilterOperation*)plan_node_)->field_names_;
+    */
     filter_      = ((FilterOperation*)plan_node_)->filter_;
 
     output_ = Tuple(output_schema_);

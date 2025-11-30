@@ -55,6 +55,8 @@ class Parser {
         void set_operation(QueryCTX& ctx, int parent_idx);
         void selectStatement(QueryCTX& ctx, int parent_idx);
         void insertStatement(QueryCTX& ctx, int parent_idx);
+        void deleteStatement(QueryCTX& ctx, int parent_idx);
+        void updateStatement(QueryCTX& ctx, int parent_idx);
 
         // DDL
         void createTableStatement(QueryCTX& ctx, int parent_idx);
@@ -121,6 +123,12 @@ void Parser::parse(std::string& query, QueryCTX& ctx){
             break;
         case TokenType::INSERT:
             insertStatement(ctx,-1);
+            break;
+        case TokenType::DELETE:
+            deleteStatement(ctx, -1);
+            break;
+        case TokenType::UPDATE:
+            updateStatement(ctx, -1);
             break;
         case TokenType::CREATE:
             {
@@ -232,7 +240,7 @@ void Parser::selectList(QueryCTX& ctx, int query_idx){
 
 void Parser::table_with_rename(QueryCTX& ctx, int query_idx) {
     if((bool)ctx.error_status_) return; 
-    auto query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[query_idx]);
+    QueryData* query = ctx.queries_call_stack_[query_idx];
     if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
         return;
     }
@@ -265,7 +273,7 @@ void Parser::table_with_rename(QueryCTX& ctx, int query_idx) {
 
 void Parser::inner_join(QueryCTX& ctx, int query_idx) {
     if((bool)ctx.error_status_) return; 
-    auto query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[query_idx]);
+    auto query = ctx.queries_call_stack_[query_idx];
     if(ctx.matchTokenType(TokenType::INNER)) ++ctx; 
     // 'JOIN ... ON ...' syntax.
     // TODO: refactor to a different function.
@@ -292,7 +300,7 @@ void Parser::inner_join(QueryCTX& ctx, int query_idx) {
 
 void Parser::outer_join(QueryCTX& ctx, int query_idx) {
     if((bool)ctx.error_status_) return; 
-    auto query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[query_idx]);
+    auto query = ctx.queries_call_stack_[query_idx];
     JoinedTablesData t = {};
     t.type_ = token_type_to_join_type(ctx.getCurrentToken().type_);
     ++ctx; // skip join type: full, left, right.
@@ -321,7 +329,7 @@ void Parser::outer_join(QueryCTX& ctx, int query_idx) {
 
 void Parser::tableList(QueryCTX& ctx, int query_idx){
     if((bool)ctx.error_status_) return; 
-    auto query = reinterpret_cast<SelectStatementData*>(ctx.queries_call_stack_[query_idx]);
+    auto query = ctx.queries_call_stack_[query_idx];
     while(1){
         if(ctx.matchTokenType(TokenType::LP)){
             ++ctx;
@@ -864,7 +872,6 @@ ASTNode* Parser::factor(QueryCTX& ctx, ExpressionNode* expression_ctx){
     ASTNode* cur = unary(ctx, expression_ctx);
     if(!cur) return nullptr;
     if(ctx.matchAnyTokenType({TokenType::STAR, TokenType::SLASH})) { 
-        //FactorNode* f = new FactorNode(reinterpret_cast<UnaryNode*>(cur));
         FactorNode* f = nullptr;
         ALLOCATE_INIT(ctx.arena_, f, FactorNode, (UnaryNode*)cur);
         ASTNode* next = nullptr;
@@ -884,7 +891,6 @@ ASTNode* Parser::term(QueryCTX& ctx,ExpressionNode* expression_ctx){
     ASTNode* cur = factor(ctx, expression_ctx);
     if(!cur) return nullptr;
     if(ctx.matchAnyTokenType({TokenType::PLUS, TokenType::MINUS})) { 
-        //TermNode* t = new TermNode(reinterpret_cast<FactorNode*>(cur));
         TermNode* t = nullptr;
         ALLOCATE_INIT(ctx.arena_, t, TermNode, (FactorNode*)cur);
         t->token_ = ctx.getCurrentToken(); ++ctx; 
@@ -903,7 +909,6 @@ ASTNode* Parser::comparison(QueryCTX& ctx, ExpressionNode* expression_ctx){
     ASTNode* cur = term(ctx, expression_ctx);
     if(!cur) return nullptr;
     if(ctx.matchAnyTokenType({TokenType::LT, TokenType::LTE, TokenType::GT, TokenType::GTE })) { 
-        //ComparisonNode* c = new ComparisonNode(reinterpret_cast<TermNode*>(cur));
         ComparisonNode* c = nullptr; 
         ALLOCATE_INIT(ctx.arena_, c, ComparisonNode, (TermNode*)cur);
         c->token_ = ctx.getCurrentToken(); ++ctx; 
@@ -922,7 +927,6 @@ ASTNode* Parser::equality(QueryCTX& ctx, ExpressionNode* expression_ctx){
     ASTNode* cur = comparison(ctx, expression_ctx);
     if(!cur) return nullptr;
     if(ctx.matchAnyTokenType({TokenType::EQ, TokenType::NEQ, TokenType::IS})) { 
-        //EqualityNode* eq = new EqualityNode(reinterpret_cast<ComparisonNode*>(cur));
         EqualityNode* eq = nullptr; 
         ALLOCATE_INIT(ctx.arena_, eq, EqualityNode, (ComparisonNode*)cur);
         eq->token_ = ctx.getCurrentToken(); ++ctx; 
@@ -1027,7 +1031,6 @@ ASTNode* Parser::logic_and(QueryCTX& ctx,ExpressionNode* expression_ctx){
     ASTNode* cur = logic_not(ctx, expression_ctx);
     if(!cur) return nullptr;
     if(ctx.matchTokenType(TokenType::AND)) { 
-        //AndNode* land = new AndNode(reinterpret_cast<NotNode*>(cur));
         AndNode* land = nullptr;
         ALLOCATE_INIT(ctx.arena_, land, AndNode, (NotNode*)cur);
         land->token_ = ctx.getCurrentToken(); ++ctx;
@@ -1046,7 +1049,6 @@ ASTNode* Parser::logic_or(QueryCTX& ctx, ExpressionNode* expression_ctx){
     ASTNode* cur = logic_and(ctx, expression_ctx);
     if(!cur) return nullptr;
     if(ctx.matchTokenType(TokenType::OR)) { 
-        //OrNode* lor = new OrNode(reinterpret_cast<AndNode*>(cur));
         OrNode* lor = nullptr; 
         ALLOCATE_INIT(ctx.arena_, lor, OrNode, (AndNode*)cur);
 
@@ -1386,4 +1388,108 @@ void Parser::insertStatement(QueryCTX& ctx, int parent_idx){
     return;
   }
 
+}
+
+void Parser::deleteStatement(QueryCTX& ctx, int parent_idx){
+    if((bool)ctx.error_status_) return; 
+    if(!ctx.matchMultiTokenType({TokenType::DELETE , TokenType::FROM})){
+        ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error.
+        return;
+    }
+    ctx += 2;
+    DeleteStatementData* statement = nullptr; 
+    ALLOCATE_INIT(ctx.arena_, statement,
+            DeleteStatementData,
+            parent_idx);
+    statement->idx_ = ctx.queries_call_stack_.size();
+    ctx.queries_call_stack_.push_back(statement);
+
+    table_with_rename(ctx, statement->idx_);
+
+    // optional using
+    if(ctx.matchTokenType(TokenType::USING)) {
+        ++ctx;
+        tableList(ctx, statement->idx_);
+        if(!statement->tables_.size() || statement->table_names_.size() != statement->tables_.size()){
+            ctx.error_status_ = Error::EXPECTED_TABLE_LIST;
+            return;
+        }
+    }
+
+    // optional filter
+    if(ctx.matchTokenType(TokenType::WHERE)) {
+        ++ctx;
+        statement->where_ = expression(ctx, statement->idx_, 0);
+        if(!statement->where_) {
+            ctx.error_status_ = Error::EXPECTED_EXPRESSION_IN_WHERE_CLAUSE;
+            return;
+        }
+    }
+}
+
+
+void Parser::updateStatement(QueryCTX& ctx, int parent_idx){
+    if((bool)ctx.error_status_) return; 
+    if(!ctx.matchTokenType(TokenType::UPDATE)){
+        ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error.
+        return;
+    }
+    ++ctx;
+
+    UpdateStatementData* statement = nullptr; 
+    ALLOCATE_INIT(ctx.arena_, statement,
+            UpdateStatementData,
+            parent_idx);
+    statement->idx_ = ctx.queries_call_stack_.size();
+    ctx.queries_call_stack_.push_back(statement);
+
+    table_with_rename(ctx, statement->idx_);
+
+    if(!ctx.matchTokenType(TokenType::SET)){
+        ctx.error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error.
+        return;
+    }
+    ++ctx;
+
+    while(true) {
+        if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
+            ctx.error_status_ = Error::EXPECTED_IDENTIFIER; 
+            return;
+        }
+        statement->fields_.push_back(ctx.getCurrentToken().val_); ++ctx;
+
+        if(!ctx.matchTokenType(TokenType::EQ)){
+            ctx.error_status_ = Error::EXPECTED_IDENTIFIER; // TODO: better error.
+            return;
+        }
+        ++ctx;
+        auto expr = expression(ctx, statement->idx_, 0);
+        if(!expr) {
+            ctx.error_status_ = Error::EXPECTED_VALUES; // TODO: better error.
+            return;
+        }
+        statement->values_.push_back(expr);
+        if(!ctx.matchTokenType(TokenType::COMMA))
+            break;
+        ++ctx; // skip ','
+    }
+
+    // optional from
+    if(ctx.matchTokenType(TokenType::FROM)) {
+        ++ctx;
+        tableList(ctx, statement->idx_);
+        if(!statement->tables_.size() || statement->table_names_.size() != statement->tables_.size()){
+            ctx.error_status_ = Error::EXPECTED_TABLE_LIST;
+            return;
+        }
+    }
+    // optional filter
+    if(ctx.matchTokenType(TokenType::WHERE)) {
+        ++ctx;
+        statement->where_ = expression(ctx, statement->idx_, 0);
+        if(!statement->where_) {
+            ctx.error_status_ = Error::EXPECTED_EXPRESSION_IN_WHERE_CLAUSE;
+            return;
+        }
+    }
 }

@@ -27,6 +27,7 @@ Tokenizer::Tokenizer() {
     keywords_.insert({"HAVING"  , TokenType::HAVING  });
     keywords_.insert({"INSERT"  , TokenType::INSERT  });
     keywords_.insert({"FROM"    , TokenType::FROM    });
+    keywords_.insert({"USING"   , TokenType::USING   });
     keywords_.insert({"WHERE"   , TokenType::WHERE   });
     keywords_.insert({"BETWEEN" , TokenType::BETWEEN });
     keywords_.insert({"NOT"     , TokenType::NOT     });

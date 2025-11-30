@@ -126,18 +126,45 @@ void InsertionOperation::print(int prefix_space_cnt) {
         std::cout << " ";
     std::cout << "insertion operation\n"; 
 }
+// deletion operation
+void DeletionOperation::init(AlgebraOperation* child, int query_idx) {
+    query_idx_ = query_idx;
+    type_ = DELETION;
+    child_ = child;
+}
+
+void DeletionOperation::print(int prefix_space_cnt) {
+    for(int i = 0; i < prefix_space_cnt; ++i)
+        std::cout << " ";
+    std::cout << "deletion operation\n"; 
+}
+// update operation
+void UpdateOperation::init(AlgebraOperation* child, int query_idx) {
+    query_idx_ = query_idx;
+    type_ = UPDATE;
+    child_ = child;
+}
+
+void UpdateOperation::print(int prefix_space_cnt) {
+    for(int i = 0; i < prefix_space_cnt; ++i)
+        std::cout << " ";
+    std::cout << "update operation\n"; 
+}
 
 // filter operation
-void FilterOperation::init(int query_idx, AlgebraOperation* child, ExpressionNode* filter, 
-        std::vector<ExpressionNode*>& fields, 
-        std::vector<std::string>& field_names) 
+void FilterOperation::init(int query_idx, AlgebraOperation* child, ExpressionNode* filter)
+    /*
+        ,std::vector<ExpressionNode*>& fields, 
+        std::vector<std::string>& field_names) */
 {
     query_idx_ = query_idx;
     type_ = FILTER;
     child_ = child;
     filter_ = filter;
+    /*
     fields_ = fields;
     field_names_ = field_names;
+    */
 }
 
 void FilterOperation::print(int prefix_space_cnt) {

@@ -16,6 +16,8 @@ enum AlgebraOperationType {
     LIMIT,
     RENAME,
     INSERTION,
+    DELETION,
+    UPDATE,
 
     // two table operations.
     PRODUCT,
@@ -112,17 +114,36 @@ struct JoinOperation: AlgebraOperation {
 struct InsertionOperation: AlgebraOperation {
     void init(int query_idx);
     void print(int prefix_space_cnt);
+
+    AlgebraOperation* child_ = nullptr;
+};
+
+struct DeletionOperation: AlgebraOperation {
+    void init(AlgebraOperation* child_,int query_idx);
+    void print(int prefix_space_cnt);
+
+    AlgebraOperation* child_ = nullptr;
+};
+
+struct UpdateOperation: AlgebraOperation {
+    void init(AlgebraOperation*, int query_idx);
+    void print(int prefix_space_cnt);
+
+    AlgebraOperation* child_ = nullptr;
 };
 
 struct FilterOperation: AlgebraOperation {
-    void init(int query_idx, AlgebraOperation* child, ExpressionNode* filter, 
-            std::vector<ExpressionNode*>& fields, 
-            std::vector<std::string>& field_names);
+    void init(int query_idx, AlgebraOperation* child, ExpressionNode* filter);
+            /*
+            ,std::vector<ExpressionNode*>& fields, 
+            std::vector<std::string>& field_names);*/
     void print(int prefix_space_cnt);
 
     ExpressionNode* filter_;
+    /*
     std::vector<ExpressionNode*> fields_;
     std::vector<std::string> field_names_;
+    */
     AlgebraOperation* child_;
 };
 

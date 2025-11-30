@@ -7,10 +7,16 @@
 
 struct QueryCTX;
 struct InsertStatementData;
+struct DeleteStatementData;
+struct UpdateStatementData;
 enum ExecutorType {
     SEQUENTIAL_SCAN_EXECUTOR = 0,
     INDEX_SCAN_EXECUTOR,
+
     INSERTION_EXECUTOR,
+    DELETION_EXECUTOR,
+    UPDATE_EXECUTOR,
+
     FILTER_EXECUTOR,
     AGGREGATION_EXECUTOR,
     PROJECTION_EXECUTOR,
@@ -182,6 +188,32 @@ struct InsertionExecutor : public Executor {
         TableSchema* table_ = nullptr;
         std::vector<IndexHeader> indexes_;
         InsertStatementData* statement = nullptr;
+        int select_idx_ = -1;
+};
+
+struct DeletionExecutor : public Executor {
+
+        void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child, TableSchema* table,
+        std::vector<IndexHeader> indexes);
+        void init();
+        Tuple next();
+
+        TableSchema* table_ = nullptr;
+        std::vector<IndexHeader> indexes_;
+        DeleteStatementData* statement = nullptr;
+        int select_idx_ = -1;
+};
+
+struct UpdateExecutor : public Executor {
+
+        void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child, TableSchema* table,
+        std::vector<IndexHeader> indexes);
+        void init();
+        Tuple next();
+
+        TableSchema* table_ = nullptr;
+        std::vector<IndexHeader> indexes_;
+        UpdateStatementData* statement = nullptr;
         int select_idx_ = -1;
 };
 
