@@ -544,7 +544,8 @@ Tuple SeqScanExecutor::next() {
         return {};
     };
     Record r = it_.getCurRecordCpy(&ctx_->temp_arena_);
-    int err = table_->translateToTuple(r, output_, 0);
+    RecordID rid = it_.getCurRecordID();
+    int err = table_->translateToTuple(r, output_, rid);
     if(err) {
         error_status_ = 1;
         return {};
@@ -635,15 +636,13 @@ void IndexScanExecutor::assign_iterators() {
         default:
                         assert(0 && "NOT SUPPORTED INDEX SCAN CONDITION!");
     }
-    ctx_->index_handles_.push_back(&end_it_);
     ctx_->index_handles_.push_back(&start_it_);
+    ctx_->index_handles_.push_back(&end_it_);
 }
 
 void IndexScanExecutor::init() {
     error_status_ = 0;
     finished_ = 0;
-    //output_.resize(output_schema_->numOfCols());
-    if(ctx_->table_handles_.size() == 0) ctx_->index_first_ = true;
 
     start_it_.clear();
     end_it_.clear();
@@ -662,7 +661,8 @@ Tuple IndexScanExecutor::next() {
         error_status_ = 1;
         return {};
     }
-    int err = table_->translateToTuple(r, output_, 0);
+    RecordID rid = start_it_.getCurRecordID();
+    int err = table_->translateToTuple(r, output_, rid);
     if(err) {
         error_status_ = 1;
         return {};
@@ -754,6 +754,7 @@ void DeletionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Exe
     table_ = table;
     indexes_ = indexes;
 
+    ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema, "del_tmp_schema", nullptr, {Column("Affected", INT, 0)}, true);
     output_ = Tuple(output_schema_);
 }
 
@@ -772,65 +773,58 @@ void DeletionExecutor::init() {
     }
 }
 
+
 Tuple DeletionExecutor::next() {
     if(error_status_ || finished_) return {};
-    Tuple values = child_executor_->next();
-    if(child_executor_->finished_) {
-        finished_ = 1;
-        return {};
-    }
-    if(child_executor_->error_status_) {
-        error_status_ = 1;
-        return {};
-    }
-
-
-    RecordID rid = RecordID();
-    Tuple t(output_schema_);
-    int err = 0;
-    if(ctx_->index_first_) {
-        rid = ctx_->index_handles_[0]->getCurRecordID();
-        Record r = ctx_->index_handles_[0]->getCurRecordCpy(&ctx_->temp_arena_);
-        assert(rid.page_id_ != INVALID_PAGE_ID);
-        err = table_->translateToTuple(r, t, 0);
-    } else {
-        rid  = ctx_->table_handles_[0]->getCurRecordID();
-        Record r = ctx_->table_handles_[0]->getCurRecordCpy(&ctx_->temp_arena_);
-        assert(rid.page_id_ != INVALID_PAGE_ID);
-        err = table_->translateToTuple(r, t, 0);
-    }
-    assert(err == 0);
-    err = table_->getTable()->deleteRecord(rid);
-    assert(err == 0);
-    if(err){
-        error_status_ = 1;
-        return {};
-    }
-    /*
-    // loop over table indexes.
-    for(int i = 0; i < indexes_.size(); ++i){
-        IndexKey k = getIndexKeyFromTuple(&ctx_->temp_arena_, indexes_[i].fields_numbers_, t);
-        assert(k.size_ != 0);
-        if(k.size_ == 0) {
+    while(true){
+        Tuple values = child_executor_->next();
+        if(child_executor_->finished_) {
+            finished_ = 1;
+            break;
+        }
+        if(child_executor_->error_status_) {
             error_status_ = 1;
             break;
         }
-        indexes_[i].index_->Remove(ctx_, k);
-        //indexes_[i].index_->See();
-    }*/
-    if(err || error_status_) {
-        error_status_ = 1;
-        return {};
+        RecordID rid = values.left_most_rid_;
+        assert(rid.page_id_ != INVALID_PAGE_ID);
+        u64 rid_hash = rid.get_hash(); 
+        if(affected_records.count(rid_hash)) continue;
+        affected_records.insert(rid_hash);
+        Tuple t(child_executor_->output_schema_);
+        t.put_tuple_at_start(&values);
+        int err = table_->getTable()->deleteRecord(rid);
+        assert(err == 0);
+        if(err){
+            error_status_ = 1;
+            break;
+        }
+        // loop over table indexes.
+        for(int i = 0; i < indexes_.size(); ++i){
+            IndexKey k = getIndexKeyFromTuple(&ctx_->temp_arena_, indexes_[i].fields_numbers_, t);
+            assert(k.size_ != 0);
+            if(k.size_ == 0) {
+                error_status_ = 1;
+                break;
+            }
+            indexes_[i].index_->Remove(ctx_, k);
+        }
+        if(err || error_status_) {
+            error_status_ = 1;
+            break;
+        }
+        if(!child_executor_ || child_executor_->finished_)
+            finished_ = 1;
+        ctx_->temp_arena_.clear();
     }
-    if(!child_executor_ || child_executor_->finished_)
-        finished_ = 1;
+    output_.put_val_at(0, Value((int)affected_records.size()));
     return output_;
 }
 
 void UpdateExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child, TableSchema* table,
         std::vector<IndexHeader> indexes) {
-    assert(plan_node != nullptr && plan_node->type_ == DELETION);
-    type_ = DELETION_EXECUTOR;
+    assert(plan_node != nullptr && plan_node->type_ == UPDATE);
+    type_ = UPDATE_EXECUTOR;
     ctx_ = ctx; 
     plan_node_ = plan_node;
     assert(child != nullptr);
@@ -843,6 +837,7 @@ void UpdateExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Execu
     table_ = table;
     indexes_ = indexes;
 
+    ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema, "update_tmp_schema", nullptr, {Column("Affected", INT, 0)}, true);
     output_ = Tuple(output_schema_);
 }
 
@@ -852,6 +847,18 @@ void UpdateExecutor::init() {
     if(!table_){
         error_status_ = 1;
         return;
+    }
+    
+    statement_ = reinterpret_cast<UpdateStatementData*>(ctx_->queries_call_stack_[query_idx_]);
+
+    assert(statement_->values_.size() == statement_->fields_.size());
+
+    for(auto& field_name : statement_->fields_){
+        int idx = table_->colExist(field_name);
+        if(!table_->isValidCol(field_name) || idx < 0) {
+            error_status_ = 1;
+            return;
+        }
     }
 
     child_executor_->init();
@@ -863,16 +870,76 @@ void UpdateExecutor::init() {
 
 Tuple UpdateExecutor::next() {
     if(error_status_ || finished_) return {};
-    Tuple values = child_executor_->next();
-    if(child_executor_->finished_) {
-        finished_ = 1;
-        return {};
+    while(true){
+        Tuple values = child_executor_->next();
+        if(child_executor_->finished_) {
+            finished_ = 1;
+            break;
+        }
+        if(child_executor_->error_status_) {
+            error_status_ = 1;
+            break;
+        }
+
+        RecordID rid = values.left_most_rid_;
+        assert(rid.page_id_ != INVALID_PAGE_ID);
+        u64 rid_hash = rid.get_hash(); 
+        if(affected_records.count(rid_hash)) continue;
+
+
+        Tuple old_tuple(table_);
+        old_tuple.put_tuple_at_start(&values);
+
+        for(int i = 0; i < indexes_.size(); ++i){
+            IndexKey k = getIndexKeyFromTuple(&ctx_->temp_arena_, indexes_[i].fields_numbers_, old_tuple);
+            assert(k.size_ != 0);
+            if(k.size_ == 0) {
+                error_status_ = 1;
+                break;
+            }
+            indexes_[i].index_->Remove(ctx_, k);
+        }
+
+        Tuple new_tuple = old_tuple;
+
+        for(int i = 0; i < statement_->values_.size(); ++i){
+            int idx = table_->colExist(statement_->fields_[i]); 
+            Value evaluated_val = evaluate_expression(ctx_, statement_->values_[i], values);
+            new_tuple.put_val_at(idx, evaluated_val);
+        }
+        Record record = table_->translateToRecord(&ctx_->temp_arena_, new_tuple);
+        int err = table_->getTable()->updateRecord(&rid, record);
+        assert(err == 0);
+        if(err){
+            error_status_ = 1;
+            break;
+        }
+
+        rid_hash = rid.get_hash();
+        assert(!affected_records.count(rid_hash));
+        affected_records.insert(rid_hash);
+
+        // loop over table indexes.
+        for(int i = 0; i < indexes_.size(); ++i){
+            IndexKey k = getIndexKeyFromTuple(&ctx_->temp_arena_, indexes_[i].fields_numbers_, new_tuple);
+            assert(k.size_ != 0);
+            if(k.size_ == 0) {
+                error_status_ = 1;
+                break;
+            }
+            int inserted = indexes_[i].index_->Insert(ctx_, k, rid);
+            assert(inserted);
+        }
+        if(err || error_status_) {
+            error_status_ = 1;
+            break;
+        }
+        if(!child_executor_ || child_executor_->finished_)
+            finished_ = 1;
+        ctx_->temp_arena_.clear();
     }
-    if(child_executor_->error_status_) {
-        error_status_ = 1;
-        return {};
-    }
-    return values;
+    output_.put_val_at(0, Value((int)affected_records.size()));
+    return output_;
 }
 
 
@@ -902,12 +969,12 @@ void InsertionExecutor::init() {
         return;
     }
     //vals_.resize(table_->numOfCols());
-    statement = reinterpret_cast<InsertStatementData*>(ctx_->queries_call_stack_[query_idx_]);
+    statement_ = reinterpret_cast<InsertStatementData*>(ctx_->queries_call_stack_[query_idx_]);
     // fields
-    if(!statement->fields_.size() || statement->fields_.size() < table_->getCols().size()){
-        statement->fields_ = table_->getCols();
+    if(!statement_->fields_.size() || statement_->fields_.size() < table_->getCols().size()){
+        statement_->fields_ = table_->getCols();
     } else {
-        for(auto& field_name : statement->fields_){
+        for(auto& field_name : statement_->fields_){
             int idx = table_->colExist(field_name);
             if(!table_->isValidCol(field_name) || idx < 0) {
                 error_status_ = 1;
@@ -929,7 +996,7 @@ void InsertionExecutor::init() {
         }
     } else {
         // insert .. values syntax.
-        if(statement->values_.size() != statement->fields_.size()){
+        if(statement_->values_.size() != statement_->fields_.size()){
             error_status_ = 1;
             return;
         }
@@ -945,19 +1012,19 @@ Tuple InsertionExecutor::next() {
             finished_ = 1;
             return {};
         }
-        if(child_executor_->error_status_ || output_schema_->numOfCols() != statement->fields_.size()){
+        if(child_executor_->error_status_ || output_schema_->numOfCols() != statement_->fields_.size()){
             error_status_ = 1;
             return {};
         }
         for(int i = 0; i < values.size(); ++i){
-            int idx = table_->colExist(statement->fields_[i]); 
+            int idx = table_->colExist(statement_->fields_[i]); 
             output_.put_val_at(idx, values.get_val_at(i));
         }
 
     } else {
-        for(int i = 0; i < statement->values_.size(); ++i){
-            ExpressionNode* val_exp = statement->values_[i];
-            int idx = table_->colExist(statement->fields_[i]); 
+        for(int i = 0; i < statement_->values_.size(); ++i){
+            ExpressionNode* val_exp = statement_->values_[i];
+            int idx = table_->colExist(statement_->fields_[i]); 
             output_.put_val_at(idx, evaluate_expression(ctx_, val_exp, output_));
         }
     }

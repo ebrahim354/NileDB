@@ -54,8 +54,10 @@ void Tuple::put_tuple_at_end(const Tuple* t) {
 }
 
 void Tuple::put_tuple_at_start(const Tuple* t) {
-    assert(t->values_.size() <= values_.size());
-    for(int i = 0; i < t->values_.size(); ++i)
+    //assert(t->values_.size() <= values_.size());
+    left_most_rid_ = t->left_most_rid_;
+    int mn = std::min(t->values_.size(), values_.size());
+    for(int i = 0; i < mn; ++i)
         values_[i] = t->values_[i];
 }
 

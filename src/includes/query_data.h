@@ -103,15 +103,11 @@ struct InsertStatementData : QueryData {
 struct DeleteStatementData : QueryData {
     void init(int parent_idx);
 
-    // the first table is always 
-    // the table to be deleted from.
 };
 
 struct UpdateStatementData : QueryData {
     void init(int parent_idx);
 
-    // the first table is the always 
-    // the table to be updated.
     std::vector<std::string> fields_ = {}; 
     std::vector<ExpressionNode*> values_ = {};
 };

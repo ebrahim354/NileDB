@@ -516,8 +516,13 @@ class AlgebraEngine {
                 ExpressionNode* cur_filter = tables_per_filter[i].second;
                 AlgebraOperation* scan = table_scanner[cur_table];
                 // if this filter matched an index we don't need to create a filter operator.
-                if(scan->type_ == SCAN && ((ScanOperation*)scan)->scan_type_ == SEQ_SCAN &&
-                        match_index((ScanOperation*)scan, cur_filter, cur_table)) continue;
+                // don't use index scan for the first table in case of 'delete' or 'update' statements.
+                if((data->type_ != SELECT_DATA 
+                            && cur_table != data->table_names_[0]) 
+                    || data->type_ == SELECT_DATA){
+                    if(scan->type_ == SCAN && ((ScanOperation*)scan)->scan_type_ == SEQ_SCAN &&
+                            match_index((ScanOperation*)scan, cur_filter, cur_table)) continue;
+                }
                 FilterOperation* tmp = nullptr;
                 ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation, query_idx,
                         table_scanner[cur_table],

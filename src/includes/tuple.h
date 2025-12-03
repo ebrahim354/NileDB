@@ -3,6 +3,7 @@
 
 struct Tuple {
     std::vector<Value> values_;
+    RecordID left_most_rid_;
     /*
     Record* rec_;
     */

@@ -216,8 +216,8 @@ int TableSchema::translateToValuesOffset(Record& r, std::vector<Value>& values, 
     return 0;
 }
 
-int TableSchema::translateToTuple(Record& r, Tuple& tuple, int offset){
-    if( offset < 0 || offset + columns_.size() > tuple.size()) {
+int TableSchema::translateToTuple(Record& r, Tuple& tuple, RecordID& rid){
+    if(columns_.size() > tuple.size()) {
         assert(0 && "Can't translate this record");
         return 1;
     }
@@ -226,7 +226,7 @@ int TableSchema::translateToTuple(Record& r, Tuple& tuple, int offset){
         char * bitmap_ptr = r.getFixedPtr(size_)+(i/8);  
         int is_null = *bitmap_ptr & (1 << (i%8));
         if(is_null) {
-            tuple.put_val_at(offset+i, Value(NULL_TYPE));
+            tuple.put_val_at(i, Value(NULL_TYPE));
             continue;
         }
         //val->type_ = columns_[i].getType();
@@ -234,8 +234,9 @@ int TableSchema::translateToTuple(Record& r, Tuple& tuple, int offset){
         char* content = getValue(columns_[i].getName(), r, &sz);
         if(!content)
             return 1;
-        tuple.put_val_at(offset+i, Value(content, columns_[i].getType(), sz));
+        tuple.put_val_at(i, Value(content, columns_[i].getType(), sz));
     }
+    tuple.left_most_rid_ = rid;
     return 0;
 }
 

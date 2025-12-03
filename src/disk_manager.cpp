@@ -147,7 +147,7 @@ int DiskManager::readPage(PageID page_id, char* output_buffer) {
 }
 
 int DiskManager::writePage(PageID page_id, char* input_buffer) {
-  assert(fid_to_fname.count(page_id.fid_) != 0); // TODO: replace assertion with an error message.
+    assert(fid_to_fname.count(page_id.fid_) != 0); // TODO: replace assertion with an error message.
     auto file_name = fid_to_fname[page_id.fid_];
     uint32_t page_num = page_id.page_num_;
     int offset = page_num * PAGE_SIZE;

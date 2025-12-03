@@ -187,7 +187,7 @@ struct InsertionExecutor : public Executor {
 
         TableSchema* table_ = nullptr;
         std::vector<IndexHeader> indexes_;
-        InsertStatementData* statement = nullptr;
+        InsertStatementData* statement_ = nullptr;
         int select_idx_ = -1;
 };
 
@@ -200,8 +200,8 @@ struct DeletionExecutor : public Executor {
 
         TableSchema* table_ = nullptr;
         std::vector<IndexHeader> indexes_;
-        DeleteStatementData* statement = nullptr;
-        int select_idx_ = -1;
+        DeleteStatementData* statement_ = nullptr;
+        std::set<u64> affected_records; // store hashes of affected record id-s To prevent the halloween problem.
 };
 
 struct UpdateExecutor : public Executor {
@@ -213,8 +213,8 @@ struct UpdateExecutor : public Executor {
 
         TableSchema* table_ = nullptr;
         std::vector<IndexHeader> indexes_;
-        UpdateStatementData* statement = nullptr;
-        int select_idx_ = -1;
+        UpdateStatementData* statement_ = nullptr;
+        std::set<u64> affected_records; // store hashes of affected record id-s To prevent the halloween problem.
 };
 
 struct AggregationExecutor : public Executor {

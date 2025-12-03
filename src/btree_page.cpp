@@ -23,7 +23,7 @@ uint32_t BTreePage::get_num_of_slots() const {
    }*/
 
 uint32_t BTreePage::get_used_space() {
-    return PAGE_SIZE - (HEADER_SIZE_ + get_free_space_size()); 
+    return PAGE_SIZE - get_free_space_size(); 
 }
 
 bool BTreePage::can_merge_with_me(BTreePage* other) {
@@ -93,7 +93,7 @@ IndexKey BTreePage::KeyAt(int index) {
     if(!ptr) return IndexKey();
     return {
         .data_ = ptr,
-            .size_ = get_key_size(index),
+        .size_ = get_key_size(index),
     };
 }
 
@@ -101,6 +101,7 @@ void BTreePage::SetKeyAt(int index, IndexKey k) {
     char* key = k.data_;
     uint16_t size = k.size_;
 
+    assert(index < get_num_of_slots() && size <= get_free_space_size());
     if(!key || size == 0 || index > get_num_of_slots() || size > get_free_space_size()) {
         return;
     }
@@ -156,9 +157,9 @@ uint16_t BTreePage::compact(){
         }
         new_fso -= ks;
     }
+    assert(new_fso >= fso && "ERROR WHILE COMPACTING SPACE!");
     memset(get_ptr_to(fso), 0, new_fso-fso); // TODO: Disable on release.
     set_free_space_offset(new_fso);
-    assert(new_fso >= fso && "ERROR WHILE COMPACTING SPACE!");
     return new_fso-fso;
 }
 
@@ -244,9 +245,11 @@ void BTreePage::increase_size(int amount) {
 }
 
 PageID BTreePage::GetParentPageId(FileID parent_fid) const { 
+    PageNum pg_num = get_parent_page_number();
+    if(pg_num == INVALID_PAGE_NUM) return INVALID_PAGE_ID;
   return {
     .fid_ = parent_fid,
-    .page_num_ = get_parent_page_number(),
+    .page_num_ = pg_num,
   };
 }
 void BTreePage::SetParentPageId(PageID parent_page_id) {
@@ -254,10 +257,12 @@ void BTreePage::SetParentPageId(PageID parent_page_id) {
 }
 
 PageID BTreePage::GetPageId(FileID fid) const {
-  return {
-    .fid_ = fid,
-    .page_num_ = get_page_number(),
-  };
+    PageNum pg_num = get_page_number();
+    if(pg_num == INVALID_PAGE_NUM) return INVALID_PAGE_ID;
+    return {
+        .fid_ = fid,
+        .page_num_ = pg_num,
+    };
 }
 void BTreePage::SetPageId(PageID page_id) { 
   set_page_number(page_id.page_num_);

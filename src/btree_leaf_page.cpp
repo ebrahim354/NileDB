@@ -49,9 +49,11 @@ void BTreeLeafPage::Init(PageID page_id, PageID parent_id) {
 
 
 PageID BTreeLeafPage::GetNextPageId(FileID fid) { 
+    PageNum pg = get_next_page_number();
+    if(pg == INVALID_PAGE_NUM) return INVALID_PAGE_ID;
   return {
     .fid_ = fid,
-    .page_num_ = get_next_page_number(),
+    .page_num_ = pg,
   };
 }
 

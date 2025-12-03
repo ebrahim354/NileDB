@@ -53,7 +53,7 @@ enum class SerialType {
     NIL  = 0, // 0 bytes.
     INT  = 1, // 4 bytes.
     LONG = 2, // 8 bytes.
-    FLOAT= 3, // 8 bytes.
+    FLOAT= 3, // 4 bytes.
     // 13 to avoid confusion with sqlite.
     TEXT = 13, // (N-13) bytes.
 };
@@ -75,7 +75,6 @@ struct IndexKey {
                 //std::cout << c << " ";
             } else if(i == 2){
                 int x = *(int*)(data_+i);
-                //if(x == 256) asm("int3");
                 std::cout << x << " ";
             } else break;
         }
@@ -156,7 +155,9 @@ int index_key_cmp(IndexKey lhs,IndexKey rhs) {
             continue; 
         }
 
-        if((*header >= 13 && *rhs_header < 13) || (*header < 13 && *rhs_header >= 13)) assert(0 && "INVALID COMPARISON");
+        if((*header >= 13 && *rhs_header < 13) || (*header < 13 && *rhs_header >= 13)) {
+            assert(0 && "INVALID COMPARISON");
+        }
         if(*header < 13 && *header != *rhs_header) {
             assert(0 && "TODO: SUPPORT NUMERIC CASTING.");
         }
@@ -262,7 +263,7 @@ IndexKey temp_index_key_from_values(Arena* arena, std::vector<Value>& vals) {
     }
     return {
         .data_ = buf,
-            .size_ = (uint32_t)(payload_ptr - buf),
+        .size_ = (uint32_t)(payload_ptr - buf),
     };
 }
 

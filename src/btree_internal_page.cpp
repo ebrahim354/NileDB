@@ -185,6 +185,20 @@ void BTreeInternalPage::remove_from_start() {
   increase_size(-1);
 }
 
+void BTreeInternalPage::remove_entry_at(int pos) {
+  int sz = get_num_of_slots();
+  if(sz <= 1) return;
+  if(pos >= sz || pos <= 0) assert(0);
+  int entry_sz = INTERNAL_SLOT_ENTRY_SIZE_;
+
+  char* dest = get_ptr_to(SLOT_ARRAY_OFFSET_)+(pos*entry_sz);
+  char* src  = dest+entry_sz;
+  int amount = (sz-(pos + 1)) * entry_sz;
+  assert(amount >= 0);
+  memmove(dest, src, amount);
+  increase_size(-1);
+}
+
 
 /*
 void BTreeInternalPage::RemoveFromStart() {
