@@ -72,6 +72,9 @@ Page* CacheManager::newPage(FileID fid){
 
 
     int err = disk_manager_->allocateNewPage(fid, new_page->data_, &new_page->page_id_);
+    // skip page 0.
+    if(!err && new_page->page_id_.page_num_ == 0)
+         err = disk_manager_->allocateNewPage(fid, new_page->data_, &new_page->page_id_);
     if(err) {
         replacer_->SetEvictable(new_frame, true);
         std::cout << "could not allocate a new page " << fid_to_fname[fid] << std::endl;

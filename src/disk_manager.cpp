@@ -29,7 +29,7 @@ DiskManager::~DiskManager(){
 }
 
 int DiskManager::deallocatePage(PageID page_id) {
-  assert(fid_to_fname.count(page_id.fid_) != 0); // TODO: replace assertion with an error message.
+    assert(fid_to_fname.count(page_id.fid_) != 0); // TODO: replace assertion with an error message.
     auto file_name = fid_to_fname[page_id.fid_];
     auto page_num = page_id.page_num_;
 
@@ -51,8 +51,17 @@ int DiskManager::deallocatePage(PageID page_id) {
     }
 
     // freelist_ptr_ value on the disk will be updated by the destructor.(fault handling might change this).
+    // TODO: clean this up
     cached_files_[file_name].freelist_ptr_ = page_num;
-    file_stream->flush();
+    {
+        auto file = &cached_files_[file_name];
+        char bytes[8];
+        memcpy(bytes, &file->freelist_ptr_, sizeof(int));
+        memcpy(bytes+sizeof(int), &file->num_of_pages_, sizeof(int));
+        file->fs_.seekp(0);
+        file->fs_.write(bytes, sizeof(int) * 2);
+        file_stream->flush();
+    }
     return 0; 
 }
 
@@ -118,7 +127,16 @@ int DiskManager::allocateNewPage(FileID fid, char* buffer , PageID *page_id){
 
         memcpy(&next, bytes, sizeof(int));
         // freelist_ptr_ value on the disk will be updated by the destructor.(fault handling might change this).
+        // TODO: clean this up
         cached_files_[file_name].freelist_ptr_ = next;
+        {
+            char bytes[8];
+            memcpy(bytes, &cached_files_[file_name].freelist_ptr_, sizeof(int));
+            memcpy(bytes+sizeof(int), &cached_files_[file_name].num_of_pages_, sizeof(int));
+            file_stream->seekp(0);
+            file_stream->write(bytes, sizeof(int) * 2);
+            file_stream->flush();
+        }
     }
     file_stream->flush();
     return 0;

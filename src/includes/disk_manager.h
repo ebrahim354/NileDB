@@ -43,7 +43,7 @@ class DiskManager {
         int openFile(std::string file_name);
         // first 4 bytes of a file indicates the next free page number.
         // second 4 bytes of a file indicates the number of pages on a file. 
-        // in case of value of 0 means now current free pages
+        // in case of value of 0 means no current free pages
         // append to the end of the file for new pages
         std::unordered_map<std::string, FileMeta> cached_files_;
 };
