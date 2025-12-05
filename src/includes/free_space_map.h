@@ -6,35 +6,32 @@
 #include <math.h>
 #include <cstring>
 
-#define MAX_FRACTION 2 // can't be higher than page size.
+#define MAX_FRACTION 256
 
 
 
-// first 4 bytes in the first page are the number of pages of the table let's call it ( n ).
-// next n bytes are the fractions per n pages of the table.
-// the free space pages do not shrink by convention ( I should probably make a FreeSpaceMapPage class ).
+// each i-th byte is the fractions of the i-th page of the table,
+// low fraction means higher free space for the i-th page.
+// tables do not delete pages unless they get compacted by a higher component of the system.
+// the free space pages do not shrink, but can be replaced with new ones,
+// for example when compacting the data of the table and the table is shirnking,
+// then the free_space_map is cleared and the system should start a new free space map.
 
 class FreeSpaceMap {
     public:
-        void init(CacheManager* cm, PageID first_page_id);
+        void init(CacheManager* cm, FileID fid);
         void destroy();
 
-        int addPage(uint8_t fraction);
-        Page* getPageAtOffset(uint32_t offset);
-
         // return 1 on error.
-        // offset is the table data page number.
-        int updateFreeSpace(uint32_t offset, uint32_t free_space);
+        int updateFreeSpace(PageID table_pid, u32 used_space);
 
         // page_num (output).
-        // return 1 in case of an error.
-        int getFreePageNum(uint32_t freespace_needed, uint32_t* page_num);
+        // return 1 on failure.
+        int getFreePageNum(u32 freespace_needed, PageNum* out_page_num);
         
     private:
-        uint8_t* array_ = nullptr;
-        uint32_t size_ = 0;
         CacheManager* cm_ = nullptr;
-        PageID first_page_id_ = INVALID_PAGE_ID;
+        FileID fid_;
 };
 
 #endif // FREE_SPACE_MAP_H

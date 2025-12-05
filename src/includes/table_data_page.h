@@ -26,6 +26,8 @@ class TableDataPage : public Page {
         char*    getFreeSpacePtr();
         // return value should not be negative.
         size_t   getFreeSpaceSize();
+        // return value should not be negative.
+        size_t   getUsedSpaceSize();
         // returns 0 in case of success or 1 otherwise.
         int      getRecord(char** rec_data, uint32_t* size, uint32_t slot_idx);
         // slot_idx (output). 

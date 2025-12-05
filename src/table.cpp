@@ -13,9 +13,7 @@ void Table::init(CacheManager* cm, PageID first_page_id, FreeSpaceMap* fsm) {
     first_page_id_  = first_page_id;
     free_space_map_ = fsm;
 }
-void Table::destroy(){
-    // delete free_space_map_;
-}
+void Table::destroy(){}
 
 // should use the free space map to find the closest free space inside of the file
 // or just append it to the end of the file.
@@ -28,9 +26,15 @@ int Table::insertRecord(RecordID* rid, Record &record){
         return 1; 
     }
     rid->page_id_ = first_page_id_;
-    uint32_t page_num = 0;
+    PageNum page_num = 0;
     TableDataPage* table_page = nullptr;
-    int no_free_space = free_space_map_->getFreePageNum(record.getRecordSize(), &page_num);
+    // TODO: try to apply the best case :
+    // (inserting without the slot entry size) => this assumes that there are free slots inside of the page,
+    // if inserting into the page fails retry with worst case maybe ?,
+    // (inserting with the slot entry size) => this assumes that there is no free slots inside of the page.
+    // worst case.
+    int no_free_space = 
+        free_space_map_->getFreePageNum(record.getRecordSize() + TABLE_SLOT_ENTRY_SIZE, &page_num);
     // no free pages
     // allocate a new one with the cache manager
     // or if there is free space fetch the page with enough free space.
@@ -65,8 +69,6 @@ int Table::insertRecord(RecordID* rid, Record &record){
         // if you are the first page and you just got created that means,
         // you are the first and last so we don't need to update any other pages.
         rid->page_id_ = table_page->page_id_;
-        // empty page.
-        free_space_map_->addPage(MAX_FRACTION - 1);
     } else {
         rid->page_id_.page_num_ = page_num;
         table_page = reinterpret_cast<TableDataPage*>(cache_manager_->fetchPage(rid->page_id_));
@@ -84,7 +86,7 @@ int Table::insertRecord(RecordID* rid, Record &record){
         cache_manager_->unpinPage(table_page->page_id_, true);
         return 1;
     }
-    err = free_space_map_->updateFreeSpace(table_page->page_id_.page_num_, table_page->getFreeSpaceSize());
+    err = free_space_map_->updateFreeSpace(table_page->page_id_, table_page->getUsedSpaceSize());
     if(err){
         std::cout << "could not update free space map" << std::endl;
         cache_manager_->unpinPage(table_page->page_id_, true);
@@ -104,6 +106,7 @@ int Table::deleteRecord(RecordID &rid){
     if(table_page == nullptr) return 1;
     int err = table_page->deleteRecord(rid.slot_number_);
     if(err) return err;
+    free_space_map_->updateFreeSpace(table_page->page_id_, table_page->getUsedSpaceSize());
     cache_manager_->unpinPage(table_page->page_id_, true);
     return 0;
 }
@@ -119,6 +122,7 @@ int Table::updateRecord(RecordID *rid, Record &new_record){
         return err;
     }
     int insert_err = table_page->insertRecord(new_record.getFixedPtr(0), new_record.getRecordSize(), &rid->slot_number_);
+    free_space_map_->updateFreeSpace(table_page->page_id_, table_page->getUsedSpaceSize());
     // inserted no need to find a new page.
     cache_manager_->unpinPage(table_page->page_id_, true);
     if(!insert_err) 

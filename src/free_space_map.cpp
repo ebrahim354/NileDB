@@ -1,106 +1,86 @@
 #pragma once
 #include "cache_manager.cpp"
-#include "page.cpp"
 #include "free_space_map.h"
+#include "page.cpp"
 #include <math.h>
 #include <cstring>
 
-void FreeSpaceMap::init(CacheManager* cm, PageID first_page_id) {
+void FreeSpaceMap::init(CacheManager* cm, FileID fid) {
     cm_ = cm;
-    first_page_id_ = first_page_id;
-    Page* page = cm_->fetchPage(first_page_id_);
-    if(!page)
-        return;
-    char* d = page->data_;
-    size_ = *reinterpret_cast<uint32_t*>(page->data_);
-    array_ = (uint8_t*)malloc(size_);
-    int i = 4;
-    int tot = 0;
-    PageID page_id_ptr = first_page_id_;
-    while(i < PAGE_SIZE && tot < size_){
-        array_[tot] = *reinterpret_cast<uint8_t*>(page->data_+i);
-        i++;
-        tot++;
-        if(i == PAGE_SIZE){
-            cm_->unpinPage(page_id_ptr, false);
-            page_id_ptr.page_num_++;
-            page = cm_->fetchPage(page_id_ptr);
-            i = 0;
-        }
-    }
-    if(i != 0) 
-        cm_->unpinPage(page_id_ptr, false);
+    fid_ = fid;
 }
 
 void FreeSpaceMap::destroy(){}
 
+// TODO: page number 0 is not touchable because it's only used by the disk manager,
+// therefore we should allocate an extra page each time the (newely allocated page has number 0),
+// this should be the job of the disk manager and not the job of other layers.
+int FreeSpaceMap::updateFreeSpace(PageID table_pid, u32 used_space){
+    assert(table_pid != INVALID_PAGE_ID);
+    assert(used_space <= PAGE_SIZE); // you can't use more than the size of a page?
+    // we add 1 because page 0 is reserved by the disk manager.
+    PageNum free_space_page_num = (table_pid.page_num_ / PAGE_SIZE) + 1; 
+    u32 free_space_offset_in_page = (table_pid.page_num_ % PAGE_SIZE);
 
-int FreeSpaceMap::addPage(uint8_t fraction){
-    Page* last_page = nullptr;
-    Page* first_page = cm_->fetchPage(first_page_id_);
-    if(!first_page) first_page = cm_->newPage(first_page_id_.fid_);
-    //if(!first_page) first_page = cm_->newPage(first_page_id_.file_name_);
-    // something is wrong with the file name or just can't allocate a first fsm page, just return an error.
-    if(!first_page) return 1;
-
-    //if((size_+4) % PAGE_SIZE == 0) last_page = cm_->newPage(first_page_id_.file_name_);
-    if((size_+4) % PAGE_SIZE == 0) last_page = cm_->newPage(first_page_id_.fid_);
-    else last_page = getPageAtOffset(size_);
-
-    if(!last_page) return 1;
-
-    uint32_t slot = (size_+4)%PAGE_SIZE;
-    size_++;
-    memcpy(last_page->data_+slot, &fraction, sizeof(fraction));
-    memcpy(first_page->data_, &size_, sizeof(size_));
-
-    // this is so slow but only happens once per new fsm page so it's fine.
-    uint8_t* old_array = array_;
-    array_ = (uint8_t*) malloc(size_);
-    memcpy(array_, old_array, (size_-1) * sizeof(uint8_t));
-    array_[size_-1] = fraction;
-    free(old_array);
-    cm_->flushPage(last_page->page_id_);
-    cm_->flushPage(first_page->page_id_);
-    cm_->unpinPage(last_page->page_id_, true);
-    cm_->unpinPage(first_page->page_id_, true);
-    return 0;
-}
-
-Page* FreeSpaceMap::getPageAtOffset(uint32_t offset){
-    int page_num = ceil(double(offset+4)/PAGE_SIZE);
-    PageID pid = first_page_id_;
-    pid.page_num_ = page_num;
-    return cm_->fetchPage(pid);
-}
-// return 1 on error.
-// offset is the table data page number.
-int FreeSpaceMap::updateFreeSpace(uint32_t offset, uint32_t free_space){
-    // table pages are 1 indexed, and we are using  zero indexes :(.
-    offset--;
-    if(offset >= size_) return 1;
-    uint8_t fraction = free_space / (PAGE_SIZE / MAX_FRACTION);
-    array_[offset] = fraction;
-    Page* page = getPageAtOffset(offset);
-    uint32_t slot = (offset+4)%PAGE_SIZE;
-    memcpy(page->data_+slot, &fraction, sizeof(fraction));
-    cm_->flushPage(page->page_id_);
-    cm_->unpinPage(page->page_id_, true);
-    return 0;
-}
-// page_num (output).
-// return 1 in case of an error.
-int FreeSpaceMap::getFreePageNum(uint32_t freespace_needed, uint32_t* page_num){
-    uint8_t fraction = freespace_needed / (PAGE_SIZE / MAX_FRACTION);
-    fraction += (freespace_needed % (PAGE_SIZE / MAX_FRACTION));
-    for(uint32_t i = 0; i < size_; ++i){
-        // if the fraction of a page is 0 that means it's a freelist or full page skip it.
-        if(array_[i] >= fraction) {
-            // pages are number starting with 1 not 0.
-            *page_num = i+1;
-            return 0;
+    Page* corresponding_page = cm_->fetchPage({.fid_ = fid_, .page_num_ = free_space_page_num});
+    if(!corresponding_page){
+        // if the page does not exist that means either the table_pid is invalid or we need a new page.
+        corresponding_page = cm_->newPage(fid_);
+        assert(corresponding_page); // could not allocate a new page for some reason.
+        if(corresponding_page->page_id_.page_num_ == 0){
+            cm_->unpinPage(corresponding_page->page_id_, false);
+            corresponding_page = cm_->newPage(fid_);
+            assert(corresponding_page);
+        }
+        if(corresponding_page->page_id_.page_num_ != free_space_page_num) {
+            assert(0);
+            // if the new page doesn't match the calculated number that means this table_pid is not correct. 
+            cm_->deletePage(corresponding_page->page_id_);
+            return 1;
         }
     }
-    //  didn't find enough free space.
+    // at this point we know we are at the correct page.
+    // calculate the fraction.
+    // (used_space / PAGE_SIZE) will never exceed 1.
+    assert(used_space < PAGE_SIZE);
+    u8 fraction = ((f32)used_space / PAGE_SIZE) * MAX_FRACTION;
+
+    *(u8*)(corresponding_page->data_ + free_space_offset_in_page) = fraction;
+    cm_->flushPage(corresponding_page->page_id_);
+    cm_->unpinPage(corresponding_page->page_id_, true);
+    return 0;
+}
+
+// page_num (output).
+// return 1 in case of could not find. 
+int FreeSpaceMap::getFreePageNum(u32 freespace_needed, PageNum* out_page_num){
+    assert(freespace_needed <= PAGE_SIZE);
+    u8 needed_fraction = ((f32)freespace_needed / PAGE_SIZE) * MAX_FRACTION;
+    // loop over the entire free space map, the first byte with fraction 0 means we will create a new page,
+    // (because we can't acheive fraction 0 => each table page has a header that takes some amount of bytes).
+    // starting page is always 1 because page 0 is reserved for the disk manager.
+    PageID cur_pid = {.fid_ = fid_, .page_num_ = 1};
+    while(true){
+        Page* cur_page = cm_->fetchPage(cur_pid);
+        if(!cur_page) return 1; // this page doesn't exist => didn't find a page.
+        for(int i = 0; i < PAGE_SIZE; ++i){
+            // skip page number '0'.
+            if(cur_pid.page_num_ == 1 && i == 0) continue;
+            u8 cur_fraction = *(u8*)(cur_page->data_+i);
+            if(cur_fraction == 0) {
+                cm_->unpinPage(cur_pid, false);
+                return 1; // didn't find a page.
+            }
+            if(cur_fraction + needed_fraction < MAX_FRACTION) {
+                *out_page_num = ((cur_pid.page_num_ - 1)*PAGE_SIZE)+i;
+                cm_->unpinPage(cur_pid, false);
+                return 0;
+            }
+        }
+        // couldn't find free space on this page.
+        cm_->unpinPage(cur_pid, false);
+        cur_pid.page_num_++;
+    }
+    assert(0 && "UNREACHABLE");
     return 1;
 }

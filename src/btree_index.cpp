@@ -24,9 +24,13 @@ void BTreeIndex::update_index_root(QueryCTX* ctx, FileID fid, PageNum new_root_p
     TableSchema* indexes_meta_schema = index_meta_schema_; 
     TableIterator it_meta = indexes_meta_schema->getTable()->begin();
 
+    std::set<u64> halloween_preventer;
+
     it_meta.init();
     while(it_meta.advance()){
+        if(halloween_preventer.count(it_meta.getCurRecordID().get_hash())) break;
         Record r = it_meta.getCurRecordCpy(&ctx->arena_);
+        assert(!r.isInvalidRecord());
         std::vector<Value> values;
         int err = indexes_meta_schema->translateToValues(r, values);
         assert(err == 0 && "Could not traverse the indexes schema.");
@@ -44,6 +48,7 @@ void BTreeIndex::update_index_root(QueryCTX* ctx, FileID fid, PageNum new_root_p
         assert(new_record.isInvalidRecord() == false);
         err = indexes_meta_schema->getTable()->updateRecord(&rid, new_record);
         assert(err == 0 && "Could not update record.");
+        halloween_preventer.insert(rid.get_hash());
     }
     it_meta.destroy();
 }

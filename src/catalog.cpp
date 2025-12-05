@@ -44,8 +44,8 @@ void Catalog::init(CacheManager *cm) {
     fid_to_fname[meta_data_fid]   = META_DATA_FILE;
     fid_to_fname[meta_data_fid+1] = META_DATA_FSM;
     // change the size after adding free space map support.
-    PageID meta_fsm_pid = {.fid_ = meta_data_fid + 1, .page_num_ = 1};
-    ALLOCATE_INIT(arena_, free_space_map_, FreeSpaceMap, cm, meta_fsm_pid);
+    //PageID meta_fsm_pid = {.fid_ = meta_data_fid + 1, .page_num_ = 1};
+    ALLOCATE_INIT(arena_, free_space_map_, FreeSpaceMap, cm, meta_data_fid+1);
 
 
     // loading the hard coded meta data table schema.
@@ -100,7 +100,7 @@ void Catalog::init(CacheManager *cm) {
             PageID first_fsm_page = {.fid_ = fid+1, .page_num_ = 1};
             // the table owns its free space map pointer and is responsible for deleting it.
             FreeSpaceMap* free_space =  nullptr;
-            ALLOCATE_INIT(arena_, free_space, FreeSpaceMap, cm, first_fsm_page);
+            ALLOCATE_INIT(arena_, free_space, FreeSpaceMap, cm, fid+1);
             Table* table = nullptr; 
             ALLOCATE_INIT(arena_, table, Table, cm, first_page, free_space);
             TableSchema* schema = nullptr;
@@ -166,7 +166,7 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const std::string &table_name, 
     PageID first_page = {.fid_ = nfid, .page_num_ = 1};
     PageID first_fsm_page = {.fid_ = nfid+1, .page_num_ = 1};
     FreeSpaceMap* free_space = nullptr; 
-    ALLOCATE_INIT(arena_, free_space, FreeSpaceMap, cache_manager_, first_fsm_page);
+    ALLOCATE_INIT(arena_, free_space, FreeSpaceMap, cache_manager_, nfid+1);
     Table* table = nullptr;
     ALLOCATE_INIT(arena_, table, Table, cache_manager_, first_page, free_space);
     TableSchema* schema = nullptr;

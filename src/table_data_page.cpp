@@ -66,6 +66,10 @@ size_t TableDataPage::getFreeSpaceSize(){
     return free_space_ptr - end_of_slots_ptr;
 }
 
+size_t TableDataPage::getUsedSpaceSize() {
+    return PAGE_SIZE - getFreeSpaceSize();
+}
+
 // returns 0 in case of success or 1 otherwise.
 int TableDataPage::getRecord(char** rec_data, uint32_t* size, uint32_t slot_idx){
     // out of bound error.
@@ -85,7 +89,7 @@ int TableDataPage::getRecord(char** rec_data, uint32_t* size, uint32_t slot_idx)
 // slot_idx (output). 
 // returns 1 in case of error.
 int TableDataPage::insertRecord(char* rec_data, uint32_t rec_size, uint32_t* slot_idx){
-    if(getFreeSpaceSize() < rec_size) return 1; 
+    if(getFreeSpaceSize() <= rec_size) return 1; 
     bool found_empty_slot = false;
     // search for free slots.
     for(uint32_t i = 0; i < getNumOfSlots(); ++i){
@@ -97,6 +101,8 @@ int TableDataPage::insertRecord(char* rec_data, uint32_t rec_size, uint32_t* slo
             break;
         }
     }
+    
+    if(getFreeSpaceSize() <= (rec_size + SLOT_ENTRY_SIZE_)) return 1; 
 
     size_t slot_offset;
     if(found_empty_slot){
@@ -114,7 +120,7 @@ int TableDataPage::insertRecord(char* rec_data, uint32_t rec_size, uint32_t* slo
     auto new_free_space_offset = getFreeSpaceOffset() - rec_size;
     char* new_record_ptr = getFreeSpacePtr() - rec_size;
     memcpy(new_record_ptr, rec_data, rec_size);
-    setFreeSpaceOffset(new_free_space_offset-1);
+    setFreeSpaceOffset(new_free_space_offset);
     // update the slot array to the new free ptr. (sounds weird but correct),
     // the slot array grows this way ----->> <<----- the free space grows that way,
     // starting from the last inserted record.
@@ -135,12 +141,14 @@ int TableDataPage::deleteRecord(uint32_t slot_idx){
     memset(getPtrTo(slot_offset), 0, SLOT_ENTRY_SIZE_);
     // shift everything starting from the free pointer by the size of the deleted record.
     memmove(getFreeSpacePtr()+record_size, getFreeSpacePtr(), getPtrTo(record_offset) - getFreeSpacePtr());
+    memset(getFreeSpacePtr(), 0, record_size); // TODO: remove this on release.
+    setFreeSpaceOffset(getFreeSpaceOffset()+record_size);
     // update the slot array with new positions.
     for(uint32_t i = 0; i < getNumOfSlots(); ++i){
         size_t cur_slot_offset = SLOT_ARRAY_OFFSET_ + (i * SLOT_ENTRY_SIZE_);
-        uint32_t cur_record_offset = *reinterpret_cast<uint32_t*>(getPtrTo(slot_offset));
+        uint32_t cur_record_offset = *reinterpret_cast<uint32_t*>(getPtrTo(cur_slot_offset));
         if(cur_record_offset != 0 && cur_record_offset < record_offset){
-            memset(getPtrTo(cur_slot_offset), cur_record_offset + record_size, SLOT_ENTRY_SIZE_/2);
+            *(uint32_t*)getPtrTo(cur_slot_offset) = cur_record_offset+record_size;
         }
     }
 

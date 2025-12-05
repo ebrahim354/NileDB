@@ -693,7 +693,12 @@ inline bool Value::isNull() const {
 }
 std::string Value::getStringVal() const {
     if(!content_) return "";
-    return std::string((char*)content_, size_);  
+    std::string str = "";
+    char* ptr = (char*) content_;
+    for(int i = 0; i < size_; ++i, ptr++)
+        str += *ptr;
+    return str;
+    //return std::string((char*)content_, size_);  
 }
 bool Value::getBoolVal() const{
     if(!content_) return false;

@@ -789,7 +789,7 @@ Tuple DeletionExecutor::next() {
         RecordID rid = values.left_most_rid_;
         assert(rid.page_id_ != INVALID_PAGE_ID);
         u64 rid_hash = rid.get_hash(); 
-        if(affected_records.count(rid_hash)) continue;
+        //if(affected_records.count(rid_hash)) continue;
         affected_records.insert(rid_hash);
         Tuple t(child_executor_->output_schema_);
         t.put_tuple_at_start(&values);
