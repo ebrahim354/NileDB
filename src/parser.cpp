@@ -204,7 +204,6 @@ void Parser::selectList(QueryCTX& ctx, int query_idx){
             ++ctx;
             rename = true;
             if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
-                //delete f;
                 ctx.error_status_ = Error::EXPECTED_IDENTIFIER;
                 return;
             } else {
@@ -485,15 +484,12 @@ ASTNode* Parser::constant(QueryCTX& ctx){
         ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FLOAT_CONSTANT, t);
       // strings
     } else  if(ctx.matchTokenType(TokenType::STR_CONSTANT)){ 
-        //ret =  new ASTNode(STRING_CONSTANT, ctx.getCurrentToken()); ++ctx;  
         ALLOCATE_INIT(ctx.arena_, ret, ASTNode, STRING_CONSTANT, ctx.getCurrentToken()); ++ctx;
       // integers
     } else if(ctx.matchTokenType(TokenType::NUMBER_CONSTANT)){ 
-        //ret = new ASTNode(INTEGER_CONSTANT, ctx.getCurrentToken()); ++ctx;
         ALLOCATE_INIT(ctx.arena_, ret, ASTNode, INTEGER_CONSTANT, ctx.getCurrentToken()); ++ctx;
       // null
     } else if(ctx.matchTokenType(TokenType::NULL_CONST)){ 
-        //ret = new ASTNode(NULL_CONSTANT, ctx.getCurrentToken()); ++ctx;
         ALLOCATE_INIT(ctx.arena_, ret, ASTNode, NULL_CONSTANT, ctx.getCurrentToken()); ++ctx;
     }
     return ret;
@@ -504,7 +500,6 @@ ASTNode* Parser::table(QueryCTX& ctx){
     if(ctx.matchTokenType(TokenType::IDENTIFIER)){
         auto token = ctx.getCurrentToken(); ++ctx;
         ASTNode* ret = nullptr;
-        //return new ASTNode(TABLE, token);
         ALLOCATE_INIT(ctx.arena_, ret, ASTNode, TABLE, token);
         return ret;
     }
@@ -522,10 +517,8 @@ ASTNode* Parser::field(QueryCTX& ctx){
             ALLOCATE_INIT(ctx.arena_, t, ASTNode, TABLE, Token(TokenType::IDENTIFIER, possible_tables[0]));
             ALLOCATE_INIT(ctx.arena_, ret, ScopedFieldNode, token, t);
             return ret;
-            //return new ScopedFieldNode(token, new ASTNode(TABLE, Token(TokenType::IDENTIFIER, possible_tables[0])));
         }
         ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FIELD, token);
-        //return new ASTNode(FIELD, token);
         return ret;
     }
     return ret;
@@ -541,7 +534,6 @@ ASTNode* Parser::scoped_field(QueryCTX& ctx){
         ASTNode* ret = nullptr;
         ALLOCATE_INIT(ctx.arena_, ret, ScopedFieldNode, field_name, t);
         return ret;
-        //return new ScopedFieldNode(field_name, t);
     }
     return nullptr;
 }
@@ -573,19 +565,14 @@ ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
         ++ctx;
         auto when = expression(ctx, query_idx, id);
         if(!when) {
-            //delete initial_value;
             return nullptr;
         }
         if(!ctx.matchTokenType(TokenType::THEN)) {
-            //delete initial_value;
-            //delete when;
             return nullptr;
         }
         ++ctx;
         auto then = expression(ctx, query_idx, id);
         if(!then) {
-            //delete initial_value;
-            //delete when;
             return nullptr;
         }
 
@@ -596,14 +583,11 @@ ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
         ++ctx;
         else_exp = expression(ctx, query_idx, id);
         if(!else_exp) {
-            //delete initial_value;
             return nullptr;
         }
     }
     // must have END
     if(!ctx.matchTokenType(TokenType::END)) {
-        //delete initial_value;
-        //delete else_exp;
         return nullptr;
     }
     ++ctx;
@@ -611,15 +595,12 @@ ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
         ctx.error_status_ = Error::INCORRECT_CASE_EXPRESSION; 
         // TODO: use logger.
         std::cout << "[ERROR] incorrect case expression" << std::endl;
-        //delete else_exp;
-        //delete initial_value;
         return nullptr;
     }
 
     ASTNode* ret = nullptr;
     ALLOCATE_INIT(ctx.arena_, ret, CaseExpressionNode, when_then_pairs, else_exp, initial_value);
     return ret;
-    //return new CaseExpressionNode(when_then_pairs, else_exp, initial_value);
 }
 
 ASTNode* Parser::nullif_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
@@ -649,7 +630,6 @@ ASTNode* Parser::nullif_expression(QueryCTX& ctx, ExpressionNode* expression_ctx
     ASTNode* ret = nullptr;
     ALLOCATE_INIT(ctx.arena_, ret, NullifExpressionNode, lhs, rhs);
     return ret;
-    //return new NullifExpressionNode(lhs, rhs);
 }
 
 ASTNode* Parser::type_cast(QueryCTX& ctx, ExpressionNode* expression_ctx){
@@ -678,7 +658,6 @@ ASTNode* Parser::type_cast(QueryCTX& ctx, ExpressionNode* expression_ctx){
     ASTNode* ret = nullptr;
     ALLOCATE_INIT(ctx.arena_, ret, TypeCastNode, exp, t);
     return ret;
-    //return new TypeCastNode(exp, t);
 }
 
 ASTNode* Parser::scalar_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
@@ -701,7 +680,6 @@ ASTNode* Parser::scalar_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
     ASTNode* ret = nullptr;
     ALLOCATE_INIT(ctx.arena_, ret, ScalarFuncNode, args, name, expression_ctx->id_);
     return ret;
-    //return new ScalarFuncNode(args, name, expression_ctx->id_);
 }
 
 ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
@@ -740,7 +718,6 @@ ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
             return nullptr;
         }
     }
-    //expression_ctx->aggregate_func_ =  new AggregateFuncNode(exp, type, expression_ctx->id_);
     expression_ctx->aggregate_func_ =  nullptr; 
     ALLOCATE_INIT(ctx.arena_, expression_ctx->aggregate_func_, AggregateFuncNode, exp, type, expression_ctx->id_);
     expression_ctx->aggregate_func_->distinct_ = distinct;
@@ -755,7 +732,6 @@ ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
     ASTNode* ret = nullptr;
     ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FIELD, Token(TokenType::IDENTIFIER, tmp));
     return ret;
-    //return new ASTNode(FIELD, Token (TokenType::IDENTIFIER, tmp));
 }
 
 ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
@@ -788,7 +764,6 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
             if(parent->parent_idx_ != -1)
                 parent->is_corelated_ = true;
         }
-        //SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
         SubQueryNode* sub_query_node = nullptr; 
         ALLOCATE_INIT(ctx.arena_, sub_query_node, SubQueryNode, sub_query->idx_, sub_query->parent_idx_);
         if(!ctx.matchTokenType(TokenType::RP)){
@@ -815,7 +790,6 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
             if(parent->parent_idx_ != -1)
                 parent->is_corelated_ = true;
         }
-        //SubQueryNode* sub_query_node = new SubQueryNode(sub_query->idx_, sub_query->parent_idx_);
         SubQueryNode* sub_query_node = nullptr; 
         ALLOCATE_INIT(ctx.arena_, sub_query_node, SubQueryNode, sub_query->idx_, sub_query->parent_idx_);
         return sub_query_node;
@@ -855,7 +829,6 @@ ASTNode* Parser::unary(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if((bool)ctx.error_status_) return nullptr;
     if(ctx.matchAnyTokenType({TokenType::PLUS, TokenType::MINUS})) { 
         UnaryNode* u = nullptr;
-        //u = new UnaryNode(nullptr, ctx.getCurrentToken());
         ALLOCATE_INIT(ctx.arena_, u, UnaryNode, nullptr, ctx.getCurrentToken());
         ++ctx;
         ASTNode* val = unary(ctx , expression_ctx);
@@ -957,7 +930,6 @@ ASTNode* Parser::in(QueryCTX& ctx, ExpressionNode* expression_ctx){
             ++ctx;
             ALLOCATE_INIT(ctx.arena_, ret, InNode, val, {}, negated);
             return ret;
-            //return new InNode(val, {}, negated);
         }
         std::vector<ASTNode*> args;
         while(1){
@@ -978,7 +950,6 @@ ASTNode* Parser::in(QueryCTX& ctx, ExpressionNode* expression_ctx){
         ++ctx;
         ALLOCATE_INIT(ctx.arena_, ret, InNode, val, args, negated);
         return ret;
-        //return new InNode(val, args, negated);
     }
     return val;
 }
@@ -1002,7 +973,6 @@ ASTNode* Parser::between(QueryCTX& ctx, ExpressionNode* expression_ctx){
         ASTNode* ret = nullptr;
         ALLOCATE_INIT(ctx.arena_, ret, BetweenNode, val, lhs, rhs, negated);
         return ret;
-        //return new BetweenNode(val, lhs, rhs, negated);
     }
     return val;
 }
@@ -1010,7 +980,6 @@ ASTNode* Parser::between(QueryCTX& ctx, ExpressionNode* expression_ctx){
 ASTNode* Parser::logic_not(QueryCTX& ctx,ExpressionNode* expression_ctx){
     if((bool)ctx.error_status_) return nullptr;
     if(ctx.matchTokenType(TokenType::NOT)) { 
-        //NotNode* lnot = new NotNode();
         NotNode* lnot = nullptr;
         ALLOCATE_INIT(ctx.arena_, lnot, NotNode, nullptr);
         lnot->token_ = ctx.getCurrentToken(); ++ctx;
@@ -1065,13 +1034,11 @@ ASTNode* Parser::logic_or(QueryCTX& ctx, ExpressionNode* expression_ctx){
 
 ExpressionNode* Parser::expression(QueryCTX& ctx, int query_idx, int id){
     if((bool)ctx.error_status_) return nullptr;
-    //ExpressionNode* ex = new ExpressionNode(ctx.queries_call_stack_[0], query_idx);
     ExpressionNode* ex = nullptr;
     ALLOCATE_INIT(ctx.arena_, ex, ExpressionNode, ctx.queries_call_stack_[0], query_idx);
     ex->id_ = id;
     ASTNode* cur = logic_or(ctx, ex);
     if(!cur) {
-        //delete ex;
         return nullptr;
     }
     ex->cur_ = cur;
@@ -1100,7 +1067,6 @@ QueryData* Parser::intersect(QueryCTX& ctx, int parent_idx){
                 parent_idx, ctx.queries_call_stack_[idx],
                 nullptr,
                 false);
-        //Intersect* i  = new Intersect(parent_idx, ctx.queries_call_stack_[idx], nullptr, false);
         QueryData* next = nullptr;
         if(ctx.matchTokenType(TokenType::ALL)){
             i->all_ = true;
@@ -1124,7 +1090,6 @@ QueryData* Parser::union_or_except(QueryCTX& ctx, int parent_idx){
         auto t = QueryType::UNION;
         if(ctx.getCurrentToken().type_ == TokenType::EXCEPT) t = EXCEPT;
         ++ctx;
-        //UnionOrExcept* uoe = new UnionOrExcept(t, parent_idx, cur, nullptr, false);
         UnionOrExcept* uoe = nullptr; 
         ALLOCATE_INIT(ctx.arena_, uoe,
                 UnionOrExcept,
@@ -1148,7 +1113,6 @@ QueryData* Parser::union_or_except(QueryCTX& ctx, int parent_idx){
 void Parser::selectStatement(QueryCTX& ctx, int parent_idx){
     if((bool)ctx.error_status_) return; 
     ++ctx;
-    //SelectStatementData* statement = new SelectStatementData(parent_idx);
     SelectStatementData* statement = nullptr; 
     ALLOCATE_INIT(ctx.arena_, statement,
                 SelectStatementData,
@@ -1224,7 +1188,6 @@ void Parser::createTableStatement(QueryCTX& ctx, int parent_idx){
     if(!ctx.matchMultiTokenType({TokenType::CREATE , TokenType::TABLE}))
         return;
     ctx += 2;
-    //CreateTableStatementData* statement = new CreateTableStatementData(parent_idx);
     CreateTableStatementData* statement = nullptr; 
     ALLOCATE_INIT(ctx.arena_, statement,
                 CreateTableStatementData,
@@ -1264,7 +1227,6 @@ void Parser::createIndexStatement(QueryCTX& ctx, int parent_idx){
     } else {
       return;
     }
-    //CreateIndexStatementData* statement = new CreateIndexStatementData(parent_idx);
     CreateIndexStatementData* statement = nullptr; 
     ALLOCATE_INIT(ctx.arena_, statement,
                 CreateIndexStatementData,
@@ -1325,7 +1287,6 @@ void Parser::insertStatement(QueryCTX& ctx, int parent_idx){
     return;
   }
   ctx += 2;
-  //InsertStatementData* statement = new InsertStatementData(parent_idx);
   InsertStatementData* statement = nullptr; 
     ALLOCATE_INIT(ctx.arena_, statement,
                 InsertStatementData,

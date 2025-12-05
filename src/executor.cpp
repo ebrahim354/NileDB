@@ -531,7 +531,6 @@ void SeqScanExecutor::init() {
     error_status_ = 0;
     finished_ = 0;
     //output_.resize(output_schema_->numOfCols());
-    //delete it_;
     it_ = table_->getTable()->begin();
     it_.init();
     ctx_->table_handles_.push_back(&it_);

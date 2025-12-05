@@ -227,12 +227,10 @@ class AlgebraEngine {
                                         (ptr->type_ == UNION || ptr->type_ == EXCEPT)
                                     );
                                 if(op == EXCEPT){
-                                    //lhs = new ExceptOperation(lhs, rhs, all);
                                     ExceptOperation* tmp = nullptr;
                                     ALLOCATE_INIT(ctx.arena_, tmp, ExceptOperation, data->idx_, lhs, rhs, all);
                                     lhs = tmp;
                                 } else if(op == UNION){
-                                    //lhs = new UnionOperation(lhs, rhs, all);
                                     UnionOperation* tmp = nullptr;
                                     ALLOCATE_INIT(ctx.arena_, tmp, UnionOperation, data->idx_,lhs, rhs, all);
                                     lhs = tmp;
@@ -260,7 +258,6 @@ class AlgebraEngine {
                                         ctx, ptr,
                                         (ptr->type_ == INTERSECT)
                                     );
-                                //lhs = new IntersectOperation(lhs, rhs, all);
                                 IntersectOperation* tmp = nullptr; 
                                 ALLOCATE_INIT(ctx.arena_, tmp, IntersectOperation, data->idx_, lhs, rhs, all);
                                 lhs = tmp;
@@ -320,15 +317,6 @@ class AlgebraEngine {
                           product->rhs_, 
                           op->filter_,
                           INNER_JOIN, join_algorithm);
-                  /*
-                  auto join_node = new JoinOperation(
-                          product->lhs_,
-                          product->rhs_,
-                          op->filter_,
-                          INNER_JOIN, join_algorithm);*/
-
-                  // TODO: fix memory leak of the filter and the product nodes.
-                  //op->child_ = join_node;
                   *root = join_node;
                   replaceFilteredProductWithJoin(ctx, root);
                 }  else if(op->child_){

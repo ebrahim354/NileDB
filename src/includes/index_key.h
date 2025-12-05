@@ -249,7 +249,6 @@ IndexKey temp_index_key_from_values(Arena* arena, std::vector<Value>& vals) {
 
             char* new_buf = (char*)arena->alloc(buf_size * 2);
             memcpy(new_buf, buf, buf_size);
-            //free(buf);
             buf_size *= 2; 
             buf = new_buf;
 

@@ -209,7 +209,7 @@ int DiskManager::openFile(std::string file_name){
             return 1;
         }
 
-        char* first_page = new char[PAGE_SIZE];
+        char first_page[PAGE_SIZE];
         int one = 1;
         int zero = 0;
         // assigning first 4 bytes to 0  => next free page for allocatation.
@@ -231,7 +231,6 @@ int DiskManager::openFile(std::string file_name){
         cached_files_[file_name].fs_ = std::fstream(file_name, std::ios::binary | std::ios::out | std::ios::in);
         cached_files_[file_name].freelist_ptr_ = 0;
         cached_files_[file_name].num_of_pages_ = 1;
-        delete [] first_page;
         return 0;
     }
     // at this point we need to get the next free page of this file.
