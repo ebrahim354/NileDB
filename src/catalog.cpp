@@ -43,15 +43,12 @@ void Catalog::init(CacheManager *cm) {
 
     fid_to_fname[meta_data_fid]   = META_DATA_FILE;
     fid_to_fname[meta_data_fid+1] = META_DATA_FSM;
-    // change the size after adding free space map support.
-    //PageID meta_fsm_pid = {.fid_ = meta_data_fid + 1, .page_num_ = 1};
-    ALLOCATE_INIT(arena_, free_space_map_, FreeSpaceMap, cm, meta_data_fid+1);
 
 
     // loading the hard coded meta data table schema.
     PageID meta_pid = {.fid_ = meta_data_fid, .page_num_ = 1};
     Table* meta_data_table = nullptr; 
-    ALLOCATE_INIT(arena_, meta_data_table, Table, cm, meta_pid, free_space_map_);
+    ALLOCATE_INIT(arena_, meta_data_table, Table, cm, meta_pid);
 
     std::vector<Column> meta_data_columns;
     meta_data_columns.reserve(9);
@@ -97,12 +94,9 @@ void Catalog::init(CacheManager *cm) {
             fid_to_fname[fid+1] = fsm;
 
             PageID first_page = {.fid_ = fid, .page_num_ = 1};
-            PageID first_fsm_page = {.fid_ = fid+1, .page_num_ = 1};
             // the table owns its free space map pointer and is responsible for deleting it.
-            FreeSpaceMap* free_space =  nullptr;
-            ALLOCATE_INIT(arena_, free_space, FreeSpaceMap, cm, fid+1);
             Table* table = nullptr; 
-            ALLOCATE_INIT(arena_, table, Table, cm, first_page, free_space);
+            ALLOCATE_INIT(arena_, table, Table, cm, first_page);
             TableSchema* schema = nullptr;
             ALLOCATE_INIT(arena_, schema, TableSchema, table_name, table, {});
             tables_.insert({table_name, schema});
@@ -164,11 +158,8 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const std::string &table_name, 
 
     // initialize the table
     PageID first_page = {.fid_ = nfid, .page_num_ = 1};
-    PageID first_fsm_page = {.fid_ = nfid+1, .page_num_ = 1};
-    FreeSpaceMap* free_space = nullptr; 
-    ALLOCATE_INIT(arena_, free_space, FreeSpaceMap, cache_manager_, nfid+1);
     Table* table = nullptr;
-    ALLOCATE_INIT(arena_, table, Table, cache_manager_, first_page, free_space);
+    ALLOCATE_INIT(arena_, table, Table, cache_manager_, first_page);
     TableSchema* schema = nullptr;
     ALLOCATE_INIT(arena_, schema, TableSchema, table_name, table, columns);
     tables_.insert({table_name, schema});

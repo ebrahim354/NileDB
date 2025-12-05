@@ -8,10 +8,12 @@
 #include "record.cpp"
 #include "table_data_page.cpp"
 
-void Table::init(CacheManager* cm, PageID first_page_id, FreeSpaceMap* fsm) {
+// fsm file id is by convention the next file id after the table's file id.
+void Table::init(CacheManager* cm, PageID first_page_id) {
+    assert(first_page_id != INVALID_PAGE_ID);
     cache_manager_  = cm;
     first_page_id_  = first_page_id;
-    free_space_map_ = fsm;
+    free_space_map_.init(cm, first_page_id_.fid_+1); 
 }
 void Table::destroy(){}
 
@@ -34,7 +36,7 @@ int Table::insertRecord(RecordID* rid, Record &record){
     // (inserting with the slot entry size) => this assumes that there is no free slots inside of the page.
     // worst case.
     int no_free_space = 
-        free_space_map_->getFreePageNum(record.getRecordSize() + TABLE_SLOT_ENTRY_SIZE, &page_num);
+        free_space_map_.getFreePageNum(record.getRecordSize() + TABLE_SLOT_ENTRY_SIZE, &page_num);
     // no free pages
     // allocate a new one with the cache manager
     // or if there is free space fetch the page with enough free space.
@@ -86,7 +88,7 @@ int Table::insertRecord(RecordID* rid, Record &record){
         cache_manager_->unpinPage(table_page->page_id_, true);
         return 1;
     }
-    err = free_space_map_->updateFreeSpace(table_page->page_id_, table_page->getUsedSpaceSize());
+    err = free_space_map_.updateFreeSpace(table_page->page_id_, table_page->getUsedSpaceSize());
     if(err){
         std::cout << "could not update free space map" << std::endl;
         cache_manager_->unpinPage(table_page->page_id_, true);
@@ -106,7 +108,7 @@ int Table::deleteRecord(RecordID &rid){
     if(table_page == nullptr) return 1;
     int err = table_page->deleteRecord(rid.slot_number_);
     if(err) return err;
-    free_space_map_->updateFreeSpace(table_page->page_id_, table_page->getUsedSpaceSize());
+    free_space_map_.updateFreeSpace(table_page->page_id_, table_page->getUsedSpaceSize());
     cache_manager_->unpinPage(table_page->page_id_, true);
     return 0;
 }
@@ -122,7 +124,7 @@ int Table::updateRecord(RecordID *rid, Record &new_record){
         return err;
     }
     int insert_err = table_page->insertRecord(new_record.getFixedPtr(0), new_record.getRecordSize(), &rid->slot_number_);
-    free_space_map_->updateFreeSpace(table_page->page_id_, table_page->getUsedSpaceSize());
+    free_space_map_.updateFreeSpace(table_page->page_id_, table_page->getUsedSpaceSize());
     // inserted no need to find a new page.
     cache_manager_->unpinPage(table_page->page_id_, true);
     if(!insert_err) 
