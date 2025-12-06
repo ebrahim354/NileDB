@@ -102,6 +102,16 @@ void CreateIndexStatementData::init(int parent_idx) {
     parent_idx_ = parent_idx;
 }
 
+void DropTableStatementData::init(int parent_idx) {
+    type_ = DROP_TABLE_DATA;
+    parent_idx_ = parent_idx;
+}
+
+void DropIndexStatementData::init(int parent_idx) {
+    type_ = DROP_INDEX_DATA;
+    parent_idx_ = parent_idx;
+}
+
 void InsertStatementData::init(int parent_idx) {
     type_ = INSERT_DATA;
     parent_idx_ = parent_idx;

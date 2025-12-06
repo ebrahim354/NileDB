@@ -37,6 +37,7 @@ class DiskManager {
         // page_id is the output and return value 1 in case of failure.
         int allocateNewPage(FileID fid, char* buffer ,PageID *page_id);
         int deallocatePage(PageID page_id);
+        bool deleteFile(FileID fid);
 
     private:
         // 1 on failure, 0 on success.

@@ -257,4 +257,10 @@ int DiskManager::openFile(std::string file_name){
     return 0;
 }
 
-
+bool DiskManager::deleteFile(FileID fid) {
+    assert(fid_to_fname.count(fid));
+    std::string file_name = fid_to_fname[fid];
+    if(cached_files_.count(file_name));
+    cached_files_[file_name].fs_.close();
+    return std::remove(file_name.c_str());
+}

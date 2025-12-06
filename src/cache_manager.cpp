@@ -201,6 +201,16 @@ void CacheManager::flushAllPages() {
     }
 }
 
+void CacheManager::resetPage(PageID page_id, i32 frame){
+    page_table_.erase(page_id);
+    replacer_->Remove(frame);
+    free_list_.push_back(frame);
+    pages_[frame].ResetMemory();
+    pages_[frame].page_id_ = INVALID_PAGE_ID;
+    pages_[frame].pin_count_ = 0;
+    pages_[frame].is_dirty_ = false;
+}
+
 bool CacheManager::deletePage(PageID page_id) {
     const std::lock_guard<std::mutex> lock(latch_);
     int32_t frame = -1;
@@ -214,13 +224,18 @@ bool CacheManager::deletePage(PageID page_id) {
     if (pages_[frame].pin_count_ != 0) {
         return false;
     }
-    page_table_.erase(page_id);
-    replacer_->Remove(frame);
-    free_list_.push_back(frame);
-    pages_[frame].ResetMemory();
-    pages_[frame].page_id_ = INVALID_PAGE_ID;
-    pages_[frame].pin_count_ = 0;
-    pages_[frame].is_dirty_ = false;
+    resetPage(page_id, frame);
     int err = disk_manager_->deallocatePage(page_id);
     return !err;
+}
+
+// TODO: make this thread safe.
+bool CacheManager::deleteFile(FileID fid) {
+    // loop over the entire page table and check for pages with the specified fid and delete them.
+    // then call the disk manager to delete the file.
+    for(auto& page: page_table_){
+        if(page.first.fid_ != fid) continue;
+        resetPage(page.first, page.second);
+    }
+    return disk_manager_->deleteFile(fid);
 }

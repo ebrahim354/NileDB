@@ -88,6 +88,7 @@ enum class TokenType {
     UPDATE,
     SET,
     CREATE,
+    DROP,
     TABLE,
     SUM,
     COUNT,

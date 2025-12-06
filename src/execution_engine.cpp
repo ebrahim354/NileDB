@@ -88,6 +88,18 @@ class ExecutionEngine {
             return true;
         }
 
+        bool drop_table_handler(QueryCTX& ctx) {
+            assert(0 && "TODO");
+        }
+
+        bool drop_index_handler(QueryCTX& ctx) {
+            DropIndexStatementData* drop_index = reinterpret_cast<DropIndexStatementData*>(ctx.queries_call_stack_[0]);
+            std::string index_name = drop_index->index_name_;
+            bool err = catalog_->dropIndex(&ctx, index_name);
+            if(err) return false;
+            return true;
+        }
+
         // DDL execution.
         bool directExecute(QueryCTX& ctx){
             // should always be 1.
@@ -99,6 +111,10 @@ class ExecutionEngine {
                     return create_table_handler(ctx);
                 case CREATE_INDEX_DATA:
                     return create_index_handler(ctx);
+                case DROP_TABLE_DATA:
+                    return drop_table_handler(ctx);
+                case DROP_INDEX_DATA:
+                    return drop_index_handler(ctx);
                 default:
                     return false;
             }

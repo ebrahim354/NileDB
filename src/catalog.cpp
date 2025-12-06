@@ -415,5 +415,103 @@ IndexHeader Catalog::getIndexHeader(std::string& iname) {
     return {};
 }
 
+// ret => 0 on success.
+int Catalog::dropIndex(QueryCTX* ctx, const std::string& index_name) {
+    // TODO: check that the index is not attatched to fields with 'uinque' or 'primary key' constraints.
+    if (!indexes_.count(index_name))
+        return 1;
+    IndexHeader header = indexes_[index_name];
+    assert(header.index_);
+
+    // gather data related to the index in the system.
+    BTreeIndex* index = indexes_[index_name].index_; 
+    FileID fid = index->get_fid();
+    std::string index_table_name = "";
+
+    assert(fid_to_fname.count(fid));
+
+    // clear persisted data of the index.
+    assert(tables_.count(INDEX_META_TABLE) && tables_.count(INDEX_KEYS_TABLE));
+    TableSchema* index_meta_data = tables_[INDEX_META_TABLE];
+    TableSchema* index_keys      = tables_[INDEX_KEYS_TABLE];
+
+    // clear index_meta_data.
+    // indexes_meta_data (text index_name, text table_name, int fid, int root_page_num).
+    TableIterator it_meta = index_meta_data->getTable()->begin();
+    std::set<u64> halloween_preventer;
+    it_meta.init();
+    while(it_meta.advance()){
+        if(halloween_preventer.count(it_meta.getCurRecordID().get_hash())) continue;
+        ArenaTemp tmp = ctx->arena_.start_temp_arena();
+        Record r = it_meta.getCurRecordCpy(&ctx->arena_);
+        assert(!r.isInvalidRecord());
+        std::vector<Value> values;
+        int err = index_meta_data->translateToValues(r, values);
+        assert(err == 0 && "Could not traverse the indexes meta table.");
+
+        std::string cur_table_name = values[1].getStringVal();
+        FileID index_fid = values[2].getIntVal();
+        if(index_fid != fid) {
+            ctx->arena_.clear_temp_arena(tmp);
+            continue;
+        }
+        if(index_table_name.size() == 0) 
+            index_table_name = cur_table_name;
+
+        RecordID rid = it_meta.getCurRecordID();
+
+        err = index_meta_data->getTable()->deleteRecord(rid);
+        ctx->arena_.clear_temp_arena(tmp);
+        assert(err == 0 && "Could not delete record.");
+        halloween_preventer.insert(rid.get_hash());
+    }
+    it_meta.destroy();
+    halloween_preventer.clear();
+    
+
+    // clear index_keys.
+    // indexs_keys  (text index_name, int field_number_in_table, int field_number_in_index).
+    TableIterator it_keys = index_keys->getTable()->begin();
+    it_keys.init();
+    while(it_keys.advance()){
+        if(halloween_preventer.count(it_keys.getCurRecordID().get_hash())) continue;
+        ArenaTemp tmp = ctx->arena_.start_temp_arena();
+        Record r = it_keys.getCurRecordCpy(&ctx->arena_);
+        assert(!r.isInvalidRecord());
+        std::vector<Value> values;
+        int err = index_keys->translateToValues(r, values);
+        assert(err == 0 && "Could not traverse the indexe keys table.");
+
+        std::string cur_index_name = values[0].getStringVal();
+        if(cur_index_name != index_name) {
+            ctx->arena_.clear_temp_arena(tmp);
+            continue;
+        }
+
+        RecordID rid = it_keys.getCurRecordID();
+        err = index_keys->getTable()->deleteRecord(rid);
+        ctx->arena_.clear_temp_arena(tmp);
+        assert(err == 0 && "Could not delete record.");
+        halloween_preventer.insert(rid.get_hash());
+    }
+    it_keys.destroy();
+    
+    // delete the index file.
+    int err = cache_manager_->deleteFile(fid);
+    // clear the catalog's in-memory data.
+    indexes_.erase(index_name);
+    fid_to_fname.erase(fid);
+    assert(indexes_of_table_.count(index_table_name));
+    std::vector table_indexes = indexes_of_table_[index_table_name];
+    for(int i = 0; i < table_indexes.size(); ++i){
+        if(table_indexes[i] == index_name){
+            indexes_of_table_[index_table_name].erase(indexes_of_table_[index_table_name].begin() + i);
+            break;
+        }
+    }
+    return err;
+}
+
+
 // TODO: implement delete and alter table.
 // TODO: implement delete and alter index.

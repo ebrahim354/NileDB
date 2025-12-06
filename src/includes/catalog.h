@@ -61,9 +61,9 @@ class Catalog {
         //TODO: change unnecessary indirection.
         std::vector<IndexHeader> getIndexesOfTable(std::string& tname);
 
+        int dropIndex(QueryCTX* ctx, const std::string& index_name);
 
-        // TODO: implement delete and alter table.
-        // TODO: implement delete and alter index.
+        // TODO: implement alter index and altertable.
     private:
         CacheManager* cache_manager_;
         Arena arena_;

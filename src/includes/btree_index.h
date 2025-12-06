@@ -36,6 +36,7 @@ class BTreeIndex {
         IndexIterator end();
         void See();
         void ToString(BTreePage* page);
+        FileID get_fid();
 
     private:
         bool isEmpty();

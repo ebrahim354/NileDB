@@ -11,6 +11,8 @@ enum QueryType {
     SELECT_DATA = 0,
     CREATE_TABLE_DATA,
     CREATE_INDEX_DATA,
+    DROP_TABLE_DATA,
+    DROP_INDEX_DATA,
     INSERT_DATA,
     DELETE_DATA,
     UPDATE_DATA,
@@ -87,6 +89,18 @@ struct CreateIndexStatementData : QueryData {
     std::vector<IndexField> fields_ = {};
     std::string index_name_ = {};
     std::string table_name_ = {};
+};
+
+struct DropTableStatementData : QueryData {
+    void init(int parent_idx);
+
+    std::string table_name_ = {};
+};
+
+struct DropIndexStatementData : QueryData {
+    void init(int parent_idx);
+
+    std::string index_name_ = {};
 };
 
 struct InsertStatementData : QueryData {

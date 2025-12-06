@@ -61,6 +61,8 @@ class Parser {
         // DDL
         void createTableStatement(QueryCTX& ctx, int parent_idx);
         void createIndexStatement(QueryCTX& ctx, int parent_idx);
+        void dropTableStatement(QueryCTX& ctx, int parent_idx);
+        void dropIndexStatement(QueryCTX& ctx, int parent_idx);
 
         // query : input.
         // ctx   : output.
@@ -132,12 +134,24 @@ void Parser::parse(std::string& query, QueryCTX& ctx){
             break;
         case TokenType::CREATE:
             {
-              if(ctx.tokens_.size() >= 2 && ctx.tokens_[1].type_ == TokenType::TABLE)
+              if(ctx.tokens_.size() >= 2 && ctx.tokens_[1].type_ == TokenType::TABLE){
                 createTableStatement(ctx,-1);
-              else
+                break;
+              } else if(ctx.tokens_.size() >= 2 && ctx.tokens_[1].type_ == TokenType::INDEX){
                 createIndexStatement(ctx,-1);
+                break;
+              }
             }
-            break;
+        case TokenType::DROP:
+            {
+              if(ctx.tokens_.size() >= 2 && ctx.tokens_[1].type_ == TokenType::TABLE){
+                dropTableStatement(ctx,-1);
+                break;
+              } else if(ctx.tokens_.size() >= 2 && ctx.tokens_[1].type_ == TokenType::INDEX){
+                dropIndexStatement(ctx,-1);
+                break;
+              }
+            }
         default:
             ctx.error_status_ = Error::QUERY_NOT_SUPPORTED;
     }
@@ -1277,6 +1291,50 @@ void Parser::createIndexStatement(QueryCTX& ctx, int parent_idx){
         return;
     }
     ++ctx;
+    ctx.direct_execution_ = 1;
+}
+
+void Parser::dropIndexStatement(QueryCTX& ctx, int parent_idx){
+    if((bool)ctx.error_status_) return; 
+    if(!ctx.matchMultiTokenType({TokenType::DROP , TokenType::INDEX})){
+        ctx.error_status_ = Error::EXPECTED_IDENTIFIER; // TODO: make appropriate error handling.
+        return;
+    }
+    ctx += 2;
+    DropIndexStatementData* statement = nullptr; 
+    ALLOCATE_INIT(ctx.arena_, statement,
+                DropIndexStatementData,
+                parent_idx);
+    statement->idx_ = ctx.queries_call_stack_.size();
+    ctx.queries_call_stack_.push_back(statement);
+
+    if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
+        ctx.error_status_ = Error::EXPECTED_IDENTIFIER; 
+        return;
+    }
+    statement->index_name_ = ctx.getCurrentToken().val_; ++ctx;
+    ctx.direct_execution_ = 1;
+}
+
+void Parser::dropTableStatement(QueryCTX& ctx, int parent_idx){
+    if((bool)ctx.error_status_) return; 
+    if(!ctx.matchMultiTokenType({TokenType::DROP , TokenType::TABLE})){
+        ctx.error_status_ = Error::EXPECTED_IDENTIFIER; // TODO: make appropriate error handling.
+        return;
+    }
+    ctx += 2;
+    DropTableStatementData* statement = nullptr; 
+    ALLOCATE_INIT(ctx.arena_, statement,
+                DropTableStatementData,
+                parent_idx);
+    statement->idx_ = ctx.queries_call_stack_.size();
+    ctx.queries_call_stack_.push_back(statement);
+
+    if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
+        ctx.error_status_ = Error::EXPECTED_IDENTIFIER; 
+        return;
+    }
+    statement->table_name_ = ctx.getCurrentToken().val_; ++ctx;
     ctx.direct_execution_ = 1;
 }
 

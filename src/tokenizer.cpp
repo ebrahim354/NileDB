@@ -61,6 +61,7 @@ Tokenizer::Tokenizer() {
     keywords_.insert({"FALSE"   , TokenType::FALSE   });
     keywords_.insert({"TRUE"    , TokenType::TRUE    });
     keywords_.insert({"CREATE"  , TokenType::CREATE  });
+    keywords_.insert({"DROP"    , TokenType::DROP    });
     keywords_.insert({"TABLE"   , TokenType::TABLE   });
     // aggregate functions
     keywords_.insert({"SUM"  , TokenType::SUM  });

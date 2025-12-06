@@ -916,3 +916,7 @@ bool BTreeIndex::isEmpty() {
     cache_manager_->unpinPage(root_page_id_, false);
     return sz == 0;
 }
+
+FileID BTreeIndex::get_fid() {
+    return fid_;
+}
