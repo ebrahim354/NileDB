@@ -33,6 +33,15 @@
  */
 
 
+int generate_max_fid() {
+    int mx = -1;
+    for(auto& fid: fid_to_fname){
+        if(fid.first > mx) mx = fid.first;
+    }
+    mx+= 2; // always append by 2 in case of an fsm.
+    return mx;
+}
+
 void Catalog::init(CacheManager *cm) {
     assert(cm);
     cache_manager_ = cm;
@@ -147,8 +156,8 @@ void Catalog::destroy () {
 }
 
 TableSchema* Catalog::createTable(QueryCTX* ctx, const std::string &table_name, std::vector<Column> &columns) {
-    FileID nfid = fid_to_fname.size();// TODO: Dropping tables is going to break this method.
-    assert(fid_to_fname.count(nfid) == 0 && "[FATAL] fid already exists!"); // TODO: Remove this assertion.
+    FileID nfid = generate_max_fid();
+    assert((fid_to_fname.count(nfid) == 0 && fid_to_fname.count(nfid+1) == 0) && "[FATAL] fid already exists!");
     if (tables_.count(table_name) || fid_to_fname.count(nfid))
         return nullptr;
     std::string fname = table_name+".ndb";
@@ -201,7 +210,7 @@ bool Catalog::createIndex(QueryCTX* ctx, const std::string &table_name, const st
     // initialize the index
     //PageID first_page = {.file_name_ = index_name+"_INDEX.ndb", .page_num_ = -1};
     std::string index_fname = index_name+"_INDEX.ndb";
-    FileID nfid = fid_to_fname.size();
+    FileID nfid = generate_max_fid(); 
     assert(fid_to_fname.count(nfid) == 0); // TODO: replace assertion with error.
     fid_to_fname[nfid] = index_fname;
 
