@@ -180,17 +180,6 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const std::string &table_name, 
         // translate the vals to a record and persist them.
         Record record = meta_table_schema_->translateToRecord(&ctx->arena_, vals);
         assert(record.isInvalidRecord() == false);
-
-        /*
-           if(record == nullptr) std::cout << " invalid record " << std::endl;
-           std::cout << " translated a schema to a record with size: " 
-           << record->getRecordSize() << std::endl;
-           for(int i = 0; i < record->getRecordSize(); i++){
-           std::cout << +(char)(*record->getFixedPtr(i)) << ",";
-           }
-           std::cout << std::endl;
-           */
-
         // rid is not used for now.
         RecordID rid = RecordID();
         int err = meta_table_schema_->getTable()->insertRecord(&rid, record);
@@ -416,7 +405,7 @@ IndexHeader Catalog::getIndexHeader(std::string& iname) {
 }
 
 // ret => 0 on success.
-int Catalog::dropIndex(QueryCTX* ctx, const std::string& index_name) {
+int Catalog::deleteIndex(QueryCTX* ctx, const std::string& index_name) {
     // TODO: check that the index is not attatched to fields with 'uinque' or 'primary key' constraints.
     if (!indexes_.count(index_name))
         return 1;
@@ -509,9 +498,73 @@ int Catalog::dropIndex(QueryCTX* ctx, const std::string& index_name) {
             break;
         }
     }
+    if(!err) std::cout << "Dropped Index: " << index_name << "\n";
     return err;
 }
 
+int Catalog::deleteTable(QueryCTX* ctx, const std::string& table_name) {
+    if (!tables_.count(table_name))
+        return 1;
 
-// TODO: implement delete and alter table.
-// TODO: implement delete and alter index.
+    // gather data related to the table in the system.
+    TableSchema* table_schema = tables_[table_name];
+    assert(table_schema->getTable());
+
+    Table* table = table_schema->getTable();
+    FileID table_fid = table->get_fid();
+    // fsm of any table is by convention the second file after that table.
+    FileID fsm_fid   = table_fid + 1;
+    assert(fid_to_fname.count(table_fid) && fid_to_fname.count(fsm_fid));
+    // delete the indexes of this table first before continuting.
+    int err = 0;
+    if(indexes_of_table_.count(table_name)){
+        // take a copy because deleting will affect the loop.
+        auto indexes = indexes_of_table_[table_name];
+        for(int i = 0; err == 0 && i < indexes.size(); ++i)
+            err = deleteIndex(ctx, indexes[i]);
+        if(err) return err;
+        indexes_of_table_.erase(table_name);
+    }
+
+    TableIterator it_meta = meta_table_schema_->getTable()->begin();
+    std::set<u64> halloween_preventer;
+    it_meta.init();
+    while(it_meta.advance()){
+        if(halloween_preventer.count(it_meta.getCurRecordID().get_hash())) continue;
+        ArenaTemp tmp = ctx->arena_.start_temp_arena();
+        Record r = it_meta.getCurRecordCpy(&ctx->arena_);
+        assert(!r.isInvalidRecord());
+
+        std::vector<Value> values;
+        err = meta_table_schema_->translateToValues(r, values);
+        assert(err == 0 && "Could not traverse the meta data table.");
+        FileID cur_fid = values[2].getIntVal();
+        if(cur_fid != table_fid) {
+            ctx->arena_.clear_temp_arena(tmp);
+            continue;
+        }
+
+        RecordID rid = it_meta.getCurRecordID();
+        err = meta_table_schema_->getTable()->deleteRecord(rid);
+        ctx->arena_.clear_temp_arena(tmp);
+        assert(err == 0 && "Could not delete record.");
+        halloween_preventer.insert(rid.get_hash());
+    }
+    it_meta.destroy();
+    
+    // delete the table file.
+    err = cache_manager_->deleteFile(table_fid);
+    assert(err == 0);
+    // delete the fsm file.
+    err = cache_manager_->deleteFile(fsm_fid);
+    assert(err == 0);
+    // clear the catalog's in-memory data.
+    tables_.erase(table_name);
+    fid_to_fname.erase(table_fid);
+    fid_to_fname.erase(fsm_fid);
+
+    if(!err) std::cout << "Dropped Table: " << table_name << "\n";
+    return err;
+}
+
+// TODO: implement alter index and table.

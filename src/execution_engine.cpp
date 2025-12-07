@@ -89,13 +89,17 @@ class ExecutionEngine {
         }
 
         bool drop_table_handler(QueryCTX& ctx) {
-            assert(0 && "TODO");
+            auto drop_table = reinterpret_cast<DropTableStatementData*>(ctx.queries_call_stack_[0]);
+            std::string table_name = drop_table->table_name_;
+            bool err = catalog_->deleteTable(&ctx, table_name);
+            if(err) return false;
+            return true;
         }
 
         bool drop_index_handler(QueryCTX& ctx) {
             DropIndexStatementData* drop_index = reinterpret_cast<DropIndexStatementData*>(ctx.queries_call_stack_[0]);
             std::string index_name = drop_index->index_name_;
-            bool err = catalog_->dropIndex(&ctx, index_name);
+            bool err = catalog_->deleteIndex(&ctx, index_name);
             if(err) return false;
             return true;
         }

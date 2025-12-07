@@ -137,7 +137,7 @@ void Parser::parse(std::string& query, QueryCTX& ctx){
               if(ctx.tokens_.size() >= 2 && ctx.tokens_[1].type_ == TokenType::TABLE){
                 createTableStatement(ctx,-1);
                 break;
-              } else if(ctx.tokens_.size() >= 2 && ctx.tokens_[1].type_ == TokenType::INDEX){
+              } else {
                 createIndexStatement(ctx,-1);
                 break;
               }

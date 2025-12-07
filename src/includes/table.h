@@ -52,6 +52,7 @@ class Table {
 
         // we allow only forward scans for now via tableIterator.advance().
         TableIterator begin();
+        FileID get_fid();
     private:
         CacheManager* cache_manager_ = nullptr;
         PageID first_page_id_ = INVALID_PAGE_ID;

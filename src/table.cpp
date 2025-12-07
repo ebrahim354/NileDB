@@ -140,3 +140,8 @@ int Table::updateRecord(RecordID *rid, Record &new_record){
 TableIterator Table::begin() {
     return TableIterator(cache_manager_, first_page_id_);
 }
+
+FileID Table::get_fid(){
+    return first_page_id_.fid_;
+}
+
