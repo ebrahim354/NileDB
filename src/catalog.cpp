@@ -112,12 +112,11 @@ void Catalog::init(CacheManager *cm) {
         }
 
         // add the column to the table's meta data.
-        std::vector<Column> cols;
-        std::vector<Constraint> cons;
-        if(not_null) cons.push_back(NOT_NULL); 
-        if(primary_key) cons.push_back(PRIMARY_KEY); 
-        if(foreign_key) cons.push_back(FOREIGN_KEY); 
-        if(unique) cons.push_back(UNIQUE); 
+        ConstraintType  cons = CONSTRAINT_NOTHING;
+        if(not_null)    cons |= CONSTRAINT_NOT_NULL;
+        if(primary_key) cons |= CONSTRAINT_PRIMARY_KEY; 
+        if(foreign_key) cons |= CONSTRAINT_FOREIGN_KEY;
+        if(unique)      cons |= CONSTRAINT_UNIQUE; 
 
         tables_[table_name]->addColumn(Column(col_name, col_type, col_offset, cons));
     }

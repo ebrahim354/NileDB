@@ -422,15 +422,15 @@ void Parser::fieldDefList(QueryCTX& ctx, int query_idx){
         // constraints.
         while(ctx.matchAnyTokenType({ TokenType::PRIMARY, TokenType::NOT, TokenType::UNIQUE })){
             if(ctx.matchMultiTokenType({ TokenType::PRIMARY, TokenType::KEY })){
-                field_def.constraints_.push_back(PRIMARY_KEY);
+                field_def.constraints_ |= CONSTRAINT_PRIMARY_KEY;
                 ctx += 2;
                 continue;
             } else if(ctx.matchMultiTokenType({ TokenType::NOT, TokenType::NULL_CONST })){
-                field_def.constraints_.push_back(NOT_NULL);
+                field_def.constraints_ |= CONSTRAINT_NOT_NULL;
                 ctx += 2;
                 continue;
             } else if(ctx.matchTokenType(TokenType::UNIQUE)){
-                field_def.constraints_.push_back(UNIQUE);
+                field_def.constraints_ |= CONSTRAINT_UNIQUE;
                 ++ctx;
                 continue;
             }

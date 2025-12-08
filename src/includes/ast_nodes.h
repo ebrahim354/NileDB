@@ -56,7 +56,7 @@ struct JoinedTablesData {
 struct FieldDef {
     std::string field_name_;
     TokenType type_; 
-    std::vector<Constraint> constraints_;
+    ConstraintType constraints_;
 };
 
 enum CategoryType {

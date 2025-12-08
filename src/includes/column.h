@@ -3,7 +3,6 @@
 
 #include "tokenizer.h"
 #include <cstdint>
-#include <vector>
 #include <string>
 // char_n  => fixed length string (less than page size).
 // varchar => variable length string (less than page size).
@@ -16,7 +15,14 @@
 // EXECUTOR_ID is integer index that points to the executor inside of the QueryCTX object.
 enum Type { INVALID = -1, BOOLEAN, INT, BIGINT, FLOAT, DOUBLE, TIMESTAMP, VARCHAR, NULL_TYPE, EXECUTOR_ID};
 
-enum Constraint { NOT_NULL = 0, PRIMARY_KEY, FOREIGN_KEY, UNIQUE };
+// enum Constraint { NOT_NULL = 0, PRIMARY_KEY, FOREIGN_KEY, UNIQUE };
+// constants for constraints masks.
+#define ConstraintType           uint8_t
+#define CONSTRAINT_NOTHING       0
+#define CONSTRAINT_NOT_NULL      1
+#define CONSTRAINT_PRIMARY_KEY   2
+#define CONSTRAINT_FOREIGN_KEY   4
+#define CONSTRAINT_UNIQUE        8
 
 Type tokenTypeToColType(TokenType t);
 bool checkSameType(Type lhs, Type rhs);
@@ -24,7 +30,7 @@ bool checkSameType(Type lhs, Type rhs);
 
 class Column {
     public:
-        Column(std::string name, Type type, uint8_t col_offset, std::vector<Constraint> constraints= {});
+        Column(std::string name, Type type, u8 col_offset, ConstraintType constraints = CONSTRAINT_NOTHING);
         ~Column();
 
         // the reson for this is that we don't want anyone to change the column meta data after initializing it.
@@ -33,9 +39,9 @@ class Column {
         void                           setName(std::string& name);
         std::string                    getName();
         Type                           getType();
-        uint8_t                        getSize();
-        uint16_t                       getOffset();
-        const std::vector<Constraint>& getConstraints();
+        u8                             getSize() const;
+        u16                            getOffset();
+        ConstraintType                 getConstraints();
         bool                           isVarLength();
         bool isNullable();
         bool isPrimaryKey();
@@ -47,7 +53,7 @@ class Column {
         std::string name_;
         Type type_ = INVALID;
         uint16_t col_offset_ = 0;
-        std::vector<Constraint> constraints_ = {};
+        ConstraintType constraints_ = CONSTRAINT_NOTHING;
         uint8_t size_ = 0; // in bytes.
 };
 

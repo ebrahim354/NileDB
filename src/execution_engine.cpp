@@ -39,7 +39,7 @@ class ExecutionEngine {
             std::vector<FieldDef> fields = create_table->field_defs_;
             std::deque<std::string> col_names;
             std::deque<Type> col_types;
-            std::deque<std::vector<Constraint>> col_constraints;
+            std::deque<ConstraintType> col_constraints;
             for(int i = 0; i < fields.size(); ++i){
                 std::string name = fields[i].field_name_;
                 Type type = tokenTypeToColType(fields[i].type_);
@@ -56,13 +56,7 @@ class ExecutionEngine {
             uint8_t offset_ptr = 0;
             for(size_t i = 0; i < col_names.size(); ++i){
                 columns.push_back(Column(col_names[i], col_types[i], offset_ptr, col_constraints[i]));
-                bool is_primary_key = false;
-                for(int j = 0; j < col_constraints[i].size(); ++j){
-                  if(col_constraints[i][j] == Constraint::PRIMARY_KEY){
-                    is_primary_key = true;
-                    break;
-                  }
-                }
+                bool is_primary_key = col_constraints[i]&CONSTRAINT_PRIMARY_KEY;
                 if(is_primary_key) 
                     primary_key_cols.push_back({col_names[i], false}); // primary key can only be asc.
                 offset_ptr += Column::getSizeFromType(col_types[i]);

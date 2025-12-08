@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <vector>
 #include <string>
 #include "column.h"
 
@@ -26,7 +25,7 @@ Type tokenTypeToColType(TokenType t){
     }
 }
 
-Column::Column(std::string name, Type type, uint8_t col_offset, std::vector<Constraint> constraints): 
+Column::Column(std::string name, Type type, u8 col_offset, ConstraintType constraints): 
     name_(name), 
     type_(type), 
     col_offset_(col_offset),
@@ -36,32 +35,24 @@ Column::Column(std::string name, Type type, uint8_t col_offset, std::vector<Cons
     // the reson for this is that we don't want anyone to change the column meta data after initializing it.
     // if you want to modify the column you have to delete it and start a new one, this is better to avoid errors
     // in the future, for example: when we start adding ALTER TABLE command.
-    void                           Column::setName(std::string& name) { name_ = name  ; }
-    std::string                    Column::getName()        { return name_            ; }
-    Type                           Column::getType()        { return type_            ; }
-    uint8_t                        Column::getSize()        { return size_            ; }
-    uint16_t                       Column::getOffset()      { return col_offset_      ; }
-    const std::vector<Constraint>& Column::getConstraints() { return constraints_     ; }
-    bool                           Column::isVarLength()    { return type_ == VARCHAR ; }
-    bool Column::isNullable() { 
-        for (auto con : constraints_) 
-            if(con == NOT_NULL) return false; 
-        return true;
-    }
-bool Column::isPrimaryKey() { 
-    for (auto con : constraints_) 
-        if(con == PRIMARY_KEY) return true; 
-    return false;
+inline void                    Column::setName(std::string& name) { name_ = name  ; }
+inline std::string             Column::getName()        { return name_            ; }
+inline Type                    Column::getType()        { return type_            ; }
+inline u8                      Column::getSize() const  { return size_            ; }
+inline u16                     Column::getOffset()      { return col_offset_      ; }
+inline ConstraintType          Column::getConstraints() { return constraints_     ; }
+inline bool                    Column::isVarLength()    { return type_ == VARCHAR ; }
+inline bool Column::isNullable() { 
+    return !(constraints_&CONSTRAINT_NOT_NULL);
 }
-bool Column::isForeignKey() { 
-    for (auto con : constraints_) 
-        if(con == FOREIGN_KEY) return true; 
-    return false;
+inline bool Column::isPrimaryKey() { 
+    return (constraints_&CONSTRAINT_PRIMARY_KEY);
 }
-bool Column::isUnique() { 
-    for (auto con : constraints_) 
-        if(con == UNIQUE) return true; 
-    return false;
+inline bool Column::isForeignKey() { 
+    return (constraints_&CONSTRAINT_FOREIGN_KEY);
+}
+inline bool Column::isUnique() { 
+    return (constraints_&CONSTRAINT_UNIQUE);
 }
 
 uint8_t Column::getSizeFromType(Type t){
