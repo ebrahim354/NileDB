@@ -5,7 +5,7 @@
 
 
 
-void TableSchema::init(std::string name, Table* table, const std::vector<Column> columns, bool tmp_schema) {
+void TableSchema::init(String name, Table* table, const Vector<Column> columns, bool tmp_schema) {
     table_name_ = name;
     table_ = table;
     columns_ = columns;
@@ -17,7 +17,7 @@ void TableSchema::init(std::string name, Table* table, const std::vector<Column>
 }
 void TableSchema::destroy() {}
 
-std::string TableSchema::getTableName(){
+String TableSchema::getTableName(){
     return table_name_;
 }
 
@@ -25,8 +25,8 @@ int TableSchema::numOfCols() {
     return columns_.size();
 }
 // TODO: change columns to be a set instead of doing this.
-int TableSchema::colExist(std::string& col_name) {
-    std::string field = col_name;
+int TableSchema::colExist(String& col_name) {
+    String field = col_name;
     if(!tmp_schema_)
         field = split_scoped_field(col_name).second;
 
@@ -37,7 +37,7 @@ int TableSchema::colExist(std::string& col_name) {
     return -1;
 }
 
-bool TableSchema::checkValidValues(std::vector<std::string>& fields, std::vector<Value>& vals) {
+bool TableSchema::checkValidValues(Vector<String>& fields, Vector<Value>& vals) {
     if(fields.size() != columns_.size() || fields.size() != vals.size()) return false;
     for(size_t i = 0; i < fields.size(); ++i){
         int col_idx = colExist(fields[i]);
@@ -48,7 +48,7 @@ bool TableSchema::checkValidValues(std::vector<std::string>& fields, std::vector
     return true;
 }
 
-bool TableSchema::checkValidValue(std::string& field, Value& val) {
+bool TableSchema::checkValidValue(String& field, Value& val) {
     for(size_t i = 0; i < columns_.size(); ++i){
         if(columns_[i].getName() == field && columns_[i].getType() != val.type_)
             return true;
@@ -56,7 +56,7 @@ bool TableSchema::checkValidValue(std::string& field, Value& val) {
     return false;
 }
 
-int TableSchema::getColIdx(std::string& field, Value& val){
+int TableSchema::getColIdx(String& field, Value& val){
     for(size_t i = 0; i < columns_.size(); ++i){
         if(columns_[i].getName() == field && columns_[i].getType() != val.type_){
             return i;
@@ -66,7 +66,7 @@ int TableSchema::getColIdx(std::string& field, Value& val){
 
 }
 
-bool TableSchema::isValidCol(std::string& col_name){
+bool TableSchema::isValidCol(String& col_name){
     for(auto c : columns_)
         if(c.getName() == col_name) return true;
     return false;
@@ -80,7 +80,7 @@ void TableSchema::addColumn(Column c){
             });
 }
 
-std::string TableSchema::typeToString(Type t){
+String TableSchema::typeToString(Type t){
     if(t == BOOLEAN)        return "BOOLEAN";
     else if(t == INT)       return "INT";
     else if(t == BIGINT)    return "BIGINT";
@@ -120,15 +120,15 @@ void TableSchema::printSchema(){
         std::cout << "-----------------------------------------------------------------" << std::endl;
     }
 }
-std::vector<std::string> TableSchema::getCols(){
-    std::vector<std::string> cols;
+Vector<String> TableSchema::getCols(){
+    Vector<String> cols;
     for(size_t i = 0; i < columns_.size(); ++i){
         cols.push_back(columns_[i].getName());
     }
     return cols;
 }
 
-std::vector<Column> TableSchema::getColumns(){
+Vector<Column> TableSchema::getColumns(){
     return columns_;
 }
 
@@ -142,7 +142,7 @@ void TableSchema::printTableHeader(){
 // get a pointer to a spicific value inside of a record using the schema. 
 // Type conversion is done by the user of the function.
 // return nullptr in case of an error or the value is equal to null (handle cases separately later).
-char* TableSchema::getValue(std::string col_name ,Record& r, uint16_t* size){
+char* TableSchema::getValue(String col_name ,Record& r, uint16_t* size){
     Column* col = nullptr;
     for(size_t i = 0; i < columns_.size(); ++i){
         if(columns_[i].getName() == col_name) {
@@ -168,7 +168,7 @@ char* TableSchema::getValue(std::string col_name ,Record& r, uint16_t* size){
 // translate a given record using the schema to a vector of Value type.
 // return 1 in case of an error.
 // values is the output.
-int TableSchema::translateToValues(Record& r, std::vector<Value>& values){
+int TableSchema::translateToValues(Record& r, Vector<Value>& values){
     for(int i = 0; i < columns_.size(); ++i){
         // check the bitmap if this value is null.
         char * bitmap_ptr = r.getFixedPtr(size_)+(i/8);  
@@ -190,7 +190,7 @@ int TableSchema::translateToValues(Record& r, std::vector<Value>& values){
     return 0;
 }
 
-int TableSchema::translateToValuesOffset(Record& r, std::vector<Value>& values, int offset){
+int TableSchema::translateToValuesOffset(Record& r, Vector<Value>& values, int offset){
     if( offset < 0 || offset + columns_.size() > values.size()) {
         assert(0 && "Can't translate this record");
         return 1;
@@ -244,7 +244,7 @@ int TableSchema::translateToTuple(Record& r, Tuple& tuple, RecordID& rid){
 // return invalid record in case of an error.
 // the user of the class should handle deleting the record after using it.
 // we assume that the variable length columns are represented first.
-Record TableSchema::translateToRecord(Arena* arena, std::vector<Value>& values) {
+Record TableSchema::translateToRecord(Arena* arena, Vector<Value>& values) {
     if(values.size() != columns_.size()) return Record(nullptr, 0);
     uint32_t fixed_part_size = size_;
     uint32_t var_part_size = 0;

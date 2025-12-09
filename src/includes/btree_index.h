@@ -22,7 +22,7 @@ class BTreeIndex {
         void update_index_root(QueryCTX* ctx, FileID fid, PageNum new_root_pid);
         void SetRootPageId(QueryCTX* ctx, PageID root_page_id, int insert_record = 0);
         // true means value is returned.
-        bool GetValue(QueryCTX* ctx, IndexKey &key, std::vector<RecordID> *result);
+        bool GetValue(QueryCTX* ctx, IndexKey &key, Vector<RecordID> *result);
         // new_page_raw (output).
         BTreeLeafPage* create_leaf_page(PageID parent_pid, Page** new_page_raw);
         // new_page_raw (output).

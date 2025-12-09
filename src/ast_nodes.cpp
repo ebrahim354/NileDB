@@ -33,7 +33,7 @@ AggregateFuncType getAggFuncType(TokenType func){
     return NOT_DEFINED;
 }
 
-AggregateFuncType getAggFuncType(std::string& func){
+AggregateFuncType getAggFuncType(String& func){
     if(func == "COUNT") return COUNT;
     if(func == "SUM")   return SUM;
     if(func == "MIN")   return MIN;
@@ -64,7 +64,7 @@ void ExpressionNode::init(QueryData* top_level_statement, int query_idx, ASTNode
 }
 
 void CaseExpressionNode::init (
-        std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs,
+        Vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs,
         ExpressionNode* else_exp, 
         ExpressionNode* initial_value) {
     category_ = CASE_EXPRESSION;
@@ -97,7 +97,7 @@ void TypeCastNode::init(ExpressionNode* exp, Type new_type) {
     type_ = new_type;
 }
 
-void ScalarFuncNode::init(std::vector<ExpressionNode*> arguments, std::string name, int parent_id) {
+void ScalarFuncNode::init(Vector<ExpressionNode*> arguments, String name, int parent_id) {
     category_ = SCALAR_FUNC;
     args_ = arguments;
     name_ = name;
@@ -138,7 +138,7 @@ void EqualityNode::init(ComparisonNode* lhs, EqualityNode* rhs, Token op) {
     next_ = rhs;
 }
 
-void InNode::init(ASTNode* val, std::vector<ASTNode*> list, bool negated) {
+void InNode::init(ASTNode* val, Vector<ASTNode*> list, bool negated) {
     category_ = IN;
     val_ = val;
     list_ = list;

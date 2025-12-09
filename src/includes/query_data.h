@@ -31,9 +31,9 @@ struct QueryData {
     int idx_ = -1;          // every query must have an id starting from 0 even the top level query.
     int parent_idx_ = -1;   // -1 means this query is the top level query.
 
-    std::vector<std::string> tables_      = {};
-    std::vector<std::string> table_names_ = {};
-    std::vector<JoinedTablesData> joined_tables_ = {};
+    Vector<String> tables_      = {};
+    Vector<String> table_names_ = {};
+    Vector<JoinedTablesData> joined_tables_ = {};
     ExpressionNode* where_ = nullptr;
 
     // a mark for subqueries to indicate if they are corelated to their parent or not.
@@ -46,11 +46,11 @@ struct QueryData {
 struct SelectStatementData : QueryData {
     void init (int parent_idx);
 
-    std::vector<std::string> field_names_ = {};
-    std::vector<ExpressionNode*> fields_ = {};
-    std::vector<AggregateFuncNode*> aggregates_;  
-    std::vector<int> order_by_list_ = {};
-    std::vector<ASTNode*> group_by_ = {}; 
+    Vector<String> field_names_ = {};
+    Vector<ExpressionNode*> fields_ = {};
+    Vector<AggregateFuncNode*> aggregates_;  
+    Vector<int> order_by_list_ = {};
+    Vector<ASTNode*> group_by_ = {}; 
     bool has_star_ = false;
     ExpressionNode* having_ = nullptr;
     bool distinct_ = false;
@@ -79,37 +79,37 @@ struct UnionOrExcept : QueryData {
 struct CreateTableStatementData : QueryData {
     void init(int parent_idx);
 
-    std::vector<FieldDef> field_defs_ = {};
-    std::string table_name_ = {};
+    Vector<FieldDef> field_defs_ = {};
+    String table_name_ = {};
 };
 
 struct CreateIndexStatementData : QueryData {
     void init(int parent_idx);
 
-    std::vector<IndexField> fields_ = {};
-    std::string index_name_ = {};
-    std::string table_name_ = {};
+    Vector<IndexField> fields_ = {};
+    String index_name_ = {};
+    String table_name_ = {};
 };
 
 struct DropTableStatementData : QueryData {
     void init(int parent_idx);
 
-    std::string table_name_ = {};
+    String table_name_ = {};
 };
 
 struct DropIndexStatementData : QueryData {
     void init(int parent_idx);
 
-    std::string index_name_ = {};
+    String index_name_ = {};
 };
 
 struct InsertStatementData : QueryData {
     void init(int parent_idx);
 
-    std::string table_name_ = {};
-    std::vector<std::string> fields_ = {};
+    String table_name_ = {};
+    Vector<String> fields_ = {};
     // only one of these should be used per insertStatement.
-    std::vector<ExpressionNode*> values_ = {};
+    Vector<ExpressionNode*> values_ = {};
     // this is used to support (insert into ... select .. from ..) syntax.
     int select_idx_ = -1;
 };
@@ -122,8 +122,8 @@ struct DeleteStatementData : QueryData {
 struct UpdateStatementData : QueryData {
     void init(int parent_idx);
 
-    std::vector<std::string> fields_ = {}; 
-    std::vector<ExpressionNode*> values_ = {};
+    Vector<String> fields_ = {}; 
+    Vector<ExpressionNode*> values_ = {};
 };
 
 JoinType token_type_to_join_type (TokenType t);

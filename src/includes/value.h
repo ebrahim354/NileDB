@@ -50,7 +50,7 @@ class Value {
         Value get_copy(Arena* arena);
         Value(char* content, Type t, uint16_t size);
         Value(char* str, uint16_t size);
-        Value(Arena* arena, const std::string& str);
+        Value(Arena* arena, const String& str);
         Value(bool val);
         Value(int val);
         Value(long long val);
@@ -58,11 +58,11 @@ class Value {
         Value(double val);
 
 
-        std::string toString() const;
+        String toString() const;
 
         inline bool isInvalid() const;
         inline bool isNull() const;
-        std::string getStringVal() const;
+        String getStringVal() const;
         bool getBoolVal() const;
         int getIntVal() const;
         long long getBigIntVal() const;

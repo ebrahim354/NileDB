@@ -28,7 +28,7 @@ class Bucket {
 
         inline void IncrementDepth() { depth_++; }
 
-        inline auto GetItems() -> std::vector<std::pair<K, V>> & { return list_; }
+        inline auto GetItems() -> Vector<std::pair<K, V>> & { return list_; }
 
         inline auto GetBucketId() const -> int { return id_; }
 
@@ -72,7 +72,7 @@ class Bucket {
         size_t size_;
         int depth_;
         int id_;
-        std::vector<std::pair<K, V>> list_;
+        Vector<std::pair<K, V>> list_;
 };
 
 template <typename K, typename V>
@@ -232,7 +232,7 @@ class  HashTable {
                     old = !old;
                 }
 
-                std::vector<std::pair<K, V>> *lst = &ptr->GetItems();
+                Vector<std::pair<K, V>> *lst = &ptr->GetItems();
                 for (auto it = lst->begin(); it != lst->end();) {
                     size_t cur_idx = IndexOf(it->first);
                     if (mp.count(cur_idx) != 0U) {
@@ -265,7 +265,7 @@ class  HashTable {
         int num_buckets_;     // The number of buckets in the hash table
         size_t num_of_entries_ = 0;
         mutable std::mutex latch_;
-        std::vector<std::shared_ptr<Bucket<K,V>>> dir_;  // The directory of the hash table
+        Vector<std::shared_ptr<Bucket<K,V>>> dir_;  // The directory of the hash table
                                                     //
         auto GetGlobalDepthInternal() const -> int {
             return global_depth_;

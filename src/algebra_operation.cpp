@@ -9,7 +9,7 @@ void AlgebraOperation::init(int query_idx, AlgebraOperationType type) {
 }
 
 // scan operation
-void ScanOperation::init(int query_idx, std::string table_name, std::string table_rename) {
+void ScanOperation::init(int query_idx, String table_name, String table_rename) {
     query_idx_ = query_idx;
     type_ = SCAN;
     table_name_ = table_name;
@@ -154,8 +154,8 @@ void UpdateOperation::print(int prefix_space_cnt) {
 // filter operation
 void FilterOperation::init(int query_idx, AlgebraOperation* child, ExpressionNode* filter)
     /*
-        ,std::vector<ExpressionNode*>& fields, 
-        std::vector<std::string>& field_names) */
+        ,Vector<ExpressionNode*>& fields, 
+        Vector<String>& field_names) */
 {
     query_idx_ = query_idx;
     type_ = FILTER;
@@ -176,8 +176,8 @@ void FilterOperation::print(int prefix_space_cnt) {
 }
 
 // aggregation operation
-void AggregationOperation::init(int query_idx, AlgebraOperation* child, std::vector<AggregateFuncNode*> aggregates,
-        std::vector<ASTNode*> group_by){
+void AggregationOperation::init(int query_idx, AlgebraOperation* child, Vector<AggregateFuncNode*> aggregates,
+        Vector<ASTNode*> group_by){
     query_idx_ = query_idx;
     type_  = AGGREGATION;
     child_ = child;
@@ -194,7 +194,7 @@ void AggregationOperation::print(int prefix_space_cnt) {
 }
 
 // Projection operation
-void ProjectionOperation::init(int query_idx, AlgebraOperation* child, std::vector<ExpressionNode*> fields) {
+void ProjectionOperation::init(int query_idx, AlgebraOperation* child, Vector<ExpressionNode*> fields) {
     query_idx_ = query_idx;
     type_ = PROJECTION;
     child_ = child;
@@ -210,7 +210,7 @@ void ProjectionOperation::print(int prefix_space_cnt) {
 }
 
 // sort operation
-void SortOperation::init(int query_idx, AlgebraOperation* child, std::vector<int> order_by_list) {
+void SortOperation::init(int query_idx, AlgebraOperation* child, Vector<int> order_by_list) {
     query_idx_ = query_idx;
     type_ = SORT;
     child_ = child;

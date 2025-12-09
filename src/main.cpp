@@ -8,19 +8,19 @@ int main() {
     NileDB *ndb = new NileDB();
     bool prompt_is_running = true;
     bool show_results = true;
-    std::string outer_query = "";
+    String outer_query = "";
     while(prompt_is_running){
         ndb->flush(); // TODO: remove this.
         if(!outer_query.size())
             std::cout << "> ";
-        std::string tmp = "";
+        String tmp = "";
         std::getline(std::cin, tmp);
         if(tmp.size() < 0) continue;
         if(tmp[tmp.size()-1] != ';') {
             outer_query += tmp;
             continue;
         } 
-        std::string query = outer_query;
+        String query = outer_query;
         tmp.pop_back();
         query += tmp;
         outer_query = "";
@@ -46,7 +46,7 @@ int main() {
                 query_ctx.clean();
                 continue;
             }
-            std::vector<std::vector<std::string>> full_result;
+            Vector<Vector<String>> full_result;
 
             u64 row_cnt = 0;
             while(result && !result->error_status_ && !result->finished_){
@@ -55,7 +55,7 @@ int main() {
                 row_cnt++;
                 if(show_results){
                     size_t sz = res.size();
-                    std::vector<std::string> cur_tuple;
+                    Vector<String> cur_tuple;
                     cur_tuple.resize(sz);
                     for(int i = 0; i < sz; ++i) {
                         cur_tuple[i] = res.get_val_at(i).toString();

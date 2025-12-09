@@ -4,6 +4,7 @@
 #include <string>
 #include <shared_mutex>
 #include <cstring>
+#include "arena.h"
 
 #define FileID  int32_t
 #define PageNum int32_t
@@ -16,7 +17,7 @@
 #define FILE_EXT ".ndb" // nile db
 #define SIZE_PAGE_HEADER = 8;
 
-std::unordered_map<FileID, std::string> fid_to_fname;
+std::unordered_map<FileID, String> fid_to_fname;
 
 
 struct PageID {

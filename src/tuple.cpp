@@ -25,8 +25,8 @@ Tuple Tuple::duplicate(Arena* arena){
     return t;
 }
 
-std::string Tuple::build_hash_key(std::vector<int>& fields) {
-    std::string key = "";
+String Tuple::build_hash_key(Vector<int>& fields) {
+    String key = "";
     for(int i = 0; i < fields.size(); ++i){
         int idx = fields[i]; 
         assert(idx < values_.size());
@@ -35,8 +35,8 @@ std::string Tuple::build_hash_key(std::vector<int>& fields) {
     return key;
 }
 
-std::string Tuple::stringify() {
-    std::string str = "";
+String Tuple::stringify() {
+    String str = "";
     for(int i = 0; i < values_.size(); ++i) {
         str+= values_[i].toString(); 
         str+= ",";

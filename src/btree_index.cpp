@@ -31,12 +31,12 @@ void BTreeIndex::update_index_root(QueryCTX* ctx, FileID fid, PageNum new_root_p
         if(halloween_preventer.count(it_meta.getCurRecordID().get_hash())) break;
         Record r = it_meta.getCurRecordCpy(&ctx->arena_);
         assert(!r.isInvalidRecord());
-        std::vector<Value> values;
+        Vector<Value> values;
         int err = indexes_meta_schema->translateToValues(r, values);
         assert(err == 0 && "Could not traverse the indexes schema.");
 
-        std::string index_name = values[0].getStringVal();
-        std::string table_name = values[1].getStringVal();
+        String index_name = values[0].getStringVal();
+        String table_name = values[1].getStringVal();
         FileID index_fid = values[2].getIntVal();
         PageNum root_pid = values[3].getIntVal();
         if(index_fid != fid) continue;
@@ -62,7 +62,7 @@ void BTreeIndex::SetRootPageId(QueryCTX* ctx, PageID root_page_id, int insert_re
 }
 
 // true means value is returned.
-bool BTreeIndex::GetValue(QueryCTX* ctx, IndexKey &key, std::vector<RecordID> *result) {
+bool BTreeIndex::GetValue(QueryCTX* ctx, IndexKey &key, Vector<RecordID> *result) {
     // read lock on the root_page_id_
     // std::cerr << "GET VALUE CALL\n";
     // TODO: fix dead lock.

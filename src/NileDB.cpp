@@ -40,7 +40,7 @@ class NileDB {
         void flush(){
             cache_manager_->flushAllPages();
         }
-        bool SQL(QueryCTX& query_ctx, std::string query, Executor** execution_root){
+        bool SQL(QueryCTX& query_ctx, String query, Executor** execution_root){
             std::cout << "[INFO] runing the following query: " << query << std::endl;
             /*
             int diff = 'A' - 'a';
@@ -54,9 +54,9 @@ class NileDB {
             bool res =  query_processor_->handleQuery(query_ctx, query, execution_root);
             return res;
         }
-        bool CMD(std::string command){
+        bool CMD(String command){
             if(command == "\\t"){
-                std::vector<std::string> tables = catalog_.getTableNames();
+                Vector<String> tables = catalog_.getTableNames();
                 for(int i = 0; i < tables.size(); ++i){
                     std::cout << tables[i] << std::endl;
                     catalog_.getTableSchema(tables[i])->printSchema();
@@ -68,10 +68,10 @@ class NileDB {
             }
             return false;
         }
-        bool isValidTable(std::string table_name) {
+        bool isValidTable(String table_name) {
             return catalog_.isValidTable(table_name);
         }
-        TableSchema* getTableSchema(std::string table_name){
+        TableSchema* getTableSchema(String table_name){
             return catalog_.getTableSchema(table_name);
         }
 };

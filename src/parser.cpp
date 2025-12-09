@@ -41,7 +41,7 @@ class Parser {
         void outer_join(QueryCTX& ctx, int query_idx);
         void tableList(QueryCTX& ctx, int query_idx);
         void expressionList(QueryCTX& ctx, int query_idx);
-        void argumentList(QueryCTX& ctx, int query_idx, std::vector<ExpressionNode*>& args);
+        void argumentList(QueryCTX& ctx, int query_idx, Vector<ExpressionNode*>& args);
         void selectList(QueryCTX& ctx, int query_idx);
         void groupByList(QueryCTX& ctx, int query_idx);
         void orderByList(QueryCTX& ctx, int query_idx);
@@ -66,7 +66,7 @@ class Parser {
 
         // query : input.
         // ctx   : output.
-        void parse(std::string& query, QueryCTX& ctx);
+        void parse(String& query, QueryCTX& ctx);
 
     private:
         Tokenizer tokenizer_ {};
@@ -111,7 +111,7 @@ Value Parser::constVal(QueryCTX& ctx){
 }
 
 
-void Parser::parse(std::string& query, QueryCTX& ctx){
+void Parser::parse(String& query, QueryCTX& ctx){
     if((bool)ctx.error_status_) return; 
     tokenizer_.tokenize(query, ctx.tokens_);
 
@@ -178,7 +178,7 @@ void Parser::expressionList(QueryCTX& ctx, int query_idx){
     }
 }
 
-void Parser::argumentList(QueryCTX& ctx, int query_idx, std::vector<ExpressionNode*>& args){
+void Parser::argumentList(QueryCTX& ctx, int query_idx, Vector<ExpressionNode*>& args){
     if((bool)ctx.error_status_) return; 
     int cnt = 1;
     while(1){
@@ -234,6 +234,7 @@ void Parser::selectList(QueryCTX& ctx, int query_idx){
 
         query->has_star_ = (query->has_star_ || star);
         // if field_ptr->field_ == nullptr, that means it's a select * statement.
+        
         query->fields_.push_back(f);
         if(!rename)
             query->field_names_.push_back("");
@@ -491,7 +492,7 @@ ASTNode* Parser::constant(QueryCTX& ctx){
     //  
     // floats
     if(ctx.matchMultiTokenType({TokenType::NUMBER_CONSTANT, TokenType::DOT, TokenType::NUMBER_CONSTANT})) { 
-        std::string val = ctx.getCurrentToken().val_; ++ctx;
+        String val = ctx.getCurrentToken().val_; ++ctx;
         val += "."; ++ctx;
         val += ctx.getCurrentToken().val_; ++ctx;
         auto t = Token(TokenType::FLOATING_CONSTANT, val);
@@ -525,7 +526,7 @@ ASTNode* Parser::field(QueryCTX& ctx){
     ASTNode* ret = nullptr;
     if(ctx.matchTokenType(TokenType::IDENTIFIER)) {
         auto token = ctx.getCurrentToken(); ++ctx;
-        std::vector<std::string> possible_tables = catalog_->getTablesByField(token.val_);
+        Vector<String> possible_tables = catalog_->getTablesByField(token.val_);
         if(possible_tables.size() == 1) {
             ASTNode* t = nullptr;
             ALLOCATE_INIT(ctx.arena_, t, ASTNode, TABLE, Token(TokenType::IDENTIFIER, possible_tables[0]));
@@ -564,7 +565,7 @@ ASTNode* Parser::case_expression(QueryCTX& ctx, ExpressionNode* expression_ctx){
         return nullptr;
     // only eat the "CASE" token.
     ++ctx;
-    std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs;
+    Vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs;
     ExpressionNode* else_exp = nullptr;
     int id = expression_ctx->id_;
     int query_idx = expression_ctx->query_idx_;
@@ -684,9 +685,9 @@ ASTNode* Parser::scalar_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
     }
     if(!ctx.matchMultiTokenType({TokenType::IDENTIFIER, TokenType::LP})) 
         return nullptr;
-    std::string name = ctx.getCurrentToken().val_; 
+    String name = ctx.getCurrentToken().val_; 
     ctx+=2;
-    std::vector<ExpressionNode*> args = {};
+    Vector<ExpressionNode*> args = {};
     argumentList(ctx, expression_ctx->query_idx_, args);
     if(args.size() == 0) return nullptr;
     if(!ctx.matchTokenType(TokenType::RP)) return nullptr;
@@ -740,7 +741,7 @@ ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
 
     if(!ctx.matchTokenType(TokenType::RP)) return nullptr;
     ++ctx;
-    std::string tmp = AGG_FUNC_IDENTIFIER_PREFIX;
+    String tmp = AGG_FUNC_IDENTIFIER_PREFIX;
     //tmp += intToStr(expression_ctx->id_);
     tmp += intToStr(query->aggregates_.size());
     ASTNode* ret = nullptr;
@@ -945,7 +946,7 @@ ASTNode* Parser::in(QueryCTX& ctx, ExpressionNode* expression_ctx){
             ALLOCATE_INIT(ctx.arena_, ret, InNode, val, {}, negated);
             return ret;
         }
-        std::vector<ASTNode*> args;
+        Vector<ASTNode*> args;
         while(1){
             ASTNode* eq = equality(ctx, expression_ctx);
             if(!eq){
@@ -1107,6 +1108,7 @@ QueryData* Parser::union_or_except(QueryCTX& ctx, int parent_idx){
         UnionOrExcept* uoe = nullptr; 
         ALLOCATE_INIT(ctx.arena_, uoe,
                 UnionOrExcept,
+                
                 t, parent_idx, cur,
                 nullptr,
                 false);
@@ -1149,7 +1151,7 @@ void Parser::selectStatement(QueryCTX& ctx, int parent_idx){
         return;
     }
 
-    std::vector<ASTNode*> group_by = {};
+    Vector<ASTNode*> group_by = {};
     if(ctx.matchTokenType(TokenType::FROM)){
         ++ctx;
         tableList(ctx, statement->idx_);
@@ -1205,6 +1207,7 @@ void Parser::createTableStatement(QueryCTX& ctx, int parent_idx){
     CreateTableStatementData* statement = nullptr; 
     ALLOCATE_INIT(ctx.arena_, statement,
                 CreateTableStatementData,
+                
                 parent_idx);
     statement->idx_ = ctx.queries_call_stack_.size();
     ctx.queries_call_stack_.push_back(statement);
@@ -1244,6 +1247,7 @@ void Parser::createIndexStatement(QueryCTX& ctx, int parent_idx){
     CreateIndexStatementData* statement = nullptr; 
     ALLOCATE_INIT(ctx.arena_, statement,
                 CreateIndexStatementData,
+                
                 parent_idx);
     statement->idx_ = ctx.queries_call_stack_.size();
     ctx.queries_call_stack_.push_back(statement);
@@ -1304,6 +1308,7 @@ void Parser::dropIndexStatement(QueryCTX& ctx, int parent_idx){
     DropIndexStatementData* statement = nullptr; 
     ALLOCATE_INIT(ctx.arena_, statement,
                 DropIndexStatementData,
+                
                 parent_idx);
     statement->idx_ = ctx.queries_call_stack_.size();
     ctx.queries_call_stack_.push_back(statement);
@@ -1326,6 +1331,7 @@ void Parser::dropTableStatement(QueryCTX& ctx, int parent_idx){
     DropTableStatementData* statement = nullptr; 
     ALLOCATE_INIT(ctx.arena_, statement,
                 DropTableStatementData,
+                
                 parent_idx);
     statement->idx_ = ctx.queries_call_stack_.size();
     ctx.queries_call_stack_.push_back(statement);
@@ -1348,6 +1354,7 @@ void Parser::insertStatement(QueryCTX& ctx, int parent_idx){
   InsertStatementData* statement = nullptr; 
     ALLOCATE_INIT(ctx.arena_, statement,
                 InsertStatementData,
+                
                 parent_idx);
   statement->idx_ = ctx.queries_call_stack_.size();
   ctx.queries_call_stack_.push_back(statement);
@@ -1419,6 +1426,7 @@ void Parser::deleteStatement(QueryCTX& ctx, int parent_idx){
     DeleteStatementData* statement = nullptr; 
     ALLOCATE_INIT(ctx.arena_, statement,
             DeleteStatementData,
+            
             parent_idx);
     statement->idx_ = ctx.queries_call_stack_.size();
     ctx.queries_call_stack_.push_back(statement);

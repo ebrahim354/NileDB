@@ -60,7 +60,7 @@ char* Value::get_ptr() {
     return (char*)&content_;
 }
 
-Value::Value(Arena* arena, const std::string& str){
+Value::Value(Arena* arena, const String& str){
     size_ = str.size(); 
     this->content_ = (uintptr_t) arena->alloc(size_);
     memcpy((char*)content_, str.c_str(), size_);
@@ -660,7 +660,7 @@ void Value::setValue(Type t, char* content) {
 }
 
 
-std::string Value::toString() const {
+String Value::toString() const {
     switch (type_) {
         case VARCHAR: 
             return getStringVal(); 
@@ -691,14 +691,14 @@ inline bool Value::isInvalid() const {
 inline bool Value::isNull() const {
     return (type_ == NULL_TYPE);
 }
-std::string Value::getStringVal() const {
+String Value::getStringVal() const {
     if(!content_) return "";
-    std::string str = "";
+    String str = "";
     char* ptr = (char*) content_;
     for(int i = 0; i < size_; ++i, ptr++)
         str += *ptr;
     return str;
-    //return std::string((char*)content_, size_);  
+    //return String((char*)content_, size_);  
 }
 bool Value::getBoolVal() const{
     if(!content_) return false;

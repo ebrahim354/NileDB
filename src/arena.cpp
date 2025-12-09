@@ -113,3 +113,20 @@ void Arena::clear_temp_arena(ArenaTemp temp) {
     dealloc_to(temp.pos_);
 }
 
+
+void* Arena::do_allocate(size_t bytes, size_t alignment) {
+    std::cout << "[allocate] " << bytes << " bytes, alignment " << alignment << "\n";
+    return alloc(bytes);
+}
+
+void Arena::do_deallocate(void* p, size_t bytes, size_t alignment) {
+    std::cout << "[deallocate] " << bytes << " bytes, alignment " << alignment << "\n";
+    //upstream_->deallocate(p, bytes, alignment);
+}
+
+bool Arena::do_is_equal(const std::pmr::memory_resource& other) const noexcept {
+    std::cout << "is eq\n";
+    return this == &other;
+}
+
+

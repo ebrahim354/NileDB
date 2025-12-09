@@ -25,7 +25,7 @@ Type tokenTypeToColType(TokenType t){
     }
 }
 
-Column::Column(std::string name, Type type, u8 col_offset, ConstraintType constraints): 
+Column::Column(String name, Type type, u8 col_offset, ConstraintType constraints): 
     name_(name), 
     type_(type), 
     col_offset_(col_offset),
@@ -35,8 +35,8 @@ Column::Column(std::string name, Type type, u8 col_offset, ConstraintType constr
     // the reson for this is that we don't want anyone to change the column meta data after initializing it.
     // if you want to modify the column you have to delete it and start a new one, this is better to avoid errors
     // in the future, for example: when we start adding ALTER TABLE command.
-inline void                    Column::setName(std::string& name) { name_ = name  ; }
-inline std::string             Column::getName()        { return name_            ; }
+inline void                    Column::setName(String& name) { name_ = name  ; }
+inline String             Column::getName()        { return name_            ; }
 inline Type                    Column::getType()        { return type_            ; }
 inline u8                      Column::getSize() const  { return size_            ; }
 inline u16                     Column::getOffset()      { return col_offset_      ; }

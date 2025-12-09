@@ -22,7 +22,7 @@ inline bool QueryCTX::matchTokenType(TokenType type){
     return (cursor_ < tokens_.size() && tokens_[cursor_].type_ == type);
 }
 
-inline bool QueryCTX::matchAnyTokenType(std::vector<TokenType> types) {
+inline bool QueryCTX::matchAnyTokenType(Vector<TokenType> types) {
     if(cursor_ >= tokens_.size()) return false;
     for(size_t i = 0; i < types.size(); i++)
         if (tokens_[cursor_].type_ == types[i])
@@ -30,7 +30,7 @@ inline bool QueryCTX::matchAnyTokenType(std::vector<TokenType> types) {
     return false;
 }
 
-inline bool QueryCTX::matchMultiTokenType(std::vector<TokenType> types) {
+inline bool QueryCTX::matchMultiTokenType(Vector<TokenType> types) {
     for(size_t i = 0; i < types.size(); i++)
         if (cursor_  + i >= tokens_.size() || tokens_[cursor_ + i].type_ != types[i]) 
             return false;

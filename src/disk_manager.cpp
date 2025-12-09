@@ -184,16 +184,16 @@ int DiskManager::writePage(PageID page_id, char* input_buffer) {
     return 0;
 }
 
-int DiskManager::openFile(std::string file_name){
+int DiskManager::openFile(String file_name){
     // bad file format.
-    std::string::size_type n = file_name.rfind(FILE_EXT);
-    if (n == std::string::npos) 
+    String::size_type n = file_name.rfind(FILE_EXT);
+    if (n == String::npos) 
         return 1;
     // cache miss
     // open the file
     if (!cached_files_.count(file_name)) {
         cached_files_[file_name] = {
-            .fs_ = std::fstream (file_name, std::ios::binary | std::ios::out | std::ios::in),
+            .fs_ = std::fstream (file_name.c_str(), std::ios::binary | std::ios::out | std::ios::in),
             .freelist_ptr_ = 0,
             .num_of_pages_ = 1,
         };
@@ -202,7 +202,7 @@ int DiskManager::openFile(std::string file_name){
     // create a new one and return 1 on failure.
     if(!cached_files_[file_name].fs_.is_open()){
         cached_files_[file_name].fs_ = std::fstream
-            (file_name, std::ios::binary | std::ios::trunc | std::ios::out | std::ios::in);
+            (file_name.c_str(), std::ios::binary | std::ios::trunc | std::ios::out | std::ios::in);
         cached_files_[file_name].fs_.clear();
         if (!cached_files_[file_name].fs_.is_open()) {
             cached_files_.erase(file_name);
@@ -228,7 +228,7 @@ int DiskManager::openFile(std::string file_name){
         }
 
         cached_files_[file_name].fs_.close();
-        cached_files_[file_name].fs_ = std::fstream(file_name, std::ios::binary | std::ios::out | std::ios::in);
+        cached_files_[file_name].fs_ = std::fstream(file_name.c_str(), std::ios::binary | std::ios::out | std::ios::in);
         cached_files_[file_name].freelist_ptr_ = 0;
         cached_files_[file_name].num_of_pages_ = 1;
         return 0;
@@ -259,7 +259,7 @@ int DiskManager::openFile(std::string file_name){
 
 bool DiskManager::deleteFile(FileID fid) {
     assert(fid_to_fname.count(fid));
-    std::string file_name = fid_to_fname[fid];
+    String file_name = fid_to_fname[fid];
     if(cached_files_.count(file_name));
     cached_files_[file_name].fs_.close();
     return std::remove(file_name.c_str());

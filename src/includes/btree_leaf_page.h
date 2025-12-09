@@ -25,7 +25,7 @@ class BTreeLeafPage : public BTreePage {
   //IndexKey KeyAt(int index);
   RecordID ValAt(int index);
   void SetValAt(int index, RecordID v);
-  bool GetValue(IndexKey k, std::vector<RecordID> *result);
+  bool GetValue(IndexKey k, Vector<RecordID> *result);
   int GetPos(IndexKey k);
   void Draw();
 

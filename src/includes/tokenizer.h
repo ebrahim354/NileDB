@@ -99,9 +99,9 @@ enum class TokenType {
 };
 
 struct Token {
-    std::string val_ = "";
+    String val_;
     TokenType type_ = TokenType::INVALID_TOKEN;
-    Token(TokenType type = TokenType::INVALID_TOKEN, std::string val = "");
+    Token(TokenType type = TokenType::INVALID_TOKEN, String val = "");
 };
 
 class Tokenizer {
@@ -109,28 +109,28 @@ class Tokenizer {
         Tokenizer();
         ~Tokenizer(){}
 
-        bool isKeyword(std::string& t);
-        bool isDataType(std::string& t);
-        bool isSymbol(std::string& t);
-        bool isAggFunc(std::string& func);
-        bool isMathOp(std::string& op);
-        bool isCompareOP(std::string& op);
-        bool isEqOP(std::string& op);
-        bool isStrConst(std::string& t);
-        bool isNumberConst (std::string& t);
+        bool isKeyword(String& t);
+        bool isDataType(String& t);
+        bool isSymbol(String& t);
+        bool isAggFunc(String& func);
+        bool isMathOp(String& op);
+        bool isCompareOP(String& op);
+        bool isEqOP(String& op);
+        bool isStrConst(String& t);
+        bool isNumberConst (String& t);
         bool isWhitespace(char ch);
 
         bool isDataType(TokenType type);
         bool isAggFunc(TokenType func);
 
-        TokenType getTokenType(std::string& t);
+        TokenType getTokenType(String& t);
 
-        void tokenize(std::string& input, std::vector<Token>& output);
+        void tokenize(String& input, Vector<Token>& output);
 
     private:
-        std::map<std::string, TokenType> keywords_;
-        std::map<std::string, TokenType> symbols_;
-        std::map<std::string, TokenType> data_types_;
+        std::map<String, TokenType> keywords_;
+        std::map<String, TokenType> symbols_;
+        std::map<String, TokenType> data_types_;
 };
 
 #endif // TOKENIZER_H

@@ -10,7 +10,7 @@ class QueryProcessor{
     {}
         ~QueryProcessor(){}
 
-        bool handleQuery(QueryCTX& query_ctx, std::string& query, Executor** execution_root){
+        bool handleQuery(QueryCTX& query_ctx, String& query, Executor** execution_root){
             std::cout << "[INFO] Parsing query" << std::endl;
             //QueryCTX query_ctx;
             //query_ctx.init(query.size());

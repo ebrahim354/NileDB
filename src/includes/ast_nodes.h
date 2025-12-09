@@ -8,7 +8,7 @@ struct ExpressionNode;
 struct AggregateFuncNode;
 struct QueryData;
 struct ASTNode;
-void accessed_fields(ASTNode* expression ,std::vector<std::string>& fields, bool only_one);
+void accessed_fields(ASTNode* expression ,Vector<String>& fields, bool only_one);
 
 // The grammer rules are defined as structures, each struct is following the name convention: CategoryNameNode,
 // for example: the constant category the struct is named ConstantNode.
@@ -36,7 +36,7 @@ Type tokenTypeToDBType(TokenType tt);
 
 AggregateFuncType getAggFuncType(TokenType func);
 
-AggregateFuncType getAggFuncType(std::string& func);
+AggregateFuncType getAggFuncType(String& func);
 
 enum JoinType {
     INNER_JOIN = 0,
@@ -54,7 +54,7 @@ struct JoinedTablesData {
 
 // more data will be added
 struct FieldDef {
-    std::string field_name_;
+    String field_name_;
     TokenType type_; 
     ConstraintType constraints_;
 };
@@ -147,12 +147,12 @@ struct ExpressionNode : ASTNode {
 
 struct CaseExpressionNode : ASTNode {
     void init (
-            std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs,
+            Vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs,
             ExpressionNode* else_exp, 
             ExpressionNode* initial_value);
 
     ExpressionNode* initial_value_ = nullptr;
-    std::vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs_; // should be evaluated in order.
+    Vector<std::pair<ExpressionNode*, ExpressionNode*>> when_then_pairs_; // should be evaluated in order.
     ExpressionNode* else_ = nullptr;
 };
 
@@ -188,10 +188,10 @@ struct TypeCastNode : ASTNode {
 };
 
 struct ScalarFuncNode : ASTNode {
-    void init (std::vector<ExpressionNode*> arguments, std::string name, int parent_id = 0);
+    void init (Vector<ExpressionNode*> arguments, String name, int parent_id = 0);
 
-    std::vector<ExpressionNode*> args_ = {};
-    std::string name_;
+    Vector<ExpressionNode*> args_ = {};
+    String name_;
     int parent_id_ = 0;
 };
 
@@ -231,10 +231,10 @@ struct EqualityNode : ASTNode {
 };
 
 struct InNode : ASTNode {
-    void init (ASTNode* val, std::vector<ASTNode*> list, bool negated);
+    void init (ASTNode* val, Vector<ASTNode*> list, bool negated);
 
     ASTNode* val_ = nullptr;
-    std::vector<ASTNode*> list_;
+    Vector<ASTNode*> list_;
     bool negated_ = false;
 };
 

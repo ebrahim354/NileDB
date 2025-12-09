@@ -7,7 +7,7 @@
 
 struct QueryCTX;
 
-std::string exec_type_to_string(ExecutorType t) {
+String exec_type_to_string(ExecutorType t) {
     switch(t){
         case SEQUENTIAL_SCAN_EXECUTOR:
             return "SEQUENTIAL SCAN";
@@ -72,8 +72,8 @@ void NestedLoopJoinExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_nod
     filter_ = ((JoinOperation*)plan_node_)->filter_;
     join_type_ = ((JoinOperation*)plan_node_)->join_type_;
 
-    std::vector<Column> lhs_columns = lhs->output_schema_->getColumns();
-    std::vector<Column> rhs_columns = rhs->output_schema_->getColumns();
+    Vector<Column> lhs_columns = lhs->output_schema_->getColumns();
+    Vector<Column> rhs_columns = rhs->output_schema_->getColumns();
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
@@ -154,8 +154,8 @@ void ProductExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Exec
     left_child_  = lhs;
     right_child_ = rhs;
 
-    std::vector<Column> lhs_columns = lhs->output_schema_->getColumns();
-    std::vector<Column> rhs_columns = rhs->output_schema_->getColumns();
+    Vector<Column> lhs_columns = lhs->output_schema_->getColumns();
+    Vector<Column> rhs_columns = rhs->output_schema_->getColumns();
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
@@ -220,8 +220,8 @@ void HashJoinExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Exe
     filter_ = ((JoinOperation*)plan_node_)->filter_;
     join_type_ = ((JoinOperation*)plan_node_)->join_type_;
 
-    std::vector<Column> lhs_columns = lhs->output_schema_->getColumns();
-    std::vector<Column> rhs_columns = rhs->output_schema_->getColumns();
+    Vector<Column> lhs_columns = lhs->output_schema_->getColumns();
+    Vector<Column> rhs_columns = rhs->output_schema_->getColumns();
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
@@ -247,18 +247,18 @@ void HashJoinExecutor::init() {
     right_child_fields_.clear();
     left_child_fields_.clear();
     // find out which attributes to use as keys for the hash table.
-    std::vector<std::string> fields;
+    Vector<String> fields;
     accessed_fields(filter_, fields);
 
     for(int i = 0; i < fields.size(); ++i) {
-        std::string lf = fields[i];
+        String lf = fields[i];
         int idx = left_child_->output_schema_->colExist(lf);
         // TODO: fix the case of same field names and different tables for example: t1.a = t2.a
         if(idx != -1) {
             left_child_fields_.push_back(idx);
             continue;
         }
-        std::string rf = fields[i];
+        String rf = fields[i];
         idx = right_child_->output_schema_->colExist(rf);
 
         if(idx != -1) {
@@ -284,7 +284,7 @@ void HashJoinExecutor::init() {
         if(left_output.is_empty()) continue;
         left_output = left_output.duplicate(&ctx_->arena_);
         // build the hash key and assume non-unique keys.
-        std::string key = left_output.build_hash_key(left_child_fields_);
+        String key = left_output.build_hash_key(left_child_fields_);
         if(hashed_left_child_.count(key)) 
             hashed_left_child_[key].push_back(left_output);
         else {
@@ -324,7 +324,7 @@ Tuple HashJoinExecutor::next() {
                 break;
             }
             right_output = right_output.duplicate(&ctx_->arena_);
-            std::string key = right_output.build_hash_key(right_child_fields_);
+            String key = right_output.build_hash_key(right_child_fields_);
             if(!hashed_left_child_.count(key) && (join_type_ == RIGHT_JOIN || join_type_ == FULL_JOIN)){
                 int start = output_.size()-right_output.size();
                 output_.nullify(0, start);
@@ -360,7 +360,7 @@ Tuple HashJoinExecutor::next() {
         finished_ = true;
         return {};
     }
-    std::string key = *(non_visited_left_keys_.begin());
+    String key = *(non_visited_left_keys_.begin());
 
     int duplications = hashed_left_child_[key].size();
     if(duplicated_idx_ == -1)
@@ -450,7 +450,7 @@ void ExceptExecutor::init() {
     while(!right_child_->finished_ && !error_status_){
         Tuple right_tuple = right_child_->next();
         error_status_ = error_status_ && right_child_->error_status_;
-        std::string stringified_tuple = right_tuple.stringify();
+        String stringified_tuple = right_tuple.stringify();
         hashed_tuples_[stringified_tuple] =  1;
     } 
 }
@@ -460,7 +460,7 @@ Tuple ExceptExecutor::next() {
     while(true){
         Tuple left_tuple = left_child_->next();
         if(finished_ || error_status_ || left_tuple.is_empty()) return {};
-        std::string stringified_tuple = left_tuple.stringify();
+        String stringified_tuple = left_tuple.stringify();
         if(hashed_tuples_.count(stringified_tuple)) 
             continue; // tuple exists on both relations => skip it.
         output_ = left_tuple;
@@ -496,7 +496,7 @@ void IntersectExecutor::init() {
     while(!right_child_->finished_ && !error_status_){
         Tuple right_tuple = right_child_->next();
         error_status_ = error_status_ && right_child_->error_status_;
-        std::string stringified_tuple = right_tuple.stringify();
+        String stringified_tuple = right_tuple.stringify();
         hashed_tuples_[stringified_tuple] =  1;
     } 
 }
@@ -506,7 +506,7 @@ Tuple IntersectExecutor::next() {
     while(true){
         Tuple left_tuple = left_child_->next();
         if(finished_ || error_status_ || left_tuple.is_empty()) return {};
-        std::string stringified_tuple = left_tuple.stringify();
+        String stringified_tuple = left_tuple.stringify();
         if(!hashed_tuples_.count(stringified_tuple)) 
             continue; // tuple does not exists on both relations => skip it.
         output_ = left_tuple;
@@ -586,7 +586,7 @@ void IndexScanExecutor::assign_iterators() {
                                 right = ((ComparisonNode*)ptr)->next_;
                             }
                             Value val;
-                            std::vector<std::string> key;
+                            Vector<String> key;
                             accessed_fields(left , key);
                             int size_before = key.size();
                             bool key_on_left = (size_before != 0);
@@ -597,7 +597,7 @@ void IndexScanExecutor::assign_iterators() {
                                 val = evaluate_expression(ctx_, right, output_);
                             else
                                 val = evaluate_expression(ctx_, left, output_);
-                            std::vector<Value> key_vals = {val};
+                            Vector<Value> key_vals = {val};
                             IndexKey search_key = temp_index_key_from_values(&ctx_->temp_arena_, key_vals);
                             search_key.sort_order_ = 
                                 create_sort_order_bitmap(&ctx_->temp_arena_, index_header_.fields_numbers_);
@@ -677,7 +677,7 @@ Tuple IndexScanExecutor::next() {
             auto table_ptr = delete_statement->table_; 
             // did not find any tables.
             if(table_ptr == nullptr) return false;
-            std::string table_name = table_ptr->token_.val_;
+            String table_name = table_ptr->token_.val_;
             TableSchema* schema = catalog_->getTableSchema(table_name);
 
             TableIterator* it = schema->getTable()->begin();
@@ -693,14 +693,14 @@ Tuple IndexScanExecutor::next() {
         bool update_handler(ASTNode* statement_root){
             UpdateStatementNode* update_statement = reinterpret_cast<UpdateStatementNode*>(statement_root);
 
-            std::string table_name = update_statement->table_->token_.val_;
+            String table_name = update_statement->table_->token_.val_;
             TableSchema* schema = catalog_->getTableSchema(table_name);
             // did not find any tables with that name.
             if(schema == nullptr) return false;
             auto field_ptr = update_statement->field_;
-            std::string field_name = field_ptr->token_.val_;
+            String field_name = field_ptr->token_.val_;
             auto val_ptr = update_statement->expression_;
-            std::string val_str = val_ptr->token_.val_;
+            String val_str = val_ptr->token_.val_;
             // check valid column.
             if(!schema->isValidCol(field_name)) 
                 return false;
@@ -722,7 +722,7 @@ Tuple IndexScanExecutor::next() {
                 RecordID rid = it->getCurRecordID();
                 // rid is not used for now.
                 Record cpy = it->getCurRecordCpy();
-                std::vector<Value> values;
+                Vector<Value> values;
                 int err = schema->translateToValues(cpy, values);
                 int idx = schema->getColIdx(field_name, val);
                 if(idx < 0) return false;
@@ -738,7 +738,7 @@ Tuple IndexScanExecutor::next() {
         */
 
 void DeletionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child, TableSchema* table,
-        std::vector<IndexHeader> indexes) {
+        Vector<IndexHeader> indexes) {
     assert(plan_node != nullptr && plan_node->type_ == DELETION);
     type_ = DELETION_EXECUTOR;
     ctx_ = ctx; 
@@ -821,7 +821,7 @@ Tuple DeletionExecutor::next() {
 }
 
 void UpdateExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child, TableSchema* table,
-        std::vector<IndexHeader> indexes) {
+        Vector<IndexHeader> indexes) {
     assert(plan_node != nullptr && plan_node->type_ == UPDATE);
     type_ = UPDATE_EXECUTOR;
     ctx_ = ctx; 
@@ -943,7 +943,7 @@ Tuple UpdateExecutor::next() {
 
 
 void InsertionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table,
-        std::vector<IndexHeader> indexes, int select_idx) {
+        Vector<IndexHeader> indexes, int select_idx) {
     assert(plan_node != nullptr && plan_node->type_ == INSERTION);
     type_ = INSERTION_EXECUTOR;
     ctx_ = ctx; 
@@ -1076,14 +1076,14 @@ void AggregationExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, 
     group_by_ = ((AggregationOperation*)plan_node_)->group_by_;
 
     // build the new output schema.
-    std::vector<Column> new_cols;
+    Vector<Column> new_cols;
     int offset_ptr = 0; 
     if(child_executor_ && child_executor_->output_schema_){
         new_cols = child_executor_->output_schema_->getColumns();
         offset_ptr = Column::getSizeFromType(new_cols[new_cols.size() - 1].getType());
     } 
     for(int i = 0; i < aggregates_.size(); i++){
-        std::string col_name = "agg_tmp_schema.";
+        String col_name = "agg_tmp_schema.";
         col_name += AGG_FUNC_IDENTIFIER_PREFIX;
         //col_name += intToStr(op->aggregates_[i]->parent_id_);
         col_name += intToStr(i+1);
@@ -1100,7 +1100,7 @@ void AggregationExecutor::init() {
     error_status_ = 0;
     //aggregated_values_.clear();
     for(int i = 0; i < aggregates_.size(); ++i) {
-        if(aggregates_[i]->distinct_) distinct_counters_["PREFIX_"][i] = std::set<std::string>();
+        if(aggregates_[i]->distinct_) distinct_counters_["PREFIX_"][i] = std::set<String>();
     }
 
 
@@ -1121,7 +1121,7 @@ void AggregationExecutor::init() {
 
     while(true){
         // we always maintain rows count even if the user did not ask for it, that's why the size is | colmuns | + 1
-        //output_ = std::vector<Value> (output_schema_->getCols().size() + 1, Value(0));
+        //output_ = Vector<Value> (output_schema_->getCols().size() + 1, Value(0));
         output_ = Tuple(output_schema_, Value(0));
         Tuple child_output; 
         if(child_executor_){
@@ -1137,7 +1137,7 @@ void AggregationExecutor::init() {
         output_.put_tuple_at_start(&child_output);
 
         // build the search key for the hash table.
-        std::string hash_key = "PREFIX_"; // prefix to ensure we have at least one entry in the hash table.
+        String hash_key = "PREFIX_"; // prefix to ensure we have at least one entry in the hash table.
         for(int i = 0; i < group_by_.size(); i++){
             Value cur = evaluate_expression(ctx_, group_by_[i], output_);
             hash_key += cur.toString();
@@ -1148,11 +1148,11 @@ void AggregationExecutor::init() {
             output_ = aggregated_values_[hash_key].first;
         } else if(hash_key != "PREFIX_"){
             for(int i = 0; i < aggregates_.size(); ++i) {
-                if(aggregates_[i]->distinct_) distinct_counters_[hash_key][i] = std::set<std::string>();
+                if(aggregates_[i]->distinct_) distinct_counters_[hash_key][i] = std::set<String>();
             }
 
             //int total_size = output_schema_->getCols().size() + 1;
-            //aggregated_values_[hash_key] = std::vector<Value> (total_size, Value(NULL_TYPE));
+            //aggregated_values_[hash_key] = Vector<Value> (total_size, Value(NULL_TYPE));
             aggregated_values_[hash_key] = {
                 Tuple(output_schema_),
                 0
@@ -1289,7 +1289,7 @@ void ProjectionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, E
     //output_ = Tuple(output_schema_);
 
     // build the new output schema.
-    std::vector<Column> new_cols;
+    Vector<Column> new_cols;
     for(int i = 0; i < fields_.size(); i++){
         // can't use (select *) syntanx without a child.
         // either the field exists or the child exist.
@@ -1300,7 +1300,7 @@ void ProjectionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, E
                 new_cols.push_back(col);
             continue;
         }
-        std::string col_name = "?column?";
+        String col_name = "?column?";
         new_cols.push_back(Column(col_name, INVALID, 0));
     }
 
@@ -1383,7 +1383,7 @@ void SortExecutor::init() {
         if(child_executor_->finished_) break;
     }
 
-    std::vector<int> order_by = order_by_list_;
+    Vector<int> order_by = order_by_list_;
 
     std::sort(tuples_.begin(), tuples_.end(), 
             [&order_by](Tuple& lhs, Tuple& rhs){
@@ -1439,7 +1439,7 @@ Tuple DistinctExecutor::next() {
         }
         error_status_ = child_executor_->error_status_;
         finished_ = child_executor_->finished_;
-        std::string stringified_tuple = t.stringify();
+        String stringified_tuple = t.stringify();
         if(hashed_tuples_.count(stringified_tuple)) continue; // duplicated tuple => skip it.
         hashed_tuples_[stringified_tuple] =  1;
         output_ = t;

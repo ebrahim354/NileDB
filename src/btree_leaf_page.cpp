@@ -82,7 +82,7 @@ void BTreeLeafPage::SetValAt(int index, RecordID v) {
 }
 
 
-bool BTreeLeafPage::GetValue(IndexKey k, std::vector<RecordID> *result) {
+bool BTreeLeafPage::GetValue(IndexKey k, Vector<RecordID> *result) {
   int size = get_num_of_slots();
   int mid;
   int low = 0;
@@ -104,7 +104,7 @@ bool BTreeLeafPage::GetValue(IndexKey k, std::vector<RecordID> *result) {
   int cur = low;
 
   if (KeyAt(cur) == k && cur < size) {
-    *result = std::vector<RecordID>();
+    *result = Vector<RecordID>();
     result->push_back(ValAt(cur));
     return true;
   }

@@ -33,8 +33,8 @@ struct QueryCTX {
 
     void init(int query_string_size);
     inline bool matchTokenType(TokenType type);
-    inline bool matchAnyTokenType(std::vector<TokenType> types);
-    inline bool matchMultiTokenType(std::vector<TokenType> types);
+    inline bool matchAnyTokenType(Vector<TokenType> types);
+    inline bool matchMultiTokenType(Vector<TokenType> types);
     // advance the cursor_.
     QueryCTX& operator++(); 
     QueryCTX& operator+=(int val);
@@ -43,14 +43,14 @@ struct QueryCTX {
 
     void clean();
 
-    std::vector<Token> tokens_;
-    std::vector<QueryData*> queries_call_stack_ = {};
-    std::vector<QueryData*> set_operations_ = {};
-    std::vector<IndexIterator*> index_handles_ = {};
-    std::vector<TableIterator*> table_handles_ = {};
-    std::vector<AlgebraOperation*> operators_call_stack_ = {};
-    std::vector<Executor*> executors_call_stack_ = {};
-    std::vector<Tuple> query_inputs = {};
+    Vector<Token> tokens_;
+    Vector<QueryData*> queries_call_stack_ = {};
+    Vector<QueryData*> set_operations_ = {};
+    Vector<IndexIterator*> index_handles_ = {};
+    Vector<TableIterator*> table_handles_ = {};
+    Vector<AlgebraOperation*> operators_call_stack_ = {};
+    Vector<Executor*> executors_call_stack_ = {};
+    Vector<Tuple> query_inputs = {};
     Arena arena_;  // this arena lasts for the entire duration of the query.
     Arena temp_arena_; // this arena gets cleaned up after every call to next().
     uint32_t cursor_ = 0;

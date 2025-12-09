@@ -6,9 +6,9 @@
 #include <string>
 #include <vector>
 
-std::pair<std::string, std::string> split_scoped_field(std::string& field) {
-    std::string table = "";
-    std::string col = "";
+std::pair<String, String> split_scoped_field(String& field) {
+    String table = "";
+    String col = "";
     bool parsing_table = true;
     for(int i = 0; i < field.size(); ++i){
         if(field[i] == '.') {
@@ -24,9 +24,9 @@ std::pair<std::string, std::string> split_scoped_field(std::string& field) {
         return {table, col};
 }
 
-std::string str_toupper(std::string s){
+String str_toupper(String s){
     int diff = 'A' - 'a';
-    std::string tmp = s;
+    String tmp = s;
     for(int i = 0; i < s.size(); ++i)
         if(tmp[i] >= 'a' && tmp[i] <= 'z') tmp[i] += diff;
     return tmp;
@@ -34,10 +34,10 @@ std::string str_toupper(std::string s){
 
 
 
-std::vector<std::string> strSplit(const std::string& str, char delimiter) {
-    std::stringstream ss(str);
-    std::vector<std::string> pieces;
-    std::string tmp;
+Vector<String> strSplit(const String& str, char delimiter) {
+    std::stringstream ss(str.c_str());
+    Vector<String> pieces;
+    String tmp;
     while (std::getline(ss, tmp, delimiter)) {
         pieces.push_back(tmp);
 
@@ -50,7 +50,7 @@ std::vector<std::string> strSplit(const std::string& str, char delimiter) {
 // if floating_sign is not NULL check for digits and return the index of the '.' symbol, 
 // if no '.' symbol is found floating_sign will be assigned to -1.
 // if floating_sign is NULL or not provided check for digits only.
-bool areDigits(std::string& nums, int* floating_sign = nullptr){
+bool areDigits(String& nums, int* floating_sign = nullptr){
     int start = 0;
     if(nums.size() > 0 && nums[0] == '-') start = 1;
     bool are_digits = true;
@@ -66,11 +66,11 @@ bool areDigits(std::string& nums, int* floating_sign = nullptr){
     return (are_digits && nums.size() > 0);
 }
 
-long long str_to_ll(std::string& s) {
+long long str_to_ll(String& s) {
     return strtoll(s.c_str(), NULL, 10);
 }
 /*
-long long str_to_ll(std::string& s){
+long long str_to_ll(String& s){
     return strtoll(s.c_str(), NULL, 10);
     int start = 0;
     if(s.size() > 0 && s[0] == '-') start = 1;
@@ -81,14 +81,14 @@ long long str_to_ll(std::string& s){
     return (s[0] == '-' ? -stoi(s) : stoi(s));
 }*/
 
-float str_to_float(std::string& s) {
+float str_to_float(String& s) {
     return strtof(s.c_str(), NULL);
 }
-double str_to_double(std::string& s) {
+double str_to_double(String& s) {
     return strtod(s.c_str(), NULL);
 }
 /*
-float str_to_float(std::string& s){
+float str_to_float(String& s){
     int start = 0;
     if(s.size() > 0 && s[0] == '-') start = 1;
     int floating_sign_idx = -1;
@@ -101,29 +101,29 @@ float str_to_float(std::string& s){
     return (s[0] == '-' ? -(stof(s)) : stof(s));
 }*/
 
-std::string removeExt(std::string n, int s){
+String removeExt(String n, int s){
 	while(s--){
 		n.pop_back();
 	}	
 	return n;
 }
 
-int strToInt(std::string str){
-    std::istringstream iss(str);
+int strToInt(String str){
+    std::istringstream iss(str.c_str());
 	int tmp;
 	iss >> tmp;
 	return tmp;
 }
 
 
-std::string intToStr(long long t){
+String intToStr(long long t){
     if(t == 0) return "0";
-    std::string str = "";
+    String str = "";
     if(t < 0)  {
         str = "-";
         t *= -1;
     }
-    std::vector<char> v;
+    Vector<char> v;
     while(t > 0){
         v.push_back((t%10) + '0');
         t /= 10;
@@ -134,30 +134,30 @@ std::string intToStr(long long t){
 	return str;
 }
 
-std::string doubleToStr(double d){
+String doubleToStr(double d){
     long long caster = d;
     if(d == caster) return intToStr(caster);
-    std::string temp =  std::to_string(d);
+    String temp =  (String)std::to_string(d);
     while(temp[temp.size() - 1] == '0') temp.pop_back();
     return temp;
     /*
     std::ostringstream ss;
     ss << d;
-    std::string s(ss.str());
+    String s(ss.str());
     return s;*/
 }
 
-std::string floatToStr(float f){
+String floatToStr(float f){
     int caster = f;
     if(f == caster) return intToStr(caster);
-    std::string temp =  std::to_string(f);
+    String temp =  (String)std::to_string(f);
     while(temp[temp.size() - 1] == '0') temp.pop_back();
     return temp;
     /*
     std::ostringstream ss;
     ss << std::fixed;
     ss << f;
-    std::string s(ss.str());
+    String s(ss.str());
     return s;*/
 }
 

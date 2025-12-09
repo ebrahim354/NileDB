@@ -14,45 +14,45 @@ struct Tuple;
 
 class TableSchema {
     public:
-        void init(std::string name, Table* table, const std::vector<Column> columns, bool tmp_schema = false);
+        void init(String name, Table* table, const Vector<Column> columns, bool tmp_schema = false);
         void destroy();
 
-        std::string getTableName();
+        String getTableName();
         int numOfCols();
-        int colExist(std::string& col_name);
-        bool checkValidValues(std::vector<std::string>& fields, std::vector<Value>& vals);
-        bool checkValidValue(std::string& field, Value& val);
-        int getColIdx(std::string& field, Value& val);
-        bool isValidCol(std::string& col_name);
+        int colExist(String& col_name);
+        bool checkValidValues(Vector<String>& fields, Vector<Value>& vals);
+        bool checkValidValue(String& field, Value& val);
+        int getColIdx(String& field, Value& val);
+        bool isValidCol(String& col_name);
         void addColumn(Column c);
-        std::string typeToString(Type t);
+        String typeToString(Type t);
         void printSchema(std::stringstream& ss);
         void printSchema();
-        std::vector<std::string> getCols();
-        std::vector<Column> getColumns();
+        Vector<String> getCols();
+        Vector<Column> getColumns();
         void printTableHeader();
         // get a pointer to a spicific value inside of a record using the schema. 
         // Type conversion is done by the user of the function.
         // return nullptr in case of an error or the value is equal to null (handle cases separately later).
-        char* getValue(std::string col_name ,Record& r, uint16_t* size);
+        char* getValue(String col_name ,Record& r, uint16_t* size);
         // translate a given record using the schema to a vector of Value type.
         // return 1 in case of an error.
         // values is the output.
-        int translateToValues(Record& r, std::vector<Value>& values);
-        int translateToValuesOffset(Record& r, std::vector<Value>& values, int offset);
+        int translateToValues(Record& r, Vector<Value>& values);
+        int translateToValuesOffset(Record& r, Vector<Value>& values, int offset);
         int translateToTuple(Record& r, Tuple& tuple, RecordID& rid);
         // translate a vector of values using the schema to a Record. 
         // return null in case of an error.
         // the user of the class should handle deleting the record after using it.
         // we assume that the variable length columns are represented first.
-        Record translateToRecord(Arena* arena, std::vector<Value>& values);
+        Record translateToRecord(Arena* arena, Vector<Value>& values);
         Record translateToRecord(Arena* arena, Tuple tuple);
         Table* getTable();
     private:
         bool tmp_schema_ = false;
-        std::string table_name_;
+        String table_name_;
         Table* table_;
-        std::vector<Column> columns_;
+        Vector<Column> columns_;
         uint32_t size_;
 };
 

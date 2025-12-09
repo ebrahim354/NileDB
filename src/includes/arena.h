@@ -2,6 +2,7 @@
 #define ARENA_H
 
 #include "defines.h"
+#include <memory_resource>
 #include <sys/mman.h>
 
 // used resources: 
@@ -28,6 +29,8 @@ void memory_decommit(void* memory, u64 size);
 
 void memory_release(void* memory, u64 size);
 
+#define Vector std::pmr::vector
+#define String std::pmr::string
 
 struct Arena;
 
@@ -36,7 +39,7 @@ struct ArenaTemp {
     u64 pos_;
 };
 
-struct Arena {
+struct Arena : public std::pmr::memory_resource {
     u8* buffer_      = nullptr;
     u64 max_         = 0;
     u64 alloc_pos_   = 0;
@@ -60,6 +63,12 @@ struct Arena {
     ArenaTemp start_temp_arena();
 
     void clear_temp_arena(ArenaTemp temp);
+
+    void* do_allocate(size_t bytes, size_t alignment) override;
+
+    void do_deallocate(void* p, size_t bytes, size_t alignment) override;
+
+    bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override;
 };
 
 #endif // ARENA_H

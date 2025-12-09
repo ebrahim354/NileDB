@@ -34,7 +34,7 @@ enum ExecutorType {
     INTERSECT_EXECUTOR,
 };
 
-std::string exec_type_to_string(ExecutorType t);
+String exec_type_to_string(ExecutorType t);
 
 struct Executor {
 
@@ -63,8 +63,8 @@ struct FilterExecutor : public Executor {
     Tuple next();
 
     ExpressionNode* filter_ = nullptr;
-    std::vector<ExpressionNode*> fields_ = {};
-    std::vector<std::string> field_names_ = {};
+    Vector<ExpressionNode*> fields_ = {};
+    Vector<String> field_names_ = {};
 };
 
 struct NestedLoopJoinExecutor : public Executor {
@@ -104,19 +104,19 @@ struct HashJoinExecutor : public Executor {
     Executor* left_child_ = nullptr;
     Executor* right_child_ = nullptr;
     JoinType join_type_ = INNER_JOIN;
-    std::vector<int> left_child_fields_;
+    Vector<int> left_child_fields_;
     // duplicated_idx tracks last used hashed value in case of hashing on non unique keys.
     // for example: the hash key is the field 'a' and this field is not unique and may have a duplicated value of 1,
     // in that case when a join happens we store it in the hash table as 1 -> {tuple 1, tuple 2, tuple 3}.
     // when we call next() on a a key such as the previous example we track the last tuple that has been returned.
     // the value of -1 means that we will use the first tuple.
     int duplicated_idx_ = -1; 
-    std::string prev_key_ = "";
-    std::vector<int> right_child_fields_;
+    String prev_key_ = "";
+    Vector<int> right_child_fields_;
     ExpressionNode* filter_ = nullptr;
-    std::unordered_map<std::string, std::vector<Tuple>> hashed_left_child_;
+    std::unordered_map<String, Vector<Tuple>> hashed_left_child_;
     // tracks left keys that didn't find a match and can be used for left and full outer joins.
-    std::set<std::string> non_visited_left_keys_; 
+    std::set<String> non_visited_left_keys_; 
 };
 
 struct UnionExecutor : public Executor {
@@ -137,7 +137,7 @@ struct ExceptExecutor : public Executor {
 
     Executor* left_child_ = nullptr;
     Executor* right_child_ = nullptr;
-    std::unordered_map<std::string, int> hashed_tuples_;
+    std::unordered_map<String, int> hashed_tuples_;
 };
 
 struct IntersectExecutor : public Executor {
@@ -148,7 +148,7 @@ struct IntersectExecutor : public Executor {
 
     Executor* left_child_ = nullptr;
     Executor* right_child_ = nullptr;
-    std::unordered_map<std::string, int> hashed_tuples_;
+    std::unordered_map<String, int> hashed_tuples_;
 };
 
 
@@ -180,13 +180,13 @@ struct IndexScanExecutor : public Executor {
 
 struct InsertionExecutor : public Executor {
 
-        void construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table, std::vector<IndexHeader> indexes,
+        void construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table, Vector<IndexHeader> indexes,
             int select_idx);
         void init();
         Tuple next();
 
         TableSchema* table_ = nullptr;
-        std::vector<IndexHeader> indexes_;
+        Vector<IndexHeader> indexes_;
         InsertStatementData* statement_ = nullptr;
         int select_idx_ = -1;
 };
@@ -194,12 +194,12 @@ struct InsertionExecutor : public Executor {
 struct DeletionExecutor : public Executor {
 
         void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child, TableSchema* table,
-        std::vector<IndexHeader> indexes);
+        Vector<IndexHeader> indexes);
         void init();
         Tuple next();
 
         TableSchema* table_ = nullptr;
-        std::vector<IndexHeader> indexes_;
+        Vector<IndexHeader> indexes_;
         DeleteStatementData* statement_ = nullptr;
         std::set<u64> affected_records; // store hashes of affected record id-s To prevent the halloween problem.
 };
@@ -207,12 +207,12 @@ struct DeletionExecutor : public Executor {
 struct UpdateExecutor : public Executor {
 
         void construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child, TableSchema* table,
-        std::vector<IndexHeader> indexes);
+        Vector<IndexHeader> indexes);
         void init();
         Tuple next();
 
         TableSchema* table_ = nullptr;
-        std::vector<IndexHeader> indexes_;
+        Vector<IndexHeader> indexes_;
         UpdateStatementData* statement_ = nullptr;
         std::set<u64> affected_records; // store hashes of affected record id-s To prevent the halloween problem.
 };
@@ -223,9 +223,9 @@ struct AggregationExecutor : public Executor {
         void init();
         Tuple next();
 
-        std::vector<AggregateFuncNode*> aggregates_;
-        std::vector<ASTNode*> group_by_;
-        std::unordered_map<std::string, std::pair<Tuple, int>> aggregated_values_;
+        Vector<AggregateFuncNode*> aggregates_;
+        Vector<ASTNode*> group_by_;
+        std::unordered_map<String, std::pair<Tuple, int>> aggregated_values_;
         // this hash table holds a set of values for each aggregate function 
         // if that function uses the distinct keyword inside the clause e.g: count(distinct a).
         // the mapping string is the hashed_key that is generated from the group by clause,
@@ -233,8 +233,8 @@ struct AggregationExecutor : public Executor {
         // first value is the index of the function inside of the aggregates_ array,
         // second value is the set of values that has been parameters to that function so far.
         // TODO: pick a better structure to implement this functionality
-        std::unordered_map<std::string, std::unordered_map<int, std::set<std::string>>> distinct_counters_; 
-        std::unordered_map<std::string, std::pair<Tuple, int>>::iterator it_;
+        std::unordered_map<String, std::unordered_map<int, std::set<String>>> distinct_counters_; 
+        std::unordered_map<String, std::pair<Tuple, int>>::iterator it_;
 };
 
 struct ProjectionExecutor : public Executor {
@@ -244,7 +244,7 @@ struct ProjectionExecutor : public Executor {
         Tuple next();
 
         // child_executor_ is optional in case of projection for example : select 1 + 1 should work without a from clause.
-        std::vector<ExpressionNode*> fields_ {};
+        Vector<ExpressionNode*> fields_ {};
 };
 
 struct SortExecutor : public Executor {
@@ -253,8 +253,8 @@ struct SortExecutor : public Executor {
         void init();
         Tuple next();
 
-        std::vector<int> order_by_list_;
-        std::vector<Tuple> tuples_;
+        Vector<int> order_by_list_;
+        Vector<Tuple> tuples_;
         int idx_ = 0;
 };
 
@@ -264,7 +264,7 @@ struct DistinctExecutor : public Executor {
         void init();
         Tuple next();
 
-        std::unordered_map<std::string, int> hashed_tuples_;
+        std::unordered_map<String, int> hashed_tuples_;
 };
 
 struct SubQueryExecutor : public Executor {

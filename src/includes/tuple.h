@@ -2,7 +2,7 @@
 #define TUPLE_H
 
 struct Tuple {
-    std::vector<Value> values_;
+    Vector<Value> values_;
     RecordID left_most_rid_;
     /*
     Record* rec_;
@@ -17,8 +17,8 @@ struct Tuple {
     // a pull is the time between two next() calls of the same executor.
     // this function makes a deep copy that can last for a custom lifetime based on the passed allocator,
     Tuple duplicate(Arena* arena);
-    std::string build_hash_key(std::vector<int>& fields);
-    std::string stringify();
+    String build_hash_key(Vector<int>& fields);
+    String stringify();
     void put_tuple_at_end(const Tuple* t);
     void put_tuple_at_start(const Tuple* t);
     void nullify(int start, int end);

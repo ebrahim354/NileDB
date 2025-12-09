@@ -11,11 +11,11 @@ struct IndexKey;
 class BTreeIndex;
 bool is_desc_order(char* bitmap, int idx);
 int index_key_cmp(IndexKey lhs,IndexKey rhs);
-IndexKey temp_index_key_from_values(std::vector<Value>& vals);
+IndexKey temp_index_key_from_values(Vector<Value>& vals);
 #define EPS 1e-6
 
 struct IndexField {
-    std::string name_;
+    String name_;
     bool desc_ = false;
 };
 
@@ -27,8 +27,8 @@ struct NumberedIndexField {
 
 struct IndexHeader {
     BTreeIndex* index_;
-    std::string index_name_;
-    std::vector<NumberedIndexField> fields_numbers_;
+    String index_name_;
+    Vector<NumberedIndexField> fields_numbers_;
 };
 
 
@@ -209,7 +209,7 @@ int index_key_cmp(IndexKey lhs,IndexKey rhs) {
 }
 
 // user has ownership over the return value.
-IndexKey temp_index_key_from_values(Arena* arena, std::vector<Value>& vals) {
+IndexKey temp_index_key_from_values(Arena* arena, Vector<Value>& vals) {
     int buf_size = 128; // TODO: test small value.
     if(vals.size() >= buf_size || vals.size() > 255) assert(0 && "TOO MANY VALUES FOR AN INDEX KEY!");
     if(vals.size() < 1) return {};
@@ -282,7 +282,7 @@ bool is_desc_order(char* bitmap, int idx) {
     char* cur_byte = bitmap+(idx/8);  
     return *cur_byte & (1 << (idx%8));
 }
-char* create_sort_order_bitmap(Arena* arena, std::vector<NumberedIndexField>& fields) { 
+char* create_sort_order_bitmap(Arena* arena, Vector<NumberedIndexField>& fields) { 
     int size = (fields.size() / 8) + (fields.size() % 8);
     char* bitmap = (char*) arena->alloc(size);
     for(int i = 0; i < fields.size(); ++i){
@@ -294,8 +294,8 @@ char* create_sort_order_bitmap(Arena* arena, std::vector<NumberedIndexField>& fi
     return bitmap;
 }
 
-IndexKey getIndexKeyFromTuple(Arena* arena, std::vector<NumberedIndexField>& fields, std::vector<Value>& values) {
-    std::vector<Value> keys;
+IndexKey getIndexKeyFromTuple(Arena* arena, Vector<NumberedIndexField>& fields, Vector<Value>& values) {
+    Vector<Value> keys;
     for(int i = 0; i < fields.size(); ++i){
         if(fields[i].idx_ >= values.size()) 
             return {};
@@ -306,8 +306,8 @@ IndexKey getIndexKeyFromTuple(Arena* arena, std::vector<NumberedIndexField>& fie
     return res;
 }
 
-IndexKey getIndexKeyFromTuple(Arena* arena, std::vector<NumberedIndexField>& fields, Tuple tuple) {
-    std::vector<Value> keys;
+IndexKey getIndexKeyFromTuple(Arena* arena, Vector<NumberedIndexField>& fields, Tuple tuple) {
+    Vector<Value> keys;
     for(int i = 0; i < fields.size(); ++i){
         if(fields[i].idx_ >= tuple.size()) 
             return {};

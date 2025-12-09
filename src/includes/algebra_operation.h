@@ -5,7 +5,7 @@
 #include "ast_nodes.h"
 
 
-//void accessed_tables(ASTNode* expression ,std::vector<std::string>& tables, Catalog* catalog, bool only_one);
+//void accessed_tables(ASTNode* expression ,Vector<String>& tables, Catalog* catalog, bool only_one);
 enum AlgebraOperationType {
     // single table operations.
     SCAN,
@@ -46,12 +46,12 @@ struct AlgebraOperation {
 };
 
 struct ScanOperation: AlgebraOperation {
-    void init(int query_idx, std::string table_name, std::string table_rename);
+    void init(int query_idx, String table_name, String table_rename);
     void print(int prefix_space_cnt);
 
-    std::string table_name_   = {};
-    std::string table_rename_ = {};
-    std::string index_name_   = {};
+    String table_name_   = {};
+    String table_rename_ = {};
+    String index_name_   = {};
     ScanType scan_type_       = SEQ_SCAN;
     ASTNode* filter_   = nullptr;
 };
@@ -135,44 +135,44 @@ struct UpdateOperation: AlgebraOperation {
 struct FilterOperation: AlgebraOperation {
     void init(int query_idx, AlgebraOperation* child, ExpressionNode* filter);
             /*
-            ,std::vector<ExpressionNode*>& fields, 
-            std::vector<std::string>& field_names);*/
+            ,Vector<ExpressionNode*>& fields, 
+            Vector<String>& field_names);*/
     void print(int prefix_space_cnt);
 
     ExpressionNode* filter_;
     /*
-    std::vector<ExpressionNode*> fields_;
-    std::vector<std::string> field_names_;
+    Vector<ExpressionNode*> fields_;
+    Vector<String> field_names_;
     */
     AlgebraOperation* child_;
 };
 
 struct AggregationOperation: AlgebraOperation {
     public:
-        void init(int query_idx, AlgebraOperation* child, std::vector<AggregateFuncNode*> aggregates,
-                std::vector<ASTNode*> group_by);
+        void init(int query_idx, AlgebraOperation* child, Vector<AggregateFuncNode*> aggregates,
+                Vector<ASTNode*> group_by);
         void print(int prefix_space_cnt);
 
         AlgebraOperation* child_ = nullptr;
-        std::vector<AggregateFuncNode*> aggregates_;
-        std::vector<ASTNode*> group_by_;
+        Vector<AggregateFuncNode*> aggregates_;
+        Vector<ASTNode*> group_by_;
 };
 
 
 struct ProjectionOperation: AlgebraOperation {
     public:
-        void init(int query_idx, AlgebraOperation* child, std::vector<ExpressionNode*> fields);
+        void init(int query_idx, AlgebraOperation* child, Vector<ExpressionNode*> fields);
         void print(int prefix_space_cnt);
 
         AlgebraOperation* child_ = nullptr;
-        std::vector<ExpressionNode*> fields_;
+        Vector<ExpressionNode*> fields_;
 };
 
 struct SortOperation: AlgebraOperation {
     AlgebraOperation* child_ = nullptr;
-    std::vector<int> order_by_list_;
+    Vector<int> order_by_list_;
 
-    void init(int query_idx, AlgebraOperation* child, std::vector<int> order_by_list);
+    void init(int query_idx, AlgebraOperation* child, Vector<int> order_by_list);
     void print(int prefix_space_cnt);
 };
 

@@ -8,7 +8,7 @@
 #include <deque>
 
 
-typedef std::vector<std::vector<Value>> QueryResult;
+typedef Vector<Vector<Value>> QueryResult;
 struct IndexHeader;
 
 
@@ -35,13 +35,13 @@ class ExecutionEngine {
         // DDL handlers.
         bool create_table_handler(QueryCTX& ctx) {
             CreateTableStatementData* create_table = reinterpret_cast<CreateTableStatementData*>(ctx.queries_call_stack_[0]);
-            std::string table_name = create_table->table_name_;
-            std::vector<FieldDef> fields = create_table->field_defs_;
-            std::deque<std::string> col_names;
+            String table_name = create_table->table_name_;
+            Vector<FieldDef> fields = create_table->field_defs_;
+            std::deque<String> col_names;
             std::deque<Type> col_types;
             std::deque<ConstraintType> col_constraints;
             for(int i = 0; i < fields.size(); ++i){
-                std::string name = fields[i].field_name_;
+                String name = fields[i].field_name_;
                 Type type = tokenTypeToColType(fields[i].type_);
                 if(type == INVALID) {
                     std::cout << "[ERROR] Invalid type\n";
@@ -51,8 +51,8 @@ class ExecutionEngine {
                 col_types.push_back(type);
                 col_constraints.push_back(fields[i].constraints_);
             }
-            std::vector<Column> columns;
-            std::vector<IndexField> primary_key_cols;
+            Vector<Column> columns;
+            Vector<IndexField> primary_key_cols;
             uint8_t offset_ptr = 0;
             for(size_t i = 0; i < col_names.size(); ++i){
                 columns.push_back(Column(col_names[i], col_types[i], offset_ptr, col_constraints[i]));
@@ -74,9 +74,9 @@ class ExecutionEngine {
 
         bool create_index_handler(QueryCTX& ctx) {
             CreateIndexStatementData* create_index = reinterpret_cast<CreateIndexStatementData*>(ctx.queries_call_stack_[0]);
-            std::string index_name = create_index->index_name_;
-            std::string table_name = create_index->table_name_;
-            std::vector<IndexField> fields = create_index->fields_;
+            String index_name = create_index->index_name_;
+            String table_name = create_index->table_name_;
+            Vector<IndexField> fields = create_index->fields_;
             bool err = catalog_->createIndex(&ctx, table_name, index_name, fields);
             if(err) return false;
             return true;
@@ -84,7 +84,7 @@ class ExecutionEngine {
 
         bool drop_table_handler(QueryCTX& ctx) {
             auto drop_table = reinterpret_cast<DropTableStatementData*>(ctx.queries_call_stack_[0]);
-            std::string table_name = drop_table->table_name_;
+            String table_name = drop_table->table_name_;
             bool err = catalog_->deleteTable(&ctx, table_name);
             if(err) return false;
             return true;
@@ -92,7 +92,7 @@ class ExecutionEngine {
 
         bool drop_index_handler(QueryCTX& ctx) {
             DropIndexStatementData* drop_index = reinterpret_cast<DropIndexStatementData*>(ctx.queries_call_stack_[0]);
-            std::string index_name = drop_index->index_name_;
+            String index_name = drop_index->index_name_;
             bool err = catalog_->deleteIndex(&ctx, index_name);
             if(err) return false;
             return true;
@@ -192,12 +192,12 @@ class ExecutionEngine {
                     {
                         ScanOperation* op = reinterpret_cast<ScanOperation*>(logical_plan);
                         TableSchema* schema = catalog_->getTableSchema(op->table_name_);
-                        std::string tname =  op->table_name_;
+                        String tname =  op->table_name_;
                         if(op->table_rename_.size() != 0) tname = op->table_rename_;
-                        std::vector<Column> columns = schema->getColumns();
+                        Vector<Column> columns = schema->getColumns();
                         // create a new schema and rename columns to table.col_name
                         for(int i = 0; i < columns.size(); i++){
-                            std::string col_name = tname; 
+                            String col_name = tname; 
                             col_name += ".";
                             col_name += columns[i].getName();
                             columns[i].setName(col_name);

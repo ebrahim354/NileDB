@@ -11,7 +11,7 @@ Value evaluate(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item);
 Value evaluate_subquery(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item);
 
 
-Value abs_func(std::vector<Value> vals){
+Value abs_func(Vector<Value> vals){
     if(vals.size() != 1){
         std::cout << "[ERROR] Incorrect number of arguments\n";
         return Value();
@@ -22,7 +22,7 @@ Value abs_func(std::vector<Value> vals){
     return vals[0];
 }
 
-Value nullif_func(std::vector<Value> vals){
+Value nullif_func(Vector<Value> vals){
     if(vals.size() != 2){
         std::cout << "[ERROR] Incorrect number of arguments\n";
         return Value();
@@ -31,7 +31,7 @@ Value nullif_func(std::vector<Value> vals){
     return vals[0];
 }
 
-Value coalesce_func(std::vector<Value> vals){
+Value coalesce_func(Vector<Value> vals){
     if(!vals.size()){
         std::cout << "[ERROR] Incorrect number of arguments\n";
         return Value();
@@ -44,7 +44,7 @@ Value coalesce_func(std::vector<Value> vals){
 }
 
 //TODO: should be moved the the catalog class.
-std::unordered_map<std::string, std::function<Value(std::vector<Value>)>> reserved_functions = 
+std::unordered_map<String, std::function<Value(Vector<Value>)>> reserved_functions = 
 //{{"ABS", abs_func}, {"COALESCE", coalesce_func}, {"NULLIF", nullif_func}};
 {{"ABS", abs_func}, {"COALESCE", coalesce_func}};
 
@@ -381,13 +381,13 @@ Value evaluate_expression(
         case SCALAR_FUNC: 
                       {
                           ScalarFuncNode* sfn = reinterpret_cast<ScalarFuncNode*>(expression);
-                          std::string name = str_toupper(sfn->name_);
+                          String name = str_toupper(sfn->name_);
                           if(!reserved_functions.count(name)){
                               // TODO: this check should be in the query validation phase.
                               std::cout << "[ERROR] undefined function call " << sfn->name_ << "\n";
                               return Value();
                           }
-                          std::vector<Value> vals;
+                          Vector<Value> vals;
                           for(int i = 0; i < sfn->args_.size(); ++i){
                               vals.emplace_back(evaluate_expression(ctx, sfn->args_[i], cur_tuple, true, eval_sub_query));
                           }
@@ -414,7 +414,7 @@ Value evaluate_expression(
                       } 
         case STRING_CONSTANT: 
                       {
-                          std::string val = "";
+                          String val = "";
                           for(int i = 1; i < expression->token_.val_.size() - 1; i++){
                               val += expression->token_.val_[i];
                           }
@@ -456,12 +456,12 @@ Value evaluate_expression(
 
 
 // assumes top level ands only.
-std::vector<ExpressionNode*> split_by_and(QueryCTX* ctx, ExpressionNode* expression) {
+Vector<ExpressionNode*> split_by_and(QueryCTX* ctx, ExpressionNode* expression) {
     ExpressionNode* ex = reinterpret_cast<ExpressionNode*>(expression);
     if(!ex) return {};
 
     ASTNode* ptr = ex->cur_;
-    std::vector<ExpressionNode*> ret;
+    Vector<ExpressionNode*> ret;
     while(ptr){
         // TODO: should be changed.
         //ExpressionNode* ex_copy = new ExpressionNode(ex->top_level_statement_, ex->query_idx_);
@@ -480,7 +480,7 @@ std::vector<ExpressionNode*> split_by_and(QueryCTX* ctx, ExpressionNode* express
 }
 
 
-void accessed_tables(ASTNode* expression ,std::vector<std::string>& tables, Catalog* catalog, bool only_one = true) {
+void accessed_tables(ASTNode* expression ,Vector<String>& tables, Catalog* catalog, bool only_one = true) {
     if(!expression) return;
     switch(expression->category_){
         case EXPRESSION  : 
@@ -655,13 +655,13 @@ void accessed_tables(ASTNode* expression ,std::vector<std::string>& tables, Cata
                           return;
                       } 
         case SCOPED_FIELD:{
-                              std::string table = reinterpret_cast<ScopedFieldNode*>(expression)->table_->token_.val_;
+                              String table = reinterpret_cast<ScopedFieldNode*>(expression)->table_->token_.val_;
                               tables.push_back(table);
                               return;
                           }
         case FIELD:{
-                       std::string field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
-                       std::vector<std::string> valid_tables = catalog->getTablesByField(field);
+                       String field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
+                       Vector<String> valid_tables = catalog->getTablesByField(field);
                        for(int i = 0; i < valid_tables.size(); ++i){
                            int n = tables.size();
                            bool exists = false;
@@ -686,7 +686,7 @@ void accessed_tables(ASTNode* expression ,std::vector<std::string>& tables, Cata
     }
 }
 
-void accessed_fields(ASTNode* expression ,std::vector<std::string>& fields, bool only_one = true) {
+void accessed_fields(ASTNode* expression ,Vector<String>& fields, bool only_one = true) {
     if(!expression) return;
     switch(expression->category_){
         case EXPRESSION  : 
@@ -861,14 +861,14 @@ void accessed_fields(ASTNode* expression ,std::vector<std::string>& fields, bool
                           return;
                       } 
         case SCOPED_FIELD:{
-                              std::string table = reinterpret_cast<ScopedFieldNode*>(expression)->table_->token_.val_;
-                              std::string field = reinterpret_cast<ScopedFieldNode*>(expression)->token_.val_;
+                              String table = reinterpret_cast<ScopedFieldNode*>(expression)->table_->token_.val_;
+                              String field = reinterpret_cast<ScopedFieldNode*>(expression)->token_.val_;
                               fields.push_back(table+"."+field);
                               return;
                           }
         case FIELD:{
-                       std::string field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
-                       std::string prefix = AGG_FUNC_IDENTIFIER_PREFIX; // skip aggregate functions.
+                       String field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
+                       String prefix = AGG_FUNC_IDENTIFIER_PREFIX; // skip aggregate functions.
                        if(field.rfind(prefix, 0) == 0) return;
                        fields.push_back(field);
                        return;
@@ -925,7 +925,7 @@ Value evaluate_subquery(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item) {
 
 Value evaluate_field(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item) {
 
-    std::string field = item->token_.val_;
+    String field = item->token_.val_;
     int idx = -1;
     int query_input_idx = ctx->query_inputs.size() - 1;
     while(true){
@@ -938,7 +938,7 @@ Value evaluate_field(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item) {
         int num_of_matches = 0;
         auto columns = cur_tuple.schema_->getColumns();
         for(size_t i = 0; i < columns.size(); ++i){
-            std::vector<std::string> splittedStr = strSplit(columns[i].getName(), '.');
+            Vector<String> splittedStr = strSplit(columns[i].getName(), '.');
             if(splittedStr.size() != 2) {
                 std::cout << "[ERROR] Invalid schema " << std::endl;
                 ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: make a better error_status_.
@@ -964,7 +964,7 @@ Value evaluate_field(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item) {
     }
 
     if(idx < 0 || idx >= cur_tuple.size()) {
-        std::string prefix = AGG_FUNC_IDENTIFIER_PREFIX;
+        String prefix = AGG_FUNC_IDENTIFIER_PREFIX;
         if(field.rfind(prefix, 0) == 0)
             std::cout << "[ERROR] aggregate functions should not be used in here"<< std::endl;
         else 
@@ -977,9 +977,9 @@ Value evaluate_field(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item) {
 
 Value evaluate_scoped_field(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item) {
 
-    std::string field = item->token_.val_;
-    std::string table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
-    std::string col = table;col += "."; col+= field;
+    String field = item->token_.val_;
+    String table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
+    String col = table;col += "."; col+= field;
 
     int idx = -1;
     int query_input_idx = ctx->query_inputs.size() - 1;

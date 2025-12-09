@@ -17,7 +17,7 @@ JoinType token_type_to_join_type (TokenType t) {
 
 bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* catalog) {
     if(!query || !catalog) assert(0 && "invalid input");
-    std::vector<std::string> fields;
+    Vector<String> fields;
     for(int i = 0; i < query->fields_.size(); ++i){
         accessed_fields(query->fields_[i],fields, true);
     }
@@ -31,8 +31,8 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
     }
     for(int i = 0; i < fields.size(); ++i){
         auto table_field = split_scoped_field(fields[i]);
-        std::string table = table_field.first;
-        std::string cur_field   = table_field.second;
+        String table = table_field.first;
+        String cur_field   = table_field.second;
         if(table.size()) {  // the field is scoped.
             for(int k = 0; k < query->table_names_.size(); ++k){
                 if(table != query->table_names_[k] && k == query->table_names_[k].size() - 1)
@@ -49,7 +49,7 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
             }
 
         } else { // the field is not scoped.
-            std::vector<std::string> possible_tables = catalog->getTablesByField(cur_field);
+            Vector<String> possible_tables = catalog->getTablesByField(cur_field);
             bool table_matched = false;
             for(int j = 0; j < possible_tables.size(); ++j){
                 if(std::find(query->table_names_.begin(), query->table_names_.end(), possible_tables[j]) 

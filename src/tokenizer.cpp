@@ -3,7 +3,7 @@
 #include "tokenizer.h"
 #include <map>
 
-Token::Token(TokenType type, std::string val): type_(type), val_(val)
+Token::Token(TokenType type, String val): type_(type), val_(val)
 {}
 
 Tokenizer::Tokenizer() {
@@ -99,15 +99,15 @@ Tokenizer::Tokenizer() {
 }
 
 
-bool Tokenizer::isKeyword(std::string& t) {
+bool Tokenizer::isKeyword(String& t) {
     return keywords_.count(str_toupper(t));
 }
 
-bool Tokenizer::isDataType(std::string& t) {
+bool Tokenizer::isDataType(String& t) {
     return data_types_.count(str_toupper(t));
 }
 
-bool Tokenizer::isSymbol(std::string& t) {
+bool Tokenizer::isSymbol(String& t) {
     return symbols_.count(t);
 }
 
@@ -140,36 +140,36 @@ bool Tokenizer::isAggFunc(TokenType func) {
     }
 }
 
-bool Tokenizer::isAggFunc(std::string& f) {
-    std::string func = str_toupper(f);
+bool Tokenizer::isAggFunc(String& f) {
+    String func = str_toupper(f);
     if(func == "SUM" || func == "COUNT" || func == "MIN" || func == "MAX" || func == "AVG") return true;
     return false;
 }
 
-bool Tokenizer::isMathOp(std::string& op) {
+bool Tokenizer::isMathOp(String& op) {
     if(op == "+" || op == "-" || op == "*" || op == "/") return true;
     return false;
 }
 
-bool Tokenizer::isCompareOP(std::string& op) {
+bool Tokenizer::isCompareOP(String& op) {
     if(op == ">" || op == "<" || op == ">=" || op == "<=") return true;
     return false;
 }
 
-bool Tokenizer::isEqOP(std::string& op) {
+bool Tokenizer::isEqOP(String& op) {
     if(op == "=" || op == "!=" || op == "<>") return true;
     return false;
 }
 
-bool Tokenizer::isStrConst(std::string& t) {
+bool Tokenizer::isStrConst(String& t) {
     return t.size() >= 2 && t[0] == '\'' && t[t.size()-1] == '\'';
 }
 
-bool Tokenizer::isNumberConst (std::string& t) {
+bool Tokenizer::isNumberConst (String& t) {
     return t.size() > 0 && areDigits(t);
 }
 
-TokenType Tokenizer::getTokenType(std::string& t) {
+TokenType Tokenizer::getTokenType(String& t) {
     if(isKeyword(t))     return keywords_[str_toupper(t)];
     if(isDataType(t))    return data_types_[str_toupper(t)];
     if(isSymbol(t))      return symbols_[t];
@@ -184,10 +184,10 @@ bool Tokenizer::isWhitespace(char ch) {
     return false;
 }
 
-void Tokenizer::tokenize(std::string& input, std::vector<Token>& output) {
+void Tokenizer::tokenize(String& input, Vector<Token>& output) {
     size_t pos = 0;
     bool inside_string_literal = false;
-    std::string cur_token = "";
+    String cur_token = "";
     while(pos < input.size()){
         while(pos < input.size() && isWhitespace(input[pos]) && !inside_string_literal){
             pos++;
@@ -198,13 +198,13 @@ void Tokenizer::tokenize(std::string& input, std::vector<Token>& output) {
                 cur_token += input[pos++];
                 continue;
             }
-            std::string s = "";
+            String s = "";
             s += input[pos];
             if(isSymbol(s)){
-                std::string tmp; 
+                String tmp; 
                 tmp = input[pos++];
                 if(pos < input.size()){
-                    std::string t = "";
+                    String t = "";
                     t += tmp;
                     t += input[pos];
                     if(isSymbol(t)) tmp += input[pos++];

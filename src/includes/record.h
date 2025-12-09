@@ -13,11 +13,11 @@ struct RecordID {
     RecordID (PageID pid, uint32_t slot_number);
 
     u64 get_hash(){
-        std::string str = "";
+        String str = "";
         str += intToStr(page_id_.fid_); str+= ",";
         str += intToStr(page_id_.page_num_); str+= ",";
         str += intToStr(slot_number_);
-        return std::hash<std::string>{}(str);
+        return std::hash<String>{}(str);
     }
 
     PageID page_id_ = INVALID_PAGE_ID; 
