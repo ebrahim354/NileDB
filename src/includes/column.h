@@ -26,10 +26,12 @@ enum Type { INVALID = -1, BOOLEAN, INT, BIGINT, FLOAT, DOUBLE, TIMESTAMP, VARCHA
 
 Type tokenTypeToColType(TokenType t);
 bool checkSameType(Type lhs, Type rhs);
+u8 getSizeFromType(Type t);
 
 
 class Column {
     public:
+        Column(Arena* arena, String name, Type type, u8 col_offset, ConstraintType constraints = CONSTRAINT_NOTHING);
         Column(String name, Type type, u8 col_offset, ConstraintType constraints = CONSTRAINT_NOTHING);
         ~Column();
 
@@ -47,7 +49,6 @@ class Column {
         bool isPrimaryKey();
         bool isForeignKey();
         bool isUnique();
-        static uint8_t getSizeFromType(Type t);
 
     private:
         String name_;

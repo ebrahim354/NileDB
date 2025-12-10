@@ -7,8 +7,8 @@
 #include <string>
 #include <unordered_map>
 
-Value evaluate(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item);
-Value evaluate_subquery(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item);
+Value evaluate(QueryCTX* ctx, const Tuple& cur_tuple, ASTNode* item);
+Value evaluate_subquery(QueryCTX* ctx, const Tuple& cur_tuple, ASTNode* item);
 
 
 Value abs_func(Vector<Value> vals){
@@ -52,7 +52,7 @@ std::unordered_map<String, std::function<Value(Vector<Value>)>> reserved_functio
 Value evaluate_expression(
         QueryCTX* ctx, 
         ASTNode* expression, 
-        Tuple& cur_tuple,
+        const Tuple& cur_tuple,
         bool only_one = true,
         bool eval_sub_query = true
         ) {
@@ -887,7 +887,7 @@ void accessed_fields(ASTNode* expression ,Vector<String>& fields, bool only_one 
     }
 }
 
-Value evaluate_subquery(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item) {
+Value evaluate_subquery(QueryCTX* ctx, const Tuple& cur_tuple, ASTNode* item) {
     auto sub_query = reinterpret_cast<SubQueryNode*>(item);
     bool used_with_exists = sub_query->used_with_exists_;
     Executor* sub_query_executor = ctx->executors_call_stack_[sub_query->idx_]; 
@@ -923,20 +923,23 @@ Value evaluate_subquery(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item) {
 }
 
 
-Value evaluate_field(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item) {
+Value evaluate_field(QueryCTX* ctx, const Tuple& tuple, ASTNode* item) {
 
     String field = item->token_.val_;
     int idx = -1;
     int query_input_idx = ctx->query_inputs.size() - 1;
+
+    const Tuple* cur_tuple = &tuple;
+
     while(true){
-        if(cur_tuple.schema_ == nullptr && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()) {
-            cur_tuple = ctx->query_inputs[query_input_idx--];
+        if(cur_tuple->schema_ == nullptr && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()) {
+            cur_tuple = &ctx->query_inputs[query_input_idx--];
             continue;
         }
-        if(!cur_tuple.schema_) break;
+        if(!cur_tuple->schema_) break;
 
         int num_of_matches = 0;
-        auto columns = cur_tuple.schema_->getColumns();
+        auto columns = cur_tuple->schema_->getColumns();
         for(size_t i = 0; i < columns.size(); ++i){
             Vector<String> splittedStr = strSplit(columns[i].getName(), '.');
             if(splittedStr.size() != 2) {
@@ -955,15 +958,15 @@ Value evaluate_field(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item) {
             return Value();
         }
 
-        if((idx < 0 || idx >= cur_tuple.size()) 
+        if((idx < 0 || idx >= cur_tuple->size()) 
                 && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()){
-            cur_tuple = ctx->query_inputs[query_input_idx--];
+            cur_tuple = &ctx->query_inputs[query_input_idx--];
             continue;
         }
         break;
     }
 
-    if(idx < 0 || idx >= cur_tuple.size()) {
+    if(idx < 0 || idx >= cur_tuple->size()) {
         String prefix = AGG_FUNC_IDENTIFIER_PREFIX;
         if(field.rfind(prefix, 0) == 0)
             std::cout << "[ERROR] aggregate functions should not be used in here"<< std::endl;
@@ -972,10 +975,10 @@ Value evaluate_field(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item) {
         ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
         return Value();
     }
-    return cur_tuple.get_val_at(idx);
+    return cur_tuple->get_val_at(idx);
 }
 
-Value evaluate_scoped_field(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item) {
+Value evaluate_scoped_field(QueryCTX* ctx, const Tuple& cur, ASTNode* item) {
 
     String field = item->token_.val_;
     String table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
@@ -983,30 +986,31 @@ Value evaluate_scoped_field(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item) {
 
     int idx = -1;
     int query_input_idx = ctx->query_inputs.size() - 1;
+    const Tuple* cur_tuple = &cur;
     while(true){
-        if(cur_tuple.schema_ == nullptr && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()) {
-            cur_tuple = ctx->query_inputs[query_input_idx--];
+        if(cur_tuple->schema_ == nullptr && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()) {
+            cur_tuple = &ctx->query_inputs[query_input_idx--];
             continue;
         }
-        idx = cur_tuple.schema_->colExist(col);
+        idx = cur_tuple->schema_->colExist(col);
 
-        if((idx < 0 || idx >= cur_tuple.size()) 
+        if((idx < 0 || idx >= cur_tuple->size()) 
                 && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()){
-            cur_tuple = ctx->query_inputs[query_input_idx--];
+            cur_tuple = &ctx->query_inputs[query_input_idx--];
             continue;
         }
         break;
     }
 
-    if(idx < 0 || idx >= cur_tuple.size()) {
+    if(idx < 0 || idx >= cur_tuple->size()) {
         std::cout << "[ERROR] Invalid scoped field name " << col << std::endl;
         ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
         return Value();
     }
-    return cur_tuple.get_val_at(idx);
+    return cur_tuple->get_val_at(idx);
 }
 
-Value evaluate(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item){
+Value evaluate(QueryCTX* ctx, const Tuple& cur_tuple, ASTNode* item){
     if(item->category_ == FIELD) return evaluate_field(ctx, cur_tuple, item);
     if(item->category_ == SCOPED_FIELD) return evaluate_scoped_field(ctx, cur_tuple, item);
     if(item->category_ == SUB_QUERY) return evaluate_scoped_field(ctx, cur_tuple, item);

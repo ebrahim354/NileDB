@@ -61,16 +61,16 @@ void Catalog::init(CacheManager *cm) {
 
     Vector<Column> meta_data_columns;
     meta_data_columns.reserve(9);
-    meta_data_columns.emplace_back(Column("table_name", VARCHAR, 0));
-    meta_data_columns.emplace_back(Column("col_name"  , VARCHAR, 4));
-    meta_data_columns.emplace_back(Column("fid"       , INT    , 8));
-    meta_data_columns.emplace_back(Column("col_type"  , INT    , 12));
-    meta_data_columns.emplace_back(Column("col_offset", INT    , 16));
-    meta_data_columns.emplace_back(Column("nullable"  , BOOLEAN, 20));
-    meta_data_columns.emplace_back(Column("primary"   , BOOLEAN, 21));
-    meta_data_columns.emplace_back(Column("foreign"   , BOOLEAN, 22));
-    meta_data_columns.emplace_back(Column("unique"    , BOOLEAN, 23));
-    meta_table_schema_ =  New(TableSchema, arena_, (String)META_DATA_TABLE, meta_data_table, meta_data_columns);
+    meta_data_columns.emplace_back(&arena_, "table_name", VARCHAR, 0);
+    meta_data_columns.emplace_back(&arena_, "col_name"  , VARCHAR, 4);
+    meta_data_columns.emplace_back(&arena_, "fid"       , INT    , 8);
+    meta_data_columns.emplace_back(&arena_, "col_type"  , INT    , 12);
+    meta_data_columns.emplace_back(&arena_, "col_offset", INT    , 16);
+    meta_data_columns.emplace_back(&arena_, "nullable"  , BOOLEAN, 20);
+    meta_data_columns.emplace_back(&arena_, "primary"   , BOOLEAN, 21);
+    meta_data_columns.emplace_back(&arena_, "foreign"   , BOOLEAN, 22);
+    meta_data_columns.emplace_back(&arena_, "unique"    , BOOLEAN, 23);
+    meta_table_schema_ =  New(TableSchema, arena_, META_DATA_TABLE, meta_data_table, meta_data_columns);
     tables_[META_DATA_TABLE] = meta_table_schema_;
 
 
@@ -84,7 +84,7 @@ void Catalog::init(CacheManager *cm) {
         if(err) break;
         // extract the data of this row.
         String table_name = values[0].getStringVal();
-        String col_name = values[1].getStringVal();
+        String col_name(values[1].getStringVal(), &arena_);
         FileID fid = values[2].getIntVal();
         Type col_type = static_cast<Type>(values[3].getIntVal());
         int col_offset = values[4].getIntVal();
@@ -116,7 +116,7 @@ void Catalog::init(CacheManager *cm) {
         if(foreign_key) cons |= CONSTRAINT_FOREIGN_KEY;
         if(unique)      cons |= CONSTRAINT_UNIQUE; 
 
-        tables_[table_name]->addColumn(Column(col_name, col_type, col_offset, cons));
+        tables_[table_name]->addColumn(&arena_, col_name, col_type, col_offset, cons);
     }
     it.destroy();
     // load indexes meta data:
@@ -130,18 +130,18 @@ void Catalog::init(CacheManager *cm) {
         QueryCTX pctx;
         pctx.init(0);
         Vector<Column> index_meta_columns;
-        index_meta_columns.emplace_back(Column("index_name"    , VARCHAR, 0));
-        index_meta_columns.emplace_back(Column("table_name"    , VARCHAR, 4));
-        index_meta_columns.emplace_back(Column("fid"           , INT    , 8));
-        index_meta_columns.emplace_back(Column("root_page_num" , INT    , 12));
+        index_meta_columns.emplace_back(&arena_, "index_name"    , VARCHAR, 0);
+        index_meta_columns.emplace_back(&arena_, "table_name"    , VARCHAR, 4);
+        index_meta_columns.emplace_back(&arena_, "fid"           , INT    , 8);
+        index_meta_columns.emplace_back(&arena_, "root_page_num" , INT    , 12);
         TableSchema* ret = createTable(&pctx, INDEX_META_TABLE, index_meta_columns); 
         assert(ret != nullptr);
 
         Vector<Column> index_keys_columns;
-        index_keys_columns.emplace_back(Column("index_name"            , VARCHAR   , 0));
-        index_keys_columns.emplace_back(Column("field_number_in_table" , INT       , 4));
-        index_keys_columns.emplace_back(Column("field_number_in_index" , INT       , 8));
-        index_keys_columns.emplace_back(Column("is_desc_order"         , BOOLEAN   , 12));
+        index_keys_columns.emplace_back(&arena_, "index_name"            , VARCHAR   , 0);
+        index_keys_columns.emplace_back(&arena_, "field_number_in_table" , INT       , 4);
+        index_keys_columns.emplace_back(&arena_, "field_number_in_index" , INT       , 8);
+        index_keys_columns.emplace_back(&arena_, "is_desc_order"         , BOOLEAN   , 12);
         ret = createTable(&pctx, INDEX_KEYS_TABLE, index_keys_columns); 
         assert(ret != nullptr);
         pctx.clean();
@@ -171,7 +171,7 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const String &table_name, Vecto
     // persist the table schema in the meta data table.
     // create a vector of Values per column,
     // then insert it to the meta table.
-    for(auto c : columns){
+    for(auto& c : columns){
         Vector<Value> vals;
         vals.emplace_back(Value(&ctx->arena_, table_name));
         vals.emplace_back(Value(&ctx->arena_, c.getName()));

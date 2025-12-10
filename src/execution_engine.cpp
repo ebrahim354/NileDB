@@ -59,7 +59,7 @@ class ExecutionEngine {
                 bool is_primary_key = col_constraints[i]&CONSTRAINT_PRIMARY_KEY;
                 if(is_primary_key) 
                     primary_key_cols.push_back({col_names[i], false}); // primary key can only be asc.
-                offset_ptr += Column::getSizeFromType(col_types[i]);
+                offset_ptr += getSizeFromType(col_types[i]);
             }
             TableSchema* sch = catalog_->createTable(&ctx, table_name, columns);
             if(sch == nullptr) return false;

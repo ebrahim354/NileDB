@@ -8,6 +8,7 @@
 TableSchema::TableSchema(Arena* arena, String name, Table* table, const Vector<Column>& columns, bool tmp_schema):
     table_name_(name, arena), table_(table), columns_(columns, arena), tmp_schema_(tmp_schema)
 {
+    columns_.reserve(20);
     size_ = 0;
     for(auto& c : columns){
         size_ += c.getSize();
@@ -70,9 +71,10 @@ bool TableSchema::isValidCol(String& col_name){
     return false;
 }
 
-void TableSchema::addColumn(Column c){
-    size_ += c.getSize();
-    columns_.push_back(c);
+void TableSchema::addColumn(Arena* arena, const String& name, Type type,
+        u8 col_offset, ConstraintType constraints){
+    size_ += getSizeFromType(type);
+    columns_.emplace_back(arena, name, type, col_offset, constraints);
     std::sort(columns_.begin(), columns_.end(), [](Column& a, Column& b){
             return a.getOffset() < b.getOffset();
             });

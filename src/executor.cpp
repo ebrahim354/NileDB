@@ -1061,7 +1061,7 @@ AggregationExecutor::AggregationExecutor(Arena* arena, QueryCTX* ctx, AlgebraOpe
     int offset_ptr = 0; 
     if(child_executor_ && child_executor_->output_schema_){
         new_cols = child_executor_->output_schema_->getColumns();
-        offset_ptr = Column::getSizeFromType(new_cols[new_cols.size() - 1].getType());
+        offset_ptr = getSizeFromType(new_cols[new_cols.size() - 1].getType());
     } 
     for(int i = 0; i < aggregates_->size(); i++){
         String col_name = "agg_tmp_schema.";
@@ -1069,7 +1069,7 @@ AggregationExecutor::AggregationExecutor(Arena* arena, QueryCTX* ctx, AlgebraOpe
         //col_name += intToStr(op->aggregates_[i]->parent_id_);
         col_name += intToStr(i+1);
         new_cols.push_back(Column(col_name, INT, offset_ptr));
-        offset_ptr += Column::getSizeFromType(INT);
+        offset_ptr += getSizeFromType(INT);
     }
 
     output_schema_ = New(TableSchema, ctx_->arena_, "agg_tmp_schema", nullptr, new_cols, true);
@@ -1089,12 +1089,10 @@ void AggregationExecutor::init() {
         child_executor_->init();
     }
     int total_size = output_schema_->getCols().size();
-    Tuple t(&ctx_->arena_);
-    t.setNewSchema(output_schema_);
-    std::pair<Tuple, int> p = {
-        t, 0
-    };
-    aggregated_values_["PREFIX_"] = p;
+    aggregated_values_.insert({"PREFIX_", {
+        Tuple(&ctx_->arena_), 0
+    }});
+    aggregated_values_["PREFIX_"].first.setNewSchema(output_schema_);
 
     int agg_base_idx = total_size - aggregates_->size();
     for(int i = 0;i < aggregates_->size(); ++i) {
@@ -1367,7 +1365,7 @@ void SortExecutor::init() {
         error_status_ = child_executor_->error_status_;
         if(error_status_)  return;
         if(!t.is_empty())
-            tuples_.push_back(t);
+            tuples_.push_back(t.duplicate(&ctx_->arena_));
         if(child_executor_->finished_) break;
     }
 

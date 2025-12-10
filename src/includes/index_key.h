@@ -313,7 +313,7 @@ IndexKey getIndexKeyFromTuple(Arena* arena, Vector<NumberedIndexField>& fields, 
     return res;
 }
 
-IndexKey getIndexKeyFromTuple(Arena* arena, Vector<NumberedIndexField>& fields, Tuple tuple) {
+IndexKey getIndexKeyFromTuple(Arena* arena, Vector<NumberedIndexField>& fields, const Tuple& tuple) {
     Vector<Value> keys;
     for(int i = 0; i < fields.size(); ++i){
         if(fields[i].idx_ >= tuple.size()) 
