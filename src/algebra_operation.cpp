@@ -2,19 +2,14 @@
 #include "ast_nodes.cpp"
 #include "executor.h"
 
-// algebra operation
-void AlgebraOperation::init(int query_idx, AlgebraOperationType type) {
-    query_idx_ = query_idx;
-    type_ = type;
-}
+AlgebraOperation::AlgebraOperation(AlgebraOperationType type, int query_idx):
+    type_(type), query_idx_(query_idx)
+{}
 
-// scan operation
-void ScanOperation::init(int query_idx, String table_name, String table_rename) {
-    query_idx_ = query_idx;
-    type_ = SCAN;
-    table_name_ = table_name;
-    table_rename_ = table_rename;
-}
+ScanOperation::ScanOperation(Arena* arena, int query_idx, String& table_name, String& table_rename):
+    AlgebraOperation(SCAN, query_idx),
+    table_name_(table_name, arena), table_rename_(table_rename, arena)
+{}
 void ScanOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";
@@ -25,14 +20,10 @@ void ScanOperation::print(int prefix_space_cnt) {
     std::cout << "\n";
 }
 
-// union operation
-void UnionOperation::init(int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all) {
-    query_idx_ = query_idx;
-    type_ = AL_UNION;
-    lhs_ = lhs;
-    rhs_ = rhs;
-    all_ = all;
-}
+UnionOperation::UnionOperation(Arena* arena, int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all):
+    AlgebraOperation(AL_UNION, query_idx),
+    lhs_(lhs), rhs_(rhs), all_(all)
+{}
 void UnionOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";
@@ -43,15 +34,10 @@ void UnionOperation::print(int prefix_space_cnt) {
     rhs_->print(prefix_space_cnt + 1);
 }
 
-// except operation
-void ExceptOperation::init(int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all) {
-    query_idx_ = query_idx;
-    type_ = AL_EXCEPT;
-    lhs_ = lhs;
-    rhs_ = rhs;
-    all_ = all;
-}
-
+ExceptOperation::ExceptOperation(Arena* arena, int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all):
+    AlgebraOperation(AL_EXCEPT, query_idx),
+    lhs_(lhs), rhs_(rhs), all_(all)
+{}
 void ExceptOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";
@@ -60,14 +46,10 @@ void ExceptOperation::print(int prefix_space_cnt) {
     rhs_->print(prefix_space_cnt + 1);
 }
 
-// intersect operation
-void IntersectOperation::init(int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all) {
-    query_idx_ = query_idx;
-    type_ = AL_INTERSECT;
-    lhs_ = lhs;
-    rhs_ = rhs;
-    all_ = all;
-}
+IntersectOperation::IntersectOperation(Arena* arena, int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all):
+    AlgebraOperation(AL_INTERSECT, query_idx),
+    lhs_(lhs), rhs_(rhs), all_(all)
+{}
 void IntersectOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";
@@ -76,14 +58,10 @@ void IntersectOperation::print(int prefix_space_cnt) {
     rhs_->print(prefix_space_cnt + 1);
 }
 
-// product operation
-void ProductOperation::init(int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs) {
-    query_idx_ = query_idx;
-    type_ = PRODUCT;
-    lhs_ = lhs;
-    rhs_ = rhs;
-}
-
+ProductOperation::ProductOperation(Arena* arena, int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs):
+    AlgebraOperation(PRODUCT, query_idx),
+    lhs_(lhs), rhs_(rhs)
+{}
 void ProductOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";
@@ -92,20 +70,12 @@ void ProductOperation::print(int prefix_space_cnt) {
     rhs_->print(prefix_space_cnt + 1);
 }
 
-// join operation
-void JoinOperation::init(int query_idx, AlgebraOperation* lhs,
-        AlgebraOperation* rhs,
+JoinOperation::JoinOperation(Arena* arena, int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs,
         ExpressionNode* filter,
-        JoinType type, JoinAlgorithm join_algo) {
-    query_idx_ = query_idx;
-    type_ = JOIN;
-    lhs_ = lhs;
-    rhs_ = rhs;
-    filter_ = filter;
-    join_type_ = type;
-    join_algo_ = join_algo;
-}
-
+        JoinType type, JoinAlgorithm join_algo):
+    AlgebraOperation(JOIN, query_idx),
+    lhs_(lhs), rhs_(rhs), filter_(filter), join_type_(type), join_algo_(join_algo)
+{}
 void JoinOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";
@@ -115,58 +85,40 @@ void JoinOperation::print(int prefix_space_cnt) {
     rhs_->print(prefix_space_cnt + 1);
 }
 
-// insertion operation
-void InsertionOperation::init(int query_idx) {
-    query_idx_ = query_idx;
-    type_ = INSERTION;
-}
-
+InsertionOperation::InsertionOperation(Arena* arena, int query_idx):
+    AlgebraOperation(INSERTION, query_idx)
+{}
 void InsertionOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";
     std::cout << "insertion operation\n"; 
 }
-// deletion operation
-void DeletionOperation::init(AlgebraOperation* child, int query_idx) {
-    query_idx_ = query_idx;
-    type_ = DELETION;
-    child_ = child;
-}
 
+
+DeletionOperation::DeletionOperation(Arena* arena, AlgebraOperation* child, int query_idx):
+    AlgebraOperation(DELETION, query_idx),
+    child_(child)
+{}
 void DeletionOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";
     std::cout << "deletion operation\n"; 
 }
-// update operation
-void UpdateOperation::init(AlgebraOperation* child, int query_idx) {
-    query_idx_ = query_idx;
-    type_ = UPDATE;
-    child_ = child;
-}
 
+UpdateOperation::UpdateOperation(Arena* arena, AlgebraOperation* child, int query_idx):
+    AlgebraOperation(UPDATE, query_idx),
+    child_(child)
+{}
 void UpdateOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";
     std::cout << "update operation\n"; 
 }
 
-// filter operation
-void FilterOperation::init(int query_idx, AlgebraOperation* child, ExpressionNode* filter)
-    /*
-        ,Vector<ExpressionNode*>& fields, 
-        Vector<String>& field_names) */
-{
-    query_idx_ = query_idx;
-    type_ = FILTER;
-    child_ = child;
-    filter_ = filter;
-    /*
-    fields_ = fields;
-    field_names_ = field_names;
-    */
-}
-
+FilterOperation::FilterOperation(Arena* arena, int query_idx, AlgebraOperation* child, ExpressionNode* filter):
+    AlgebraOperation(FILTER, query_idx),
+    child_(child), filter_(filter)
+{}
 void FilterOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";
@@ -175,16 +127,13 @@ void FilterOperation::print(int prefix_space_cnt) {
         child_->print(prefix_space_cnt + 1);
 }
 
-// aggregation operation
-void AggregationOperation::init(int query_idx, AlgebraOperation* child, Vector<AggregateFuncNode*> aggregates,
-        Vector<ASTNode*> group_by){
-    query_idx_ = query_idx;
-    type_  = AGGREGATION;
-    child_ = child;
-    aggregates_ = aggregates;
-    group_by_ = group_by;
-}
+AggregationOperation::AggregationOperation(
+        Arena* arena, int query_idx, AlgebraOperation* child,
+        Vector<AggregateFuncNode*>& aggregates, Vector<ASTNode*>& group_by):
 
+    AlgebraOperation(AGGREGATION, query_idx),
+    child_(child), aggregates_(aggregates, arena), group_by_(group_by, arena)
+{}
 void AggregationOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";
@@ -193,14 +142,11 @@ void AggregationOperation::print(int prefix_space_cnt) {
         child_->print(prefix_space_cnt + 1);
 }
 
-// Projection operation
-void ProjectionOperation::init(int query_idx, AlgebraOperation* child, Vector<ExpressionNode*> fields) {
-    query_idx_ = query_idx;
-    type_ = PROJECTION;
-    child_ = child;
-    fields_ = fields;
-}
-
+ProjectionOperation::ProjectionOperation(Arena* arena, int query_idx,
+        AlgebraOperation* child, Vector<ExpressionNode*>& fields):
+    AlgebraOperation(PROJECTION, query_idx),
+    child_(child), fields_(fields, arena)
+{}
 void ProjectionOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";
@@ -209,14 +155,10 @@ void ProjectionOperation::print(int prefix_space_cnt) {
         child_->print(prefix_space_cnt + 1);
 }
 
-// sort operation
-void SortOperation::init(int query_idx, AlgebraOperation* child, Vector<int> order_by_list) {
-    query_idx_ = query_idx;
-    type_ = SORT;
-    child_ = child;
-    order_by_list_ = order_by_list;
-}
-
+SortOperation::SortOperation(Arena* arena, int query_idx, AlgebraOperation* child, Vector<int>& order_by_list):
+    AlgebraOperation(SORT, query_idx),
+    child_(child), order_by_list_(order_by_list, arena)
+{}
 void SortOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";

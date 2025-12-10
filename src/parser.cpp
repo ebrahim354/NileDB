@@ -487,7 +487,7 @@ ASTNode* Parser::constant(QueryCTX& ctx){
     if((bool)ctx.error_status_) return nullptr;
     ASTNode* ret = nullptr;
 
-    // TODO: fix the inconsistancy of mapping between tokens and ASTNodes: 
+    // TODO: fix the inconsistancy of mappings between tokens and ASTNodes: 
     // ( change this ) number->integer, float->floating, str->string.
     //  
     // floats

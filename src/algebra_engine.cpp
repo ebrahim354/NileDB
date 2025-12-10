@@ -187,8 +187,7 @@ class AlgebraEngine {
             if(!isValidInsertStatementData(data))
                 return nullptr;
 
-            AlgebraOperation* result = nullptr; 
-            ALLOCATE_INIT(ctx.arena_, result, InsertionOperation, data->idx_);
+            AlgebraOperation* result = New(InsertionOperation, ctx.arena_, data->idx_);
             return result;
         }
 
@@ -196,8 +195,7 @@ class AlgebraEngine {
             if(!isValidDeleteStatementData(data))
                 return nullptr;
             AlgebraOperation* child = optimize(ctx, data); 
-            AlgebraOperation* del = nullptr;
-            ALLOCATE_INIT(ctx.arena_, del, DeletionOperation, child, data->idx_);
+            AlgebraOperation* del = New(DeletionOperation, ctx.arena_, child, data->idx_);
             return del;
         }
 
@@ -205,8 +203,7 @@ class AlgebraEngine {
             if(!isValidUpdateStatementData(data))
                 return nullptr;
             AlgebraOperation* child = optimize(ctx, data); 
-            AlgebraOperation* update = nullptr;
-            ALLOCATE_INIT(ctx.arena_, update, UpdateOperation, child, data->idx_);
+            AlgebraOperation* update = New(UpdateOperation, ctx.arena_, child, data->idx_);
             return update;
         }
 
@@ -227,12 +224,10 @@ class AlgebraEngine {
                                         (ptr->type_ == UNION || ptr->type_ == EXCEPT)
                                     );
                                 if(op == EXCEPT){
-                                    ExceptOperation* tmp = nullptr;
-                                    ALLOCATE_INIT(ctx.arena_, tmp, ExceptOperation, data->idx_, lhs, rhs, all);
+                                    ExceptOperation* tmp = New(ExceptOperation, ctx.arena_, data->idx_, lhs, rhs, all);
                                     lhs = tmp;
                                 } else if(op == UNION){
-                                    UnionOperation* tmp = nullptr;
-                                    ALLOCATE_INIT(ctx.arena_, tmp, UnionOperation, data->idx_,lhs, rhs, all);
+                                    UnionOperation* tmp = New(UnionOperation, ctx.arena_, data->idx_,lhs, rhs, all);
                                     lhs = tmp;
                                 }
                                 if(ptr->type_ == EXCEPT || ptr->type_ == UNION){
@@ -248,18 +243,15 @@ class AlgebraEngine {
                         {
                             auto intersect = reinterpret_cast<Intersect*>(data);
                             AlgebraOperation* lhs = createSetOperationExpression(ctx, intersect->cur_);
-                            //AlgebraOperation* lhs = ctx.operators_call_stack_[intersect->cur_];
                             if(once) return lhs;
                             bool all = intersect->all_;
                             auto ptr = intersect->next_;
                             while(ptr){
-                                //auto nxt = reinterpret_cast<Intersect*>(ptr);
                                 AlgebraOperation* rhs = createSetOperationExpression(
                                         ctx, ptr,
                                         (ptr->type_ == INTERSECT)
                                     );
-                                IntersectOperation* tmp = nullptr; 
-                                ALLOCATE_INIT(ctx.arena_, tmp, IntersectOperation, data->idx_, lhs, rhs, all);
+                                IntersectOperation* tmp = New(IntersectOperation, ctx.arena_, data->idx_, lhs, rhs, all);
                                 lhs = tmp;
 
                                 if(ptr->type_ == INTERSECT){
@@ -311,8 +303,7 @@ class AlgebraEngine {
                   if(is_hashable_condition(op->filter_)) 
                       join_algorithm = HASH_JOIN;
 
-                  JoinOperation* join_node = nullptr;
-                  ALLOCATE_INIT(ctx.arena_, join_node, JoinOperation, product->query_idx_,
+                  JoinOperation* join_node = New(JoinOperation, ctx.arena_, product->query_idx_,
                           product->lhs_, 
                           product->rhs_, 
                           op->filter_,
@@ -387,7 +378,8 @@ class AlgebraEngine {
             return false;
         }
 
-         bool match_index(ScanOperation* cur_scan, ASTNode* ex, String tname) {
+         bool match_index(ScanOperation* cur_scan, ASTNode* ex) {
+            String tname = cur_scan->table_name_;
             while(ex){
                 CategoryType cat = ex->category_;
                 switch(cat) {
@@ -422,6 +414,7 @@ class AlgebraEngine {
                                       accessed_fields(right, key);
                                       if(key.size() != 1) return false;
                                       Vector<IndexHeader> indexes = catalog_->getIndexesOfTable(tname);
+                                      assert(catalog_->getTableSchema(tname));
                                       int key_idx = catalog_->getTableSchema(tname)->colExist(key[0]);
                                       assert(key_idx != -1);
                                       for(int i = 0; i < indexes.size(); ++i) {
@@ -492,8 +485,7 @@ class AlgebraEngine {
             // initialize 1 scanner for each accessed table.
             std::unordered_map<String, AlgebraOperation*> table_scanner;
             for(int i = 0; i < data->tables_.size(); ++i){
-                AlgebraOperation* scan = nullptr;
-                ALLOCATE_INIT(ctx.arena_, scan, ScanOperation, query_idx, data->tables_[i], data->table_names_[i]);
+                AlgebraOperation* scan = New(ScanOperation, ctx.arena_, query_idx, data->tables_[i], data->table_names_[i]);
                 table_scanner[data->table_names_[i]] = scan;
             }
 
@@ -509,10 +501,9 @@ class AlgebraEngine {
                             && cur_table != data->table_names_[0]) 
                     || data->type_ == SELECT_DATA){
                     if(scan->type_ == SCAN && ((ScanOperation*)scan)->scan_type_ == SEQ_SCAN &&
-                            match_index((ScanOperation*)scan, cur_filter, cur_table)) continue;
+                            match_index((ScanOperation*)scan, cur_filter)) continue;
                 }
-                FilterOperation* tmp = nullptr;
-                ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation, query_idx,
+                FilterOperation* tmp = New(FilterOperation, ctx.arena_, query_idx,
                         table_scanner[cur_table],
                         cur_filter);
                 //data->fields_, data->field_names_);
@@ -534,8 +525,7 @@ class AlgebraEngine {
                 // parse the condition to decide the join algorithm.
                 JoinAlgorithm join_algorithm = NESTED_LOOP_JOIN;
                 if(is_hashable_condition(join_data.condition_)) join_algorithm = HASH_JOIN;
-                JoinOperation* join_op = nullptr;
-                ALLOCATE_INIT(ctx.arena_, join_op, JoinOperation, query_idx, 
+                JoinOperation* join_op = New(JoinOperation, ctx.arena_, query_idx, 
                         table_scanner[lhs_name], 
                         table_scanner[rhs_name],
                         join_data.condition_,
@@ -557,16 +547,14 @@ class AlgebraEngine {
                     if(result == nullptr) {
                         result = table_scanner[t];
                     } else if(table_scanner.count(t)){
-                        ProductOperation* tmp = nullptr;
-                        ALLOCATE_INIT(ctx.arena_, tmp, ProductOperation, query_idx,table_scanner[t], result);
+                        ProductOperation* tmp = New(ProductOperation, ctx.arena_, query_idx,table_scanner[t], result);
                         result = tmp;
                     } else {
                         continue;
                     }
                     table_scanner.erase(t);
                 }
-                FilterOperation* tmp = nullptr;
-                    ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation, query_idx,
+                FilterOperation* tmp = New(FilterOperation, ctx.arena_, query_idx,
                             result,
                             tables_per_filter[i].second);
                      //       data->fields_, data->field_names_);
@@ -581,8 +569,7 @@ class AlgebraEngine {
                 if(result == nullptr){
                     result = table_scanner[t];
                 } else{
-                    ProductOperation* tmp = nullptr;
-                    ALLOCATE_INIT(ctx.arena_, tmp, ProductOperation, query_idx, table_scanner[t], result);
+                    ProductOperation* tmp = New(ProductOperation, ctx.arena_, query_idx, table_scanner[t], result);
                     result = tmp;
                 }
             }
@@ -590,8 +577,7 @@ class AlgebraEngine {
             // handle filters with 0 table access. (can't be pushed down).
             for(int i = 0; i < splitted_where.size(); ++i){
                 if(tables_per_filter[i].first.size() == 0){
-                    FilterOperation* tmp = nullptr;
-                    ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation, query_idx,
+                    FilterOperation* tmp = New(FilterOperation, ctx.arena_, query_idx,
                             result, 
                             tables_per_filter[i].second);
                             //data->fields_, data->field_names_);
@@ -607,163 +593,12 @@ class AlgebraEngine {
 
             int query_idx = data->idx_;
 
-            /*
-            Vector<ExpressionNode*> splitted_where;
-            if(data->where_){
-                // split conjunctive predicates.
-                splitted_where = split_by_and(&ctx, data->where_);
-            }
-            // collect data about which tables did we access for each splitted predicate from the previous step.
-            Vector<std::pair<Vector<String>, ExpressionNode*>> tables_per_filter;
-            for(int i = 0; i < splitted_where.size(); ++i){
-                Vector<String> table_access;
-                std::unordered_map<String, bool> f;
-                accessed_tables(splitted_where[i], table_access, catalog_);
-                Vector<String> ta;
-                for(auto &s: table_access){
-                    bool used_in_query = false;
-                    for(int j = 0; j < data->table_names_.size(); ++j){
-                        if(data->table_names_[j] == s) {
-                            used_in_query = true;
-                            break;
-                        }
-                    }
-                    if(!f.count(s) && used_in_query){
-                        ta.push_back(s);
-                        f[s] = 1;
-                    }
-                }
-                tables_per_filter.push_back({ta, splitted_where[i]});
-            }
-
-            // sort predicates by the least accessed number of tables.
-            sort(tables_per_filter.begin(), tables_per_filter.end(),
-                    [](std::pair<Vector<String>, ExpressionNode*> lhs,
-                        std::pair<Vector<String>, ExpressionNode*> rhs) {
-                    return lhs.first.size() < rhs.first.size();
-                    });
-
-
-
-            group_close_tables(tables_per_filter);
-
-
-            // this is the "predicate push down" step but we are building the tree from the ground up 
-            // with predicates being as low as possible.
-            //
-            // initialize 1 scanner for each accessed table.
-            std::unordered_map<String, AlgebraOperation*> table_scanner;
-            for(int i = 0; i < data->tables_.size(); ++i){
-                AlgebraOperation* scan = nullptr;
-                ALLOCATE_INIT(ctx.arena_, scan, ScanOperation, query_idx, data->tables_[i], data->table_names_[i]);
-                table_scanner[data->table_names_[i]] = scan;
-            }
-
-            // handle filters with 1 table access.
-            for(int i = 0; i < splitted_where.size(); ++i){ 
-                if(tables_per_filter[i].first.size() != 1) continue;
-                String cur_table = tables_per_filter[i].first[0];
-                ExpressionNode* cur_filter = tables_per_filter[i].second;
-                AlgebraOperation* scan = table_scanner[cur_table];
-                // if this filter matched an index we don't need to create a filter operator.
-                if(scan->type_ == SCAN && ((ScanOperation*)scan)->scan_type_ == SEQ_SCAN &&
-                        match_index((ScanOperation*)scan, cur_filter, cur_table)) continue;
-                FilterOperation* tmp = nullptr;
-                ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation, query_idx,
-                        table_scanner[cur_table],
-                        cur_filter,
-                        data->fields_, data->field_names_);
-                table_scanner[cur_table] = tmp;
-            }
-
-            AlgebraOperation* result = nullptr;
-            // join tables that where explicitly joined by a 'join ... on' operator.
-            for(int i = 0; i < data->joined_tables_.size(); ++i) {
-                // TODO: check that fields used inside the ON clause are scoped only to the two tables being joined.
-                JoinedTablesData join_data = data->joined_tables_[i];
-                assert(
-                    data->table_names_.size() > join_data.lhs_idx_ && 
-                    data->table_names_.size() > join_data.rhs_idx_
-                );
-                String lhs_name = data->table_names_[join_data.lhs_idx_];
-                String rhs_name = data->table_names_[join_data.rhs_idx_];
-                assert(table_scanner.count(lhs_name) && table_scanner.count(rhs_name));
-                // parse the condition to decide the join algorithm.
-                JoinAlgorithm join_algorithm = NESTED_LOOP_JOIN;
-                if(is_hashable_condition(join_data.condition_)) join_algorithm = HASH_JOIN;
-                JoinOperation* join_op = nullptr;
-                ALLOCATE_INIT(ctx.arena_, join_op, JoinOperation, query_idx, 
-                        table_scanner[lhs_name], 
-                        table_scanner[rhs_name],
-                        join_data.condition_,
-                        join_data.type_,
-                        join_algorithm
-                        );
-                // lhs scanner eats rhs scanner and becomes a join node for latter use.
-                // TODO: maybe there is a better way.
-                table_scanner.erase(rhs_name);
-                table_scanner[lhs_name] = join_op;
-            }
-
-            // handle filters with 2 or more table access.
-            for(int i = 0; i < splitted_where.size(); ++i){
-                if(tables_per_filter[i].first.size() < 2) continue;
-                // loop over all tables that was accessed with in filter number 'i'
-                for(int j = 0; j < tables_per_filter[i].first.size(); ++j) {
-                    String t = tables_per_filter[i].first[j];
-                    if(result == nullptr) {
-                        result = table_scanner[t];
-                    } else if(table_scanner.count(t)){
-                        ProductOperation* tmp = nullptr;
-                        ALLOCATE_INIT(ctx.arena_, tmp, ProductOperation, query_idx,table_scanner[t], result);
-                        result = tmp;
-                    } else {
-                        continue;
-                    }
-                    table_scanner.erase(t);
-                }
-                FilterOperation* tmp = nullptr;
-                ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation, query_idx,
-                        result,
-                        tables_per_filter[i].second,
-                        data->fields_, data->field_names_);
-                result = tmp;
-            }
-            replaceFilteredProductWithJoin(ctx, &result);
-
-
-            // remaining table outside of filters.
-            for(String t : data->table_names_) {
-                if(!table_scanner.count(t)) continue;
-                if(result == nullptr){
-                    result = table_scanner[t];
-                } else{
-                    ProductOperation* tmp = nullptr;
-                    ALLOCATE_INIT(ctx.arena_, tmp, ProductOperation, query_idx, table_scanner[t], result);
-                    result = tmp;
-                }
-            }
-
-            // handle filters with 0 table access. (can't be pushed down).
-            for(int i = 0; i < splitted_where.size(); ++i){
-                if(tables_per_filter[i].first.size() == 0){
-                    FilterOperation* tmp = nullptr;
-                    ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation, query_idx,
-                            result, 
-                            tables_per_filter[i].second,
-                            data->fields_, data->field_names_);
-                    result = tmp;
-                }
-            }*/
-
             auto result = optimize(ctx, data);
             if(data->aggregates_.size() || data->group_by_.size()){
-                AggregationOperation* tmp = nullptr;
-                ALLOCATE_INIT(ctx.arena_, tmp, AggregationOperation, query_idx, result, data->aggregates_, data->group_by_);
+                AggregationOperation* tmp = New(AggregationOperation, ctx.arena_, query_idx, result, data->aggregates_, data->group_by_);
                 result = tmp;
                 if(data->having_){
-                    FilterOperation* tmp = nullptr;
-                    ALLOCATE_INIT(ctx.arena_, tmp, FilterOperation, query_idx,
+                    FilterOperation* tmp = New(FilterOperation, ctx.arena_, query_idx,
                             result,
                             data->having_);
                      //       data->fields_, data->field_names_);
@@ -771,13 +606,11 @@ class AlgebraEngine {
                 }
             }
             if(data->fields_.size()){
-                ProjectionOperation* tmp = nullptr;
-                ALLOCATE_INIT(ctx.arena_, tmp, ProjectionOperation, query_idx, result, data->fields_);
+                ProjectionOperation* tmp = New(ProjectionOperation, ctx.arena_, query_idx, result, data->fields_);
                 result = tmp;
             }
             if(data->order_by_list_.size()){
-                SortOperation* tmp = nullptr;
-                ALLOCATE_INIT(ctx.arena_, tmp, SortOperation, query_idx, result, data->order_by_list_);
+                SortOperation* tmp = New(SortOperation, ctx.arena_, query_idx, result, data->order_by_list_);
                 result = tmp;
             }
             result->print(0);

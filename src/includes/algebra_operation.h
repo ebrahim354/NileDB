@@ -36,7 +36,7 @@ enum ScanType {
 
 struct AlgebraOperation {
     virtual void print(int prefix_space_cnt) = 0;
-    void init(int query_idx, AlgebraOperationType type);
+    AlgebraOperation(AlgebraOperationType type = SCAN, int query_idx = 0);
 
     AlgebraOperationType type_;
     int query_idx_ = -1;
@@ -46,18 +46,18 @@ struct AlgebraOperation {
 };
 
 struct ScanOperation: AlgebraOperation {
-    void init(int query_idx, String table_name, String table_rename);
+    ScanOperation(Arena* arena, int query_idx, String& table_name, String& table_rename);
     void print(int prefix_space_cnt);
 
     String table_name_   = {};
     String table_rename_ = {};
     String index_name_   = {};
-    ScanType scan_type_       = SEQ_SCAN;
+    ScanType scan_type_  = SEQ_SCAN;
     ASTNode* filter_   = nullptr;
 };
 
 struct UnionOperation: AlgebraOperation {
-    void init(int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all);
+    UnionOperation(Arena* arena, int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all);
     void print(int prefix_space_cnt);
 
     AlgebraOperation* lhs_ = nullptr;
@@ -66,7 +66,7 @@ struct UnionOperation: AlgebraOperation {
 };
 
 struct ExceptOperation: AlgebraOperation {
-    void init(int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all);
+    ExceptOperation(Arena* arena, int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all);
     void print(int prefix_space_cnt);
 
     AlgebraOperation* lhs_ = nullptr;
@@ -75,7 +75,7 @@ struct ExceptOperation: AlgebraOperation {
 };
 
 struct IntersectOperation: AlgebraOperation {
-    void init(int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all);
+    IntersectOperation(Arena* arena, int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs, bool all);
     void print(int prefix_space_cnt);
 
     AlgebraOperation* lhs_ = nullptr;
@@ -84,7 +84,7 @@ struct IntersectOperation: AlgebraOperation {
 };
 
 struct ProductOperation: AlgebraOperation {
-    void init(int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs);
+    ProductOperation(Arena* arena, int query_idx, AlgebraOperation* lhs, AlgebraOperation* rhs);
     void print(int prefix_space_cnt);
 
     AlgebraOperation* lhs_ = nullptr;
@@ -97,7 +97,7 @@ enum JoinAlgorithm {
 };
 
 struct JoinOperation: AlgebraOperation {
-    void init(int query_idx, AlgebraOperation* lhs,
+    JoinOperation(Arena* arena, int query_idx, AlgebraOperation* lhs,
             AlgebraOperation* rhs,
             ExpressionNode* filter,
             JoinType type, JoinAlgorithm join_algo);
@@ -112,28 +112,28 @@ struct JoinOperation: AlgebraOperation {
 };
 
 struct InsertionOperation: AlgebraOperation {
-    void init(int query_idx);
+    InsertionOperation(Arena* arena, int query_idx);
     void print(int prefix_space_cnt);
 
     AlgebraOperation* child_ = nullptr;
 };
 
 struct DeletionOperation: AlgebraOperation {
-    void init(AlgebraOperation* child_,int query_idx);
+    DeletionOperation(Arena*, AlgebraOperation* child_,int query_idx);
     void print(int prefix_space_cnt);
 
     AlgebraOperation* child_ = nullptr;
 };
 
 struct UpdateOperation: AlgebraOperation {
-    void init(AlgebraOperation*, int query_idx);
+    UpdateOperation(Arena*, AlgebraOperation* child, int query_idx);
     void print(int prefix_space_cnt);
 
     AlgebraOperation* child_ = nullptr;
 };
 
 struct FilterOperation: AlgebraOperation {
-    void init(int query_idx, AlgebraOperation* child, ExpressionNode* filter);
+    FilterOperation(Arena* arena, int query_idx, AlgebraOperation* child, ExpressionNode* filter);
             /*
             ,Vector<ExpressionNode*>& fields, 
             Vector<String>& field_names);*/
@@ -148,9 +148,8 @@ struct FilterOperation: AlgebraOperation {
 };
 
 struct AggregationOperation: AlgebraOperation {
-    public:
-        void init(int query_idx, AlgebraOperation* child, Vector<AggregateFuncNode*> aggregates,
-                Vector<ASTNode*> group_by);
+        AggregationOperation(Arena* arena, int query_idx, AlgebraOperation* child, Vector<AggregateFuncNode*>& aggregates,
+                Vector<ASTNode*>& group_by);
         void print(int prefix_space_cnt);
 
         AlgebraOperation* child_ = nullptr;
@@ -160,8 +159,7 @@ struct AggregationOperation: AlgebraOperation {
 
 
 struct ProjectionOperation: AlgebraOperation {
-    public:
-        void init(int query_idx, AlgebraOperation* child, Vector<ExpressionNode*> fields);
+        ProjectionOperation(Arena* arena, int query_idx, AlgebraOperation* child, Vector<ExpressionNode*>& fields);
         void print(int prefix_space_cnt);
 
         AlgebraOperation* child_ = nullptr;
@@ -169,11 +167,11 @@ struct ProjectionOperation: AlgebraOperation {
 };
 
 struct SortOperation: AlgebraOperation {
+    SortOperation(Arena* arena, int query_idx, AlgebraOperation* child, Vector<int>& order_by_list);
+    void print(int prefix_space_cnt);
+
     AlgebraOperation* child_ = nullptr;
     Vector<int> order_by_list_;
-
-    void init(int query_idx, AlgebraOperation* child, Vector<int> order_by_list);
-    void print(int prefix_space_cnt);
 };
 
 #endif // ALGEBRA_OPERATION_H
