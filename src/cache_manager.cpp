@@ -201,7 +201,7 @@ void CacheManager::flushAllPages() {
     }
 }
 
-void CacheManager::resetPage(PageID page_id, i32 frame){
+void CacheManager::resetPage(PageID page_id, u32 frame){
     page_table_.erase(page_id);
     replacer_->Remove(frame);
     free_list_.push_back(frame);
@@ -233,9 +233,14 @@ bool CacheManager::deletePage(PageID page_id) {
 bool CacheManager::deleteFile(FileID fid) {
     // loop over the entire page table and check for pages with the specified fid and delete them.
     // then call the disk manager to delete the file.
+    std::vector<std::pair<PageID, i32>> to_be_erased;
+    to_be_erased.reserve(16);
     for(auto& page: page_table_){
         if(page.first.fid_ != fid) continue;
-        resetPage(page.first, page.second);
+        to_be_erased.push_back(page);
+    }
+    for(u32 i = 0; i < to_be_erased.size(); ++i){
+        resetPage(to_be_erased[i].first, to_be_erased[i].second);
     }
     return disk_manager_->deleteFile(fid);
 }

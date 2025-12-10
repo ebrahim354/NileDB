@@ -25,7 +25,7 @@ enum QueryType {
 
 
 struct QueryData {
-    void init(QueryType type, int parent_idx);
+    QueryData(Arena* arena, QueryType type, int parent_idx);
 
     QueryType type_;
     int idx_ = -1;          // every query must have an id starting from 0 even the top level query.
@@ -44,7 +44,7 @@ struct QueryData {
 
 // SQL statement data wrappers.
 struct SelectStatementData : QueryData {
-    void init (int parent_idx);
+    SelectStatementData(Arena* arena, int parent_idx);
 
     Vector<String> field_names_ = {};
     Vector<ExpressionNode*> fields_ = {};
@@ -58,7 +58,7 @@ struct SelectStatementData : QueryData {
 };
 
 struct Intersect : QueryData {
-    void init(int parent_idx, QueryData* lhs, Intersect* rhs, bool all);
+    Intersect(Arena* arena, int parent_idx, QueryData* lhs, Intersect* rhs, bool all);
 
     QueryData* cur_ = nullptr;
     QueryData* next_ = nullptr;
@@ -66,25 +66,22 @@ struct Intersect : QueryData {
 };
 
 struct UnionOrExcept : QueryData {
-    void init(QueryType type, int parent_idx, QueryData* lhs, UnionOrExcept* rhs, bool all);
+    UnionOrExcept(Arena* arena, QueryType type, int parent_idx, QueryData* lhs, UnionOrExcept* rhs, bool all);
 
     QueryData* cur_ = nullptr;
     QueryData* next_ = nullptr; 
     bool all_ = false;
 };
 
-
-
-
 struct CreateTableStatementData : QueryData {
-    void init(int parent_idx);
+    CreateTableStatementData(Arena* arena, int parent_idx);
 
     Vector<FieldDef> field_defs_ = {};
     String table_name_ = {};
 };
 
 struct CreateIndexStatementData : QueryData {
-    void init(int parent_idx);
+    CreateIndexStatementData(Arena* arena, int parent_idx);
 
     Vector<IndexField> fields_ = {};
     String index_name_ = {};
@@ -92,19 +89,19 @@ struct CreateIndexStatementData : QueryData {
 };
 
 struct DropTableStatementData : QueryData {
-    void init(int parent_idx);
+    DropTableStatementData(Arena* arena, int parent_idx);
 
     String table_name_ = {};
 };
 
 struct DropIndexStatementData : QueryData {
-    void init(int parent_idx);
+    DropIndexStatementData(Arena* arena, int parent_idx);
 
     String index_name_ = {};
 };
 
 struct InsertStatementData : QueryData {
-    void init(int parent_idx);
+    InsertStatementData(Arena* arena, int parent_idx);
 
     String table_name_ = {};
     Vector<String> fields_ = {};
@@ -115,12 +112,12 @@ struct InsertStatementData : QueryData {
 };
 
 struct DeleteStatementData : QueryData {
-    void init(int parent_idx);
+    DeleteStatementData(Arena* arena, int parent_idx);
 
 };
 
 struct UpdateStatementData : QueryData {
-    void init(int parent_idx);
+    UpdateStatementData(Arena* arena, int parent_idx);
 
     Vector<String> fields_ = {}; 
     Vector<ExpressionNode*> values_ = {};

@@ -25,6 +25,9 @@
 #define Kilobytes(count) (u64) (count * 1024)
 
 #define ALLOCATE(arena, type) ((type *)((arena).alloc(sizeof(type))))
+#define New(type, arena, ...) \
+        new(ALLOCATE(arena, type)) type(&arena, __VA_ARGS__) \
+
 #define ALLOCATE_INIT(arena, ptr, type, ...) \
     do { \
         ptr = ALLOCATE(arena, type); \

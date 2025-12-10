@@ -25,7 +25,7 @@ class CacheManager {
         bool unpinPage(PageID page_id, bool is_dirty);
         bool flushPage(PageID page_id);
         void flushAllPages();
-        void resetPage(PageID page_id, i32 frame);
+        void resetPage(PageID page_id, u32 frame);
         bool deletePage(PageID page_id);
         bool deleteFile(FileID fid);
 

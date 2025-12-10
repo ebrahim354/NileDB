@@ -66,64 +66,58 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
 }
 
 
-void QueryData::init(QueryType type, int parent_idx) {
-    type_ = type;
-    parent_idx_ = parent_idx;
-}
+QueryData::QueryData(Arena* arena, QueryType type, int parent_idx):
+    type_(type), parent_idx_(parent_idx), 
+    tables_(arena), table_names_(arena), joined_tables_(arena)
+{}
 
-void SelectStatementData::init (int parent_idx) {
-    type_ = SELECT_DATA;
-    parent_idx_ = parent_idx;
-}
+SelectStatementData::SelectStatementData (Arena* arena, int parent_idx):
+    QueryData(arena, SELECT_DATA, parent_idx),
+    field_names_(arena), fields_(arena), aggregates_(arena),
+    order_by_list_(arena), group_by_(arena)
+{}
 
-void Intersect::init(int parent_idx, QueryData* lhs, Intersect* rhs, bool all) {
-    type_ = INTERSECT;
-    parent_idx_ = parent_idx;
-    cur_ = lhs;
-    next_ = rhs;
-    all_ = all;
-}
+Intersect::Intersect(Arena* arena, int parent_idx, QueryData* lhs, Intersect* rhs, bool all):
+    QueryData(arena, INTERSECT, parent_idx),
+    cur_(lhs), next_(rhs), all_(all)
+{}
 
-void UnionOrExcept::init(QueryType type, int parent_idx, QueryData* lhs, UnionOrExcept* rhs, bool all){
-    type_ = type;
-    parent_idx_ = parent_idx;
-    cur_ = lhs;
-    next_ = rhs;
-    all_ = all;
-}
+UnionOrExcept::UnionOrExcept(Arena* arena, QueryType type, int parent_idx, QueryData* lhs, UnionOrExcept* rhs, bool all):
+    QueryData(arena, type, parent_idx),
+    cur_(lhs), next_(rhs), all_(all)
+{}
 
-void CreateTableStatementData::init(int parent_idx) {
-    type_ = CREATE_TABLE_DATA;
-    parent_idx_ = parent_idx;
-}
+CreateTableStatementData::CreateTableStatementData(Arena* arena, int parent_idx):
+    QueryData(arena, CREATE_TABLE_DATA, parent_idx),
+    field_defs_(arena), table_name_(arena)
+{}
 
-void CreateIndexStatementData::init(int parent_idx) {
-    type_ = CREATE_INDEX_DATA;
-    parent_idx_ = parent_idx;
-}
+CreateIndexStatementData::CreateIndexStatementData(Arena* arena, int parent_idx):
+    QueryData(arena, CREATE_INDEX_DATA, parent_idx),
+    fields_(arena), index_name_(arena), table_name_(arena)
+{}
 
-void DropTableStatementData::init(int parent_idx) {
-    type_ = DROP_TABLE_DATA;
-    parent_idx_ = parent_idx;
-}
+DropTableStatementData::DropTableStatementData(Arena* arena, int parent_idx):
+    QueryData(arena, DROP_TABLE_DATA, parent_idx),
+    table_name_(arena)
+{}
 
-void DropIndexStatementData::init(int parent_idx) {
-    type_ = DROP_INDEX_DATA;
-    parent_idx_ = parent_idx;
-}
+DropIndexStatementData::DropIndexStatementData(Arena* arena, int parent_idx):
+    QueryData(arena, DROP_INDEX_DATA, parent_idx),
+    index_name_(arena)
+{}
 
-void InsertStatementData::init(int parent_idx) {
-    type_ = INSERT_DATA;
-    parent_idx_ = parent_idx;
-}
+InsertStatementData::InsertStatementData(Arena* arena, int parent_idx):
+    QueryData(arena, INSERT_DATA, parent_idx),
+    table_name_(arena), fields_(arena), values_(arena)
+{}
 
-void DeleteStatementData::init(int parent_idx) {
-    type_ = DELETE_DATA;
-    parent_idx_ = parent_idx;
-}
+DeleteStatementData::DeleteStatementData(Arena* arena, int parent_idx):
+    QueryData(arena, DELETE_DATA, parent_idx)
+{}
 
-void UpdateStatementData::init(int parent_idx) {
-    type_ = UPDATE_DATA;
-    parent_idx_ = parent_idx;
-}
+UpdateStatementData::UpdateStatementData(Arena* arena, int parent_idx):
+    QueryData(arena, UPDATE_DATA, parent_idx),
+    fields_(arena), values_(arena)
+{}
 
