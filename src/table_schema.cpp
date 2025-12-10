@@ -5,13 +5,11 @@
 
 
 
-void TableSchema::init(String name, Table* table, const Vector<Column> columns, bool tmp_schema) {
-    table_name_ = name;
-    table_ = table;
-    columns_ = columns;
-    tmp_schema_ = tmp_schema;
+TableSchema::TableSchema(Arena* arena, String name, Table* table, const Vector<Column>& columns, bool tmp_schema):
+    table_name_(name, arena), table_(table), columns_(columns, arena), tmp_schema_(tmp_schema)
+{
     size_ = 0;
-    for(auto c : columns){
+    for(auto& c : columns){
         size_ += c.getSize();
     }
 }

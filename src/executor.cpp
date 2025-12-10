@@ -77,7 +77,7 @@ void NestedLoopJoinExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_nod
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
-    ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema, "TMP_JOIN_TABLE", nullptr, lhs_columns, true);
+    output_schema_ = New(TableSchema, ctx_->arena_, "TMP_JOIN_TABLE", nullptr, lhs_columns, true);
     output_ = Tuple(output_schema_);
 }
 
@@ -159,7 +159,7 @@ void ProductExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Exec
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
-    ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema, "TMP_PRODUCT_TABLE", nullptr, lhs_columns, true);
+    output_schema_ = New(TableSchema, ctx_->arena_, "TMP_PRODUCT_TABLE", nullptr, lhs_columns, true);
     output_ = Tuple(output_schema_);
 }
 
@@ -225,7 +225,7 @@ void HashJoinExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Exe
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
-    ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema, "TMP_JOIN_TABLE", nullptr, lhs_columns, true);
+    output_schema_ = New(TableSchema, ctx_->arena_, "TMP_JOIN_TABLE", nullptr, lhs_columns, true);
     output_ = Tuple(output_schema_);
 }
 
@@ -753,7 +753,7 @@ void DeletionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Exe
     table_ = table;
     indexes_ = indexes;
 
-    ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema, "del_tmp_schema", nullptr, {Column("Affected", INT, 0)}, true);
+    output_schema_ = New(TableSchema, ctx_->arena_, "del_tmp_schema", nullptr, {Column("Affected", INT, 0)}, true);
     output_ = Tuple(output_schema_);
 }
 
@@ -836,7 +836,7 @@ void UpdateExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Execu
     table_ = table;
     indexes_ = indexes;
 
-    ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema, "update_tmp_schema", nullptr, {Column("Affected", INT, 0)}, true);
+    output_schema_ = New(TableSchema, ctx_->arena_, "update_tmp_schema", nullptr, {Column("Affected", INT, 0)}, true);
     output_ = Tuple(output_schema_);
 }
 
@@ -1091,7 +1091,7 @@ void AggregationExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, 
         offset_ptr += Column::getSizeFromType(INT);
     }
 
-    ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema, "agg_tmp_schema", nullptr, new_cols, true);
+    output_schema_ = New(TableSchema, ctx_->arena_, "agg_tmp_schema", nullptr, new_cols, true);
     output_ = Tuple(output_schema_, Value(0));
 }
 
@@ -1304,7 +1304,7 @@ void ProjectionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, E
         new_cols.push_back(Column(col_name, INVALID, 0));
     }
 
-    ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema, "tmp_projection_schema", nullptr, new_cols, true);
+    output_schema_ = New(TableSchema, ctx_->arena_, "tmp_projection_schema", nullptr, new_cols, true);
     output_ = Tuple(output_schema_, Value(0));
 }
 
@@ -1509,7 +1509,7 @@ void FilterExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Execu
     if(child_executor_) {
         output_schema_ = child_executor_->output_schema_;
     } else {
-        ALLOCATE_INIT(ctx_->arena_, output_schema_, TableSchema,
+        output_schema_ = New(TableSchema, ctx_->arena_,
                 "TMP_FILTER_SCHEMA", nullptr, {Column("?column?", INVALID, 0)}, true);
     }
 

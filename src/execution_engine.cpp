@@ -203,8 +203,8 @@ class ExecutionEngine {
                             columns[i].setName(col_name);
                         }
 
-                        TableSchema* new_output_schema = nullptr;
-                        ALLOCATE_INIT(ctx.arena_, new_output_schema, TableSchema, tname, schema->getTable(), columns, true);
+                        TableSchema* new_output_schema = New(TableSchema, ctx.arena_,
+                                tname, schema->getTable(), columns, true);
                         Executor* scan = nullptr;
                         if(op->scan_type_ == SEQ_SCAN){
                             ALLOCATE_CONSTRUCT(ctx.arena_, scan, SeqScanExecutor, &ctx, op, new_output_schema);

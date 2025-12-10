@@ -14,7 +14,7 @@ struct Tuple;
 
 class TableSchema {
     public:
-        void init(String name, Table* table, const Vector<Column> columns, bool tmp_schema = false);
+        TableSchema(Arena* arena, String name, Table* table, const Vector<Column>& columns, bool tmp_schema = false);
         void destroy();
 
         String getTableName();

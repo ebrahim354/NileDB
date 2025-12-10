@@ -70,8 +70,7 @@ void Catalog::init(CacheManager *cm) {
     meta_data_columns.emplace_back(Column("primary"   , BOOLEAN, 21));
     meta_data_columns.emplace_back(Column("foreign"   , BOOLEAN, 22));
     meta_data_columns.emplace_back(Column("unique"    , BOOLEAN, 23));
-    meta_table_schema_ =  nullptr;
-    ALLOCATE_INIT(arena_, meta_table_schema_, TableSchema, META_DATA_TABLE, meta_data_table, meta_data_columns);
+    meta_table_schema_ =  New(TableSchema, arena_, (String)META_DATA_TABLE, meta_data_table, meta_data_columns);
     tables_[META_DATA_TABLE] = meta_table_schema_;
 
 
@@ -106,8 +105,7 @@ void Catalog::init(CacheManager *cm) {
             // the table owns its free space map pointer and is responsible for deleting it.
             Table* table = nullptr; 
             ALLOCATE_INIT(arena_, table, Table, cm, first_page);
-            TableSchema* schema = nullptr;
-            ALLOCATE_INIT(arena_, schema, TableSchema, table_name, table, {});
+            TableSchema* schema = New(TableSchema, arena_, table_name, table, {});
             tables_.insert({table_name, schema});
         }
 
@@ -168,8 +166,7 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const String &table_name, Vecto
     PageID first_page = {.fid_ = nfid, .page_num_ = 1};
     Table* table = nullptr;
     ALLOCATE_INIT(arena_, table, Table, cache_manager_, first_page);
-    TableSchema* schema = nullptr;
-    ALLOCATE_INIT(arena_, schema, TableSchema, table_name, table, columns);
+    TableSchema* schema = New(TableSchema, arena_, table_name, table, columns);
     tables_.insert({table_name, schema});
     // persist the table schema in the meta data table.
     // create a vector of Values per column,
