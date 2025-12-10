@@ -130,8 +130,7 @@ class ExecutionEngine {
                     return false;
                 }
                 if(cur_plan->distinct_){
-                    DistinctExecutor* dis = nullptr;
-                    ALLOCATE_CONSTRUCT(ctx.arena_, dis, DistinctExecutor, &ctx, created_physical_plan);
+                    DistinctExecutor* dis = New(DistinctExecutor , ctx.arena_, &ctx, created_physical_plan);
                     created_physical_plan = dis;
                 }
 
@@ -139,8 +138,7 @@ class ExecutionEngine {
                         created_physical_plan->query_idx_ < ctx.queries_call_stack_.size() &&
                         !ctx.queries_call_stack_[created_physical_plan->query_idx_]->is_corelated_
                   ){
-                    SubQueryExecutor* sub_q = nullptr;
-                    ALLOCATE_CONSTRUCT(ctx.arena_, sub_q, SubQueryExecutor, &ctx, created_physical_plan);
+                    SubQueryExecutor* sub_q = New(SubQueryExecutor, ctx.arena_, &ctx, created_physical_plan);
                     created_physical_plan = sub_q;
                 }
                 ctx.executors_call_stack_.push_back(created_physical_plan);
@@ -159,8 +157,7 @@ class ExecutionEngine {
                     {
                         SortOperation* op = reinterpret_cast<SortOperation*>(logical_plan);
                         Executor* child = buildExecutionPlan(ctx, op->child_);
-                        SortExecutor* sort = nullptr;
-                        ALLOCATE_CONSTRUCT(ctx.arena_, sort, SortExecutor, &ctx, op, child);
+                        SortExecutor* sort = New(SortExecutor, ctx.arena_, &ctx, op, child);
                         return sort;
                     } break;
                 case PROJECTION: 
@@ -168,24 +165,21 @@ class ExecutionEngine {
                         ProjectionOperation* op = reinterpret_cast<ProjectionOperation*>(logical_plan);
                         Executor* child = buildExecutionPlan(ctx, op->child_);
 
-                        ProjectionExecutor* project = nullptr; 
-                        ALLOCATE_CONSTRUCT(ctx.arena_, project, ProjectionExecutor, &ctx, op, child);
+                        ProjectionExecutor* project = New(ProjectionExecutor, ctx.arena_, &ctx, op, child);
                         return project;
                     } break;
                 case AGGREGATION: 
                     {
                         AggregationOperation* op = reinterpret_cast<AggregationOperation*>(logical_plan);
                         Executor* child = buildExecutionPlan(ctx, op->child_);
-                        AggregationExecutor* agg = nullptr;
-                        ALLOCATE_CONSTRUCT(ctx.arena_, agg, AggregationExecutor, &ctx, op, child);
+                        AggregationExecutor* agg = New(AggregationExecutor, ctx.arena_, &ctx, op, child);
                         return agg;
                     } break;
                 case FILTER: 
                     {
                         FilterOperation* op = reinterpret_cast<FilterOperation*>(logical_plan);
                         Executor* child = buildExecutionPlan(ctx, op->child_);
-                        FilterExecutor* filter = nullptr;
-                        ALLOCATE_CONSTRUCT(ctx.arena_, filter, FilterExecutor, &ctx, op, child);
+                        FilterExecutor* filter = New(FilterExecutor, ctx.arena_, &ctx, op, child);
                         return filter;
                     } break;
                 case SCAN: 
@@ -207,9 +201,9 @@ class ExecutionEngine {
                                 tname, schema->getTable(), columns, true);
                         Executor* scan = nullptr;
                         if(op->scan_type_ == SEQ_SCAN){
-                            ALLOCATE_CONSTRUCT(ctx.arena_, scan, SeqScanExecutor, &ctx, op, new_output_schema);
+                            scan = New(SeqScanExecutor, ctx.arena_, &ctx, op, new_output_schema);
                         } else {
-                            ALLOCATE_CONSTRUCT(ctx.arena_, scan, IndexScanExecutor, &ctx, op,
+                            scan = New(IndexScanExecutor, ctx.arena_, &ctx, op,
                                     new_output_schema, catalog_->getIndexHeader(op->index_name_));
                         }
                         return scan;
@@ -219,8 +213,7 @@ class ExecutionEngine {
                         ProductOperation* op = reinterpret_cast<ProductOperation*>(logical_plan);
                         Executor* lhs = buildExecutionPlan(ctx, op->lhs_);
                         Executor* rhs = buildExecutionPlan(ctx, op->rhs_);
-                        ProductExecutor* product = nullptr;
-                        ALLOCATE_CONSTRUCT(ctx.arena_, product, ProductExecutor, &ctx, op, rhs, lhs);
+                        ProductExecutor* product = New(ProductExecutor, ctx.arena_, &ctx, op, rhs, lhs);
                         return product;
                     } break;
                 case JOIN: 
@@ -230,13 +223,11 @@ class ExecutionEngine {
                         Executor* lhs = buildExecutionPlan(ctx, op->lhs_);
                         Executor* rhs = buildExecutionPlan(ctx, op->rhs_);
                         if(join_algo == NESTED_LOOP_JOIN){
-                                                        NestedLoopJoinExecutor* join = nullptr;
-                            ALLOCATE_CONSTRUCT(ctx.arena_, join, NestedLoopJoinExecutor, &ctx, op, lhs, rhs);
+                            NestedLoopJoinExecutor* join = New(NestedLoopJoinExecutor, ctx.arena_, &ctx, op, lhs, rhs);
                             return join;
 
                         } else {
-                            HashJoinExecutor* join = nullptr;
-                            ALLOCATE_CONSTRUCT(ctx.arena_, join, HashJoinExecutor, &ctx, op, lhs, rhs);
+                            HashJoinExecutor* join = New(HashJoinExecutor, ctx.arena_, &ctx, op, lhs, rhs);
                             return join;
                         }
                     } break;
@@ -263,14 +254,12 @@ class ExecutionEngine {
                                 rhs = ctx.executors_call_stack_[op->rhs_->query_idx_];
                             // TODO: check that lhs and rhs have the same schema.
                             
-                            UnionExecutor* un = nullptr;
-                            ALLOCATE_CONSTRUCT(ctx.arena_, un, UnionExecutor, &ctx, op, lhs, rhs);
+                            UnionExecutor* un = New(UnionExecutor, ctx.arena_, &ctx, op, lhs, rhs);
 
                             // TODO: don't use an extra distinct executor for the all = false case, 
                             // Use a built-in hashtable inside of the set-operation executor instead.
                             if(op->all_ == false) {
-                                DistinctExecutor* dis = nullptr;
-                                ALLOCATE_CONSTRUCT(ctx.arena_, dis, DistinctExecutor, &ctx, un);
+                                DistinctExecutor* dis = New(DistinctExecutor, ctx.arena_, &ctx, un);
                                 return dis;
                             }
                             return un;
@@ -290,14 +279,12 @@ class ExecutionEngine {
                             else
                                 rhs = ctx.executors_call_stack_[op->rhs_->query_idx_];
                             // TODO: check that lhs and rhs have the same schema.
-                            ExceptExecutor* ex = nullptr;
-                            ALLOCATE_CONSTRUCT(ctx.arena_, ex, ExceptExecutor, &ctx, op, lhs, rhs);
+                            ExceptExecutor* ex = New(ExceptExecutor, ctx.arena_, &ctx, op, lhs, rhs);
 
                             // TODO: don't use an extra distinct executor for the all = false case, 
                             // Use a built-in hashtable inside of the set-operation executor instead.
                             if(op->all_ == false) {
-                                DistinctExecutor* dis = nullptr;
-                                ALLOCATE_CONSTRUCT(ctx.arena_, dis, DistinctExecutor, &ctx, ex);
+                                DistinctExecutor* dis = New(DistinctExecutor, ctx.arena_, &ctx, ex);
                                 return dis;
                             }
                             return ex;
@@ -318,14 +305,12 @@ class ExecutionEngine {
                             else
                                 rhs = ctx.executors_call_stack_[op->rhs_->query_idx_];
                             // TODO: check that lhs and rhs have the same schema.
-                            IntersectExecutor* intersect = nullptr;
-                            ALLOCATE_CONSTRUCT(ctx.arena_, intersect, IntersectExecutor, &ctx, op, lhs, rhs);
+                            IntersectExecutor* intersect = New(IntersectExecutor, ctx.arena_, &ctx, op, lhs, rhs);
 
                             // TODO: don't use an extra distinct executor for the all = false case, 
                             // Use a built-in hashtable inside of the set-operation executor instead.
                             if(op->all_ == false) {
-                                DistinctExecutor* dis = nullptr;
-                                ALLOCATE_CONSTRUCT(ctx.arena_, dis, DistinctExecutor, &ctx, intersect);
+                                DistinctExecutor* dis = New(DistinctExecutor, ctx.arena_, &ctx, intersect);
                                 return dis;
                             }
                             return intersect;
@@ -338,8 +323,7 @@ class ExecutionEngine {
                         TableSchema* table = catalog_->getTableSchema(statement->table_name_);
                         int select_idx = statement->select_idx_;
 
-                        InsertionExecutor* insert = nullptr;
-                        ALLOCATE_CONSTRUCT(ctx.arena_, insert, InsertionExecutor,
+                        InsertionExecutor* insert = New(InsertionExecutor, ctx.arena_,
                                 &ctx,
                                 logical_plan, 
                                 table,
@@ -356,8 +340,7 @@ class ExecutionEngine {
                         assert(statement->tables_.size() != 0);
                         TableSchema* table = catalog_->getTableSchema(statement->tables_[0]);
 
-                        DeletionExecutor* deletion = nullptr;
-                        ALLOCATE_CONSTRUCT(ctx.arena_, deletion, DeletionExecutor,
+                        DeletionExecutor* deletion = New(DeletionExecutor, ctx.arena_,
                                 &ctx,
                                 logical_plan, 
                                 child,
@@ -374,8 +357,7 @@ class ExecutionEngine {
                         assert(statement->tables_.size() != 0);
                         TableSchema* table = catalog_->getTableSchema(statement->tables_[0]);
 
-                        UpdateExecutor* update = nullptr;
-                        ALLOCATE_CONSTRUCT(ctx.arena_, update, UpdateExecutor,
+                        UpdateExecutor* update = New(UpdateExecutor, ctx.arena_,
                                 &ctx,
                                 logical_plan, 
                                 child,

@@ -25,8 +25,8 @@ class TableIterator {
         Record getCurRecordCpy(Arena* arena);
         RecordID getCurRecordID();
     private:
-        CacheManager *cache_manager_ = nullptr;
         PageID cur_page_id_ = INVALID_PAGE_ID;
+        CacheManager *cache_manager_ = nullptr;
         TableDataPage* cur_page_ = nullptr;
         uint32_t next_page_number_;
         uint32_t prev_page_number_;

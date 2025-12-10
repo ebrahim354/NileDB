@@ -7,8 +7,8 @@
 #include <string>
 #include <unordered_map>
 
-Value evaluate(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item);
-Value evaluate_subquery(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item);
+Value evaluate(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item);
+Value evaluate_subquery(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item);
 
 
 Value abs_func(Vector<Value> vals){
@@ -52,7 +52,7 @@ std::unordered_map<String, std::function<Value(Vector<Value>)>> reserved_functio
 Value evaluate_expression(
         QueryCTX* ctx, 
         ASTNode* expression, 
-        Tuple cur_tuple,
+        Tuple& cur_tuple,
         bool only_one = true,
         bool eval_sub_query = true
         ) {
@@ -887,7 +887,7 @@ void accessed_fields(ASTNode* expression ,Vector<String>& fields, bool only_one 
     }
 }
 
-Value evaluate_subquery(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item) {
+Value evaluate_subquery(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item) {
     auto sub_query = reinterpret_cast<SubQueryNode*>(item);
     bool used_with_exists = sub_query->used_with_exists_;
     Executor* sub_query_executor = ctx->executors_call_stack_[sub_query->idx_]; 
@@ -923,7 +923,7 @@ Value evaluate_subquery(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item) {
 }
 
 
-Value evaluate_field(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item) {
+Value evaluate_field(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item) {
 
     String field = item->token_.val_;
     int idx = -1;
@@ -975,7 +975,7 @@ Value evaluate_field(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item) {
     return cur_tuple.get_val_at(idx);
 }
 
-Value evaluate_scoped_field(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item) {
+Value evaluate_scoped_field(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item) {
 
     String field = item->token_.val_;
     String table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
@@ -1006,7 +1006,7 @@ Value evaluate_scoped_field(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item) {
     return cur_tuple.get_val_at(idx);
 }
 
-Value evaluate(QueryCTX* ctx, Tuple cur_tuple, ASTNode* item){
+Value evaluate(QueryCTX* ctx, Tuple& cur_tuple, ASTNode* item){
     if(item->category_ == FIELD) return evaluate_field(ctx, cur_tuple, item);
     if(item->category_ == SCOPED_FIELD) return evaluate_scoped_field(ctx, cur_tuple, item);
     if(item->category_ == SUB_QUERY) return evaluate_scoped_field(ctx, cur_tuple, item);

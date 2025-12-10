@@ -4,12 +4,16 @@
 struct Tuple {
     Vector<Value> values_;
     RecordID left_most_rid_;
+    TableSchema* schema_ = nullptr;
     /*
     Record* rec_;
     */
-    TableSchema* schema_ = nullptr;
+    // Delete copy constructor
+    //Tuple(const Tuple&) = delete; 
+
     Tuple();
-    Tuple(TableSchema* schema, Value val = Value(NULL_TYPE));
+    Tuple(Arena* arena);
+    void setNewSchema(TableSchema* schema, Value val = Value(NULL_TYPE));
 //    Tuple() = delete;
 
     int size();

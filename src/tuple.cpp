@@ -1,13 +1,16 @@
 #pragma once
 #include "tuple.h"
+
 Tuple::Tuple(){}
-Tuple::Tuple(TableSchema* schema, Value val) {
+Tuple::Tuple(Arena* arena): values_(arena)
+{}
+void Tuple::setNewSchema(TableSchema* schema, Value val) {
     assert(schema);
     schema_ = schema;
     values_.resize(schema_->numOfCols());
     for(int i = 0; i < values_.size(); ++i)
         values_[i] = val;
-}
+}    
 //    Tuple() = delete;
 
 int Tuple::size(){
@@ -19,7 +22,8 @@ int Tuple::size(){
 // this function makes a deep copy that can last for a custom lifetime based on the passed allocator.
 Tuple Tuple::duplicate(Arena* arena){
     if(!schema_) return *this;
-    auto t = Tuple(schema_);
+    auto t = Tuple(arena);
+    t.setNewSchema(schema_);
     for(int i = 0; i < values_.size(); ++i)
         t.values_[i] = values_[i].get_copy(arena);
     return t;

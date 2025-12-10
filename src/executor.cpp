@@ -42,43 +42,50 @@ String exec_type_to_string(ExecutorType t) {
     }
 }
 
-void Executor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* output_schema,
+Executor::Executor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* output_schema,
         Executor* child_executor,
-        ExecutorType type) {
+        ExecutorType type):
+    ctx_(ctx), plan_node_(plan_node), output_schema_(output_schema),
+    output_(Tuple(arena)), type_(type), child_executor_(child_executor)
+{
+    /*
     ctx_ = ctx; 
     plan_node_ = plan_node;
     output_schema_ = output_schema;
     output_ = Tuple(output_schema_);
     type_ = type;
-    assert(query_idx_ < ctx->queries_call_stack_.size() && plan_node != nullptr);
-    query_idx_ = plan_node->query_idx_;
-    parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
     child_executor_ = child_executor;
+    */
+    //assert(query_idx_ < ctx->queries_call_stack_.size() && plan_node != nullptr);
+    //query_idx_ = plan_node->query_idx_;
+    //parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
 }
 
-void NestedLoopJoinExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs) {
+NestedLoopJoinExecutor::NestedLoopJoinExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs):
+    Executor(arena, ctx, plan_node, nullptr, nullptr, NESTED_LOOP_JOIN_EXECUTOR),
+    left_child_(lhs), right_child_(rhs), left_output_(Tuple(arena))
+{
     assert(plan_node != nullptr && plan_node->type_ == JOIN);
-    type_ = NESTED_LOOP_JOIN_EXECUTOR;
-    ctx_ = ctx; 
-    plan_node_ = plan_node;
+    //type_ = NESTED_LOOP_JOIN_EXECUTOR;
+    //ctx_ = ctx; 
+    //plan_node_ = plan_node;
     //output_schema_ = output_schema;
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
 
-    left_child_  = lhs;
-    right_child_ = rhs;
-
     filter_ = ((JoinOperation*)plan_node_)->filter_;
     join_type_ = ((JoinOperation*)plan_node_)->join_type_;
 
+    assert(lhs && rhs);
     Vector<Column> lhs_columns = lhs->output_schema_->getColumns();
     Vector<Column> rhs_columns = rhs->output_schema_->getColumns();
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
     output_schema_ = New(TableSchema, ctx_->arena_, "TMP_JOIN_TABLE", nullptr, lhs_columns, true);
-    output_ = Tuple(output_schema_);
+    output_.setNewSchema(output_schema_);
+    left_output_.setNewSchema(lhs->output_schema_);
 }
 
 void NestedLoopJoinExecutor::init() {
@@ -142,17 +149,18 @@ Tuple NestedLoopJoinExecutor::next() {
     }
 }
 
-void ProductExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs) {
+ProductExecutor::ProductExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs):
+    Executor(arena, ctx, plan_node, nullptr, nullptr, PRODUCT_EXECUTOR),
+    left_child_(lhs), right_child_(rhs)
+{
     assert(plan_node != nullptr && plan_node->type_ == PRODUCT);
     assert(lhs && rhs);
-    type_ = PRODUCT_EXECUTOR;
-    ctx_ = ctx; 
-    plan_node_ = plan_node;
+    //type_ = PRODUCT_EXECUTOR;
+    //ctx_ = ctx; 
+    //plan_node_ = plan_node;
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
-    left_child_  = lhs;
-    right_child_ = rhs;
 
     Vector<Column> lhs_columns = lhs->output_schema_->getColumns();
     Vector<Column> rhs_columns = rhs->output_schema_->getColumns();
@@ -160,7 +168,7 @@ void ProductExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Exec
         lhs_columns.push_back(rhs_columns[i]);
 
     output_schema_ = New(TableSchema, ctx_->arena_, "TMP_PRODUCT_TABLE", nullptr, lhs_columns, true);
-    output_ = Tuple(output_schema_);
+    output_.setNewSchema(output_schema_);
 }
 
 void ProductExecutor::init() {
@@ -206,16 +214,22 @@ Tuple ProductExecutor::next() {
     return output_;
 }
 
-void HashJoinExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs) {
+HashJoinExecutor::HashJoinExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs):
+    Executor(arena, ctx, plan_node, nullptr, nullptr, HASH_JOIN_EXECUTOR),
+    left_child_(lhs), right_child_(rhs), 
+    left_child_fields_(arena), right_child_fields_(arena),
+    prev_key_(arena),
+    hashed_left_child_(arena), non_visited_left_keys_(arena)
+{
     assert(plan_node != nullptr && plan_node->type_ == JOIN);
-    type_ = HASH_JOIN_EXECUTOR;
-    ctx_ = ctx; 
-    plan_node_ = plan_node;
+    //type_ = HASH_JOIN_EXECUTOR;
+    //ctx_ = ctx; 
+    //plan_node_ = plan_node;
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
-    left_child_  = lhs;
-    right_child_ = rhs;
+    //left_child_  = lhs;
+    //right_child_ = rhs;
 
     filter_ = ((JoinOperation*)plan_node_)->filter_;
     join_type_ = ((JoinOperation*)plan_node_)->join_type_;
@@ -226,7 +240,7 @@ void HashJoinExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Exe
         lhs_columns.push_back(rhs_columns[i]);
 
     output_schema_ = New(TableSchema, ctx_->arena_, "TMP_JOIN_TABLE", nullptr, lhs_columns, true);
-    output_ = Tuple(output_schema_);
+    output_.setNewSchema(output_schema_);
 }
 
 void HashJoinExecutor::init() {
@@ -376,18 +390,22 @@ Tuple HashJoinExecutor::next() {
     return output_;
 }
 
-void UnionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs) {
+UnionExecutor::UnionExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs):
+    Executor(arena, ctx, plan_node, nullptr, nullptr, UNION_EXECUTOR),
+    left_child_(lhs), right_child_(rhs)
+{
     assert(plan_node != nullptr && plan_node->type_ == AL_UNION);
     assert(lhs && rhs);
-    type_ = UNION_EXECUTOR;
-    ctx_ = ctx; 
-    plan_node_ = plan_node;
+    //type_ = UNION_EXECUTOR;
+    //ctx_ = ctx; 
+    //plan_node_ = plan_node;
     output_schema_ = lhs->output_schema_;
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->set_operations_.size());
     parent_query_idx_ = ctx->set_operations_[query_idx_]->parent_idx_;
     left_child_  = lhs;
     right_child_ = rhs;
+    output_.setNewSchema(output_schema_);
 }
 
 void UnionExecutor::init() {
@@ -422,18 +440,22 @@ Tuple UnionExecutor::next() {
     return output_;
 }
 
-void ExceptExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs) {
+ExceptExecutor::ExceptExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs):
+    Executor(arena, ctx, plan_node, nullptr, nullptr, EXCEPT_EXECUTOR),
+    left_child_(lhs), right_child_(rhs), hashed_tuples_(arena)
+{
     assert(plan_node != nullptr && plan_node->type_ == AL_EXCEPT);
     assert(lhs && rhs);
-    type_ = EXCEPT_EXECUTOR;
-    ctx_ = ctx; 
-    plan_node_ = plan_node;
+    //type_ = EXCEPT_EXECUTOR;
+    //ctx_ = ctx; 
+    //plan_node_ = plan_node;
     output_schema_ = lhs->output_schema_;
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->set_operations_.size());
     parent_query_idx_ = ctx->set_operations_[query_idx_]->parent_idx_;
-    left_child_  = lhs;
-    right_child_ = rhs;
+    //left_child_  = lhs;
+    //right_child_ = rhs;
+    output_.setNewSchema(output_schema_);
 }
 
 void ExceptExecutor::init() {
@@ -468,18 +490,22 @@ Tuple ExceptExecutor::next() {
     }
 }
 
-void IntersectExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs) {
+IntersectExecutor::IntersectExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs):
+    Executor(arena, ctx, plan_node, nullptr, nullptr, INTERSECT_EXECUTOR),
+    left_child_(lhs), right_child_(rhs), hashed_tuples_(arena)
+{
     assert(plan_node != nullptr && plan_node->type_ == AL_INTERSECT);
     assert(lhs && rhs);
-    type_ = INTERSECT_EXECUTOR;
-    ctx_ = ctx; 
-    plan_node_ = plan_node;
+    //type_ = INTERSECT_EXECUTOR;
+    //ctx_ = ctx; 
+    //plan_node_ = plan_node;
     output_schema_ = lhs->output_schema_;
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->set_operations_.size());
     parent_query_idx_ = ctx->set_operations_[query_idx_]->parent_idx_;
-    left_child_  = lhs;
-    right_child_ = rhs;
+    //left_child_  = lhs;
+    //right_child_ = rhs;
+    output_.setNewSchema(output_schema_);
 }
 
 void IntersectExecutor::init() {
@@ -514,17 +540,20 @@ Tuple IntersectExecutor::next() {
     }
 }
 
-void SeqScanExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table) {
+SeqScanExecutor::SeqScanExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table):
+    Executor(arena, ctx, plan_node, table, nullptr, SEQUENTIAL_SCAN_EXECUTOR),
+    table_(table)
+{
     assert(plan_node != nullptr && plan_node->type_ == SCAN);
-    type_ = SEQUENTIAL_SCAN_EXECUTOR;
-    ctx_ = ctx; 
-    plan_node_ = plan_node;
-    output_schema_ = table;
-    output_ = Tuple(output_schema_);
+    //type_ = SEQUENTIAL_SCAN_EXECUTOR;
+    //ctx_ = ctx; 
+    //plan_node_ = plan_node;
+    //output_schema_ = table;
+    //table_ = table;
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
-    table_ = table;
+    output_.setNewSchema(output_schema_);
 }
 
 void SeqScanExecutor::init() {
@@ -553,20 +582,23 @@ Tuple SeqScanExecutor::next() {
 }
 
 // TODO: change BTreeIndex type to be a generic ( just Index ) that might be a btree or hash index.
-
-void IndexScanExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table, IndexHeader index) {
+IndexScanExecutor::IndexScanExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table, IndexHeader index):
+    Executor(arena, ctx, plan_node, table, nullptr, INDEX_SCAN_EXECUTOR),
+    table_(table), index_header_(arena)
+{
     assert(plan_node != nullptr && plan_node->type_ == SCAN);
-    type_ = INDEX_SCAN_EXECUTOR;
-    ctx_ = ctx; 
-    plan_node_ = plan_node;
-    output_schema_ = table;
-    output_ = Tuple(output_schema_);
+    index_header_ = index;
+    //type_ = INDEX_SCAN_EXECUTOR;
+    //ctx_ = ctx; 
+    //plan_node_ = plan_node;
+    //output_schema_ = table;
+    output_.setNewSchema(output_schema_);
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
 
-    table_ = table;
-    index_header_ = index;
+    //table_ = table;
+    //index_header_ = index;
     filter_ = ((ScanOperation*)plan_node)->filter_;
 }
 
@@ -670,91 +702,25 @@ Tuple IndexScanExecutor::next() {
     return output_;
 }
 
-        /*
-        bool delete_handler(ASTNode* statement_root){
-            DeleteStatementNode* delete_statement = reinterpret_cast<DeleteStatementNode*>(statement_root);
-
-            auto table_ptr = delete_statement->table_; 
-            // did not find any tables.
-            if(table_ptr == nullptr) return false;
-            String table_name = table_ptr->token_.val_;
-            TableSchema* schema = catalog_->getTableSchema(table_name);
-
-            TableIterator* it = schema->getTable()->begin();
-            while(it->advance()){
-                RecordID rid = it->getCurRecordID();
-                schema->getTable()->deleteRecord(rid);
-            }
-            // handle filters later.
-            
-            return true;
-        }
-
-        bool update_handler(ASTNode* statement_root){
-            UpdateStatementNode* update_statement = reinterpret_cast<UpdateStatementNode*>(statement_root);
-
-            String table_name = update_statement->table_->token_.val_;
-            TableSchema* schema = catalog_->getTableSchema(table_name);
-            // did not find any tables with that name.
-            if(schema == nullptr) return false;
-            auto field_ptr = update_statement->field_;
-            String field_name = field_ptr->token_.val_;
-            auto val_ptr = update_statement->expression_;
-            String val_str = val_ptr->token_.val_;
-            // check valid column.
-            if(!schema->isValidCol(field_name)) 
-                return false;
-            // we consider int and string types for now.
-            Type val_type = INVALID;
-            if(val_ptr->category_ == STRING_CONSTANT) val_type = VARCHAR;
-            else if(val_ptr->category_ == INTEGER_CONSTANT) val_type = INT;
-            // invalid or not supported type;
-            if( val_type == INVALID ) return false;
-            Value val;
-            if(val_type == INT) val = Value(stoi(val_str));
-            else if(val_type == VARCHAR) val = Value(val);
-
-            if(!schema->checkValidValue(field_name, val)) return false;
-
-
-            TableIterator* it = schema->getTable()->begin();
-            while(it->advance()){
-                RecordID rid = it->getCurRecordID();
-                // rid is not used for now.
-                Record cpy = it->getCurRecordCpy();
-                Vector<Value> values;
-                int err = schema->translateToValues(cpy, values);
-                int idx = schema->getColIdx(field_name, val);
-                if(idx < 0) return false;
-                values[idx] = val;
-                Record* new_rec = schema->translateToRecord(values);
-
-                err = schema->getTable()->updateRecord(&rid, *new_rec);
-                if(err) return false;
-            }
-            return true;
-            // handle filters later.
-        }
-        */
-
-void DeletionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child, TableSchema* table,
-        Vector<IndexHeader> indexes) {
+DeletionExecutor::DeletionExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child, TableSchema* table, Vector<IndexHeader> indexes):
+    Executor(arena, ctx, plan_node, nullptr, child, DELETION_EXECUTOR),
+    table_(table), indexes_(arena)
+{
     assert(plan_node != nullptr && plan_node->type_ == DELETION);
-    type_ = DELETION_EXECUTOR;
-    ctx_ = ctx; 
-    plan_node_ = plan_node;
+    indexes_ = indexes;
+    //type_ = DELETION_EXECUTOR;
+    //ctx_ = ctx; 
+    //plan_node_ = plan_node;
     assert(child != nullptr);
-    child_executor_ = child;
-    output_schema_ = table;
+    //child_executor_ = child;
+    //output_schema_ = table;
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
-
-    table_ = table;
-    indexes_ = indexes;
-
+    //table_ = table;
+    //indexes_ = indexes;
     output_schema_ = New(TableSchema, ctx_->arena_, "del_tmp_schema", nullptr, {Column("Affected", INT, 0)}, true);
-    output_ = Tuple(output_schema_);
+    output_.setNewSchema(output_schema_);
 }
 
 void DeletionExecutor::init() {
@@ -775,6 +741,7 @@ void DeletionExecutor::init() {
 
 Tuple DeletionExecutor::next() {
     if(error_status_ || finished_) return {};
+    std::set<u64> affected_records;
     while(true){
         Tuple values = child_executor_->next();
         if(child_executor_->finished_) {
@@ -788,9 +755,11 @@ Tuple DeletionExecutor::next() {
         RecordID rid = values.left_most_rid_;
         assert(rid.page_id_ != INVALID_PAGE_ID);
         u64 rid_hash = rid.get_hash(); 
-        //if(affected_records.count(rid_hash)) continue;
+        if(affected_records.count(rid_hash)) continue;
         affected_records.insert(rid_hash);
-        Tuple t(child_executor_->output_schema_);
+
+        Tuple t;
+        t.setNewSchema(child_executor_->output_schema_);
         t.put_tuple_at_start(&values);
         int err = table_->getTable()->deleteRecord(rid);
         assert(err == 0);
@@ -820,24 +789,28 @@ Tuple DeletionExecutor::next() {
     return output_;
 }
 
-void UpdateExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child, TableSchema* table,
-        Vector<IndexHeader> indexes) {
+UpdateExecutor::UpdateExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child, TableSchema* table,
+        Vector<IndexHeader> indexes):
+    Executor(arena, ctx, plan_node, nullptr, child, UPDATE_EXECUTOR),
+    table_(table), indexes_(arena)
+{
     assert(plan_node != nullptr && plan_node->type_ == UPDATE);
-    type_ = UPDATE_EXECUTOR;
-    ctx_ = ctx; 
-    plan_node_ = plan_node;
+    indexes_ = indexes;
+    //type_ = UPDATE_EXECUTOR;
+    //ctx_ = ctx; 
+    //plan_node_ = plan_node;
     assert(child != nullptr);
-    child_executor_ = child;
-    output_schema_ = table;
+    //child_executor_ = child;
+    //output_schema_ = table;
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
 
-    table_ = table;
-    indexes_ = indexes;
+    //table_ = table;
+    //indexes_ = indexes;
 
     output_schema_ = New(TableSchema, ctx_->arena_, "update_tmp_schema", nullptr, {Column("Affected", INT, 0)}, true);
-    output_ = Tuple(output_schema_);
+    output_.setNewSchema(output_schema_);
 }
 
 void UpdateExecutor::init() {
@@ -869,6 +842,7 @@ void UpdateExecutor::init() {
 
 Tuple UpdateExecutor::next() {
     if(error_status_ || finished_) return {};
+    std::set<u64> affected_records;
     while(true){
         Tuple values = child_executor_->next();
         if(child_executor_->finished_) {
@@ -886,7 +860,8 @@ Tuple UpdateExecutor::next() {
         if(affected_records.count(rid_hash)) continue;
 
 
-        Tuple old_tuple(table_);
+        Tuple old_tuple;
+        old_tuple.setNewSchema(table_);
         old_tuple.put_tuple_at_start(&values);
 
         for(int i = 0; i < indexes_.size(); ++i){
@@ -942,22 +917,25 @@ Tuple UpdateExecutor::next() {
 }
 
 
-void InsertionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table,
-        Vector<IndexHeader> indexes, int select_idx) {
+InsertionExecutor::InsertionExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table,
+        Vector<IndexHeader> indexes, int select_idx):
+    Executor(arena, ctx, plan_node, table, nullptr, INSERTION_EXECUTOR),
+    table_(table), select_idx_(select_idx), indexes_(arena)
+{
     assert(plan_node != nullptr && plan_node->type_ == INSERTION);
-    type_ = INSERTION_EXECUTOR;
-    ctx_ = ctx; 
-    plan_node_ = plan_node;
-    output_schema_ = table;
+    indexes_ = indexes;
+    //type_ = INSERTION_EXECUTOR;
+    //ctx_ = ctx; 
+    //plan_node_ = plan_node;
+    //output_schema_ = table;
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
 
-    table_ = table;
-    indexes_ = indexes;
-    select_idx_ = select_idx;
-
-    output_ = Tuple(output_schema_);
+    //table_ = table;
+    //indexes_ = indexes;
+    //select_idx_ = select_idx;
+    output_.setNewSchema(output_schema_);
 }
 
 void InsertionExecutor::init() {
@@ -1059,21 +1037,24 @@ Tuple InsertionExecutor::next() {
     return output_;
 }
 
-void AggregationExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor) {
-
+AggregationExecutor::AggregationExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor):
+    Executor(arena, ctx, plan_node, nullptr, child_executor, AGGREGATION_EXECUTOR),
+    aggregated_values_(arena), distinct_counters_(arena)
+{
     assert(plan_node != nullptr && plan_node->type_ == AGGREGATION);
-    type_ = AGGREGATION_EXECUTOR;
-    ctx_ = ctx; 
-    plan_node_ = plan_node;
+    //type_ = AGGREGATION_EXECUTOR;
+    //ctx_ = ctx; 
+    //plan_node_ = plan_node;
     //output_schema_ = output_schema;
-    child_executor_ = child_executor;
+    //child_executor_ = child_executor;
 
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
     
-    aggregates_ = ((AggregationOperation*)plan_node_)->aggregates_;
-    group_by_ = ((AggregationOperation*)plan_node_)->group_by_;
+    aggregates_ = &((AggregationOperation*)plan_node_)->aggregates_;
+    group_by_ = &((AggregationOperation*)plan_node_)->group_by_;
+    assert(aggregates_ && group_by_);
 
     // build the new output schema.
     Vector<Column> new_cols;
@@ -1082,7 +1063,7 @@ void AggregationExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, 
         new_cols = child_executor_->output_schema_->getColumns();
         offset_ptr = Column::getSizeFromType(new_cols[new_cols.size() - 1].getType());
     } 
-    for(int i = 0; i < aggregates_.size(); i++){
+    for(int i = 0; i < aggregates_->size(); i++){
         String col_name = "agg_tmp_schema.";
         col_name += AGG_FUNC_IDENTIFIER_PREFIX;
         //col_name += intToStr(op->aggregates_[i]->parent_id_);
@@ -1092,15 +1073,15 @@ void AggregationExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, 
     }
 
     output_schema_ = New(TableSchema, ctx_->arena_, "agg_tmp_schema", nullptr, new_cols, true);
-    output_ = Tuple(output_schema_, Value(0));
+    output_.setNewSchema(output_schema_, Value(0));
 }
 
 void AggregationExecutor::init() {
     finished_ = 0;
     error_status_ = 0;
     //aggregated_values_.clear();
-    for(int i = 0; i < aggregates_.size(); ++i) {
-        if(aggregates_[i]->distinct_) distinct_counters_["PREFIX_"][i] = std::set<String>();
+    for(int i = 0; i < aggregates_->size(); ++i) {
+        if((*aggregates_)[i]->distinct_) distinct_counters_["PREFIX_"][i] = std::set<String>();
     }
 
 
@@ -1108,21 +1089,23 @@ void AggregationExecutor::init() {
         child_executor_->init();
     }
     int total_size = output_schema_->getCols().size();
-    aggregated_values_["PREFIX_"] = {
-        Tuple(output_schema_),
-        0
+    Tuple t(&ctx_->arena_);
+    t.setNewSchema(output_schema_);
+    std::pair<Tuple, int> p = {
+        t, 0
     };
+    aggregated_values_["PREFIX_"] = p;
 
-    int agg_base_idx = total_size - aggregates_.size();
-    for(int i = 0;i < aggregates_.size(); ++i) {
-        if(aggregates_[i]->type_ == COUNT)
+    int agg_base_idx = total_size - aggregates_->size();
+    for(int i = 0;i < aggregates_->size(); ++i) {
+        if((*aggregates_)[i]->type_ == COUNT)
             aggregated_values_["PREFIX_"].first.put_val_at(i+agg_base_idx, Value(0)); // count can't be null.
     }
 
     while(true){
         // we always maintain rows count even if the user did not ask for it, that's why the size is | colmuns | + 1
         //output_ = Vector<Value> (output_schema_->getCols().size() + 1, Value(0));
-        output_ = Tuple(output_schema_, Value(0));
+        output_.setNewSchema(output_schema_, Value(0));
         Tuple child_output; 
         if(child_executor_){
             child_output = child_executor_->next();
@@ -1138,8 +1121,8 @@ void AggregationExecutor::init() {
 
         // build the search key for the hash table.
         String hash_key = "PREFIX_"; // prefix to ensure we have at least one entry in the hash table.
-        for(int i = 0; i < group_by_.size(); i++){
-            Value cur = evaluate_expression(ctx_, group_by_[i], output_);
+        for(int i = 0; i < group_by_->size(); i++){
+            Value cur = evaluate_expression(ctx_, (*group_by_)[i], output_);
             hash_key += cur.toString();
         }
 
@@ -1147,20 +1130,22 @@ void AggregationExecutor::init() {
         if(aggregated_values_.count(hash_key)){
             output_ = aggregated_values_[hash_key].first;
         } else if(hash_key != "PREFIX_"){
-            for(int i = 0; i < aggregates_.size(); ++i) {
-                if(aggregates_[i]->distinct_) distinct_counters_[hash_key][i] = std::set<String>();
+            for(int i = 0; i < aggregates_->size(); ++i) {
+                if((*aggregates_)[i]->distinct_) distinct_counters_[hash_key][i] = std::set<String>();
             }
 
             //int total_size = output_schema_->getCols().size() + 1;
             //aggregated_values_[hash_key] = Vector<Value> (total_size, Value(NULL_TYPE));
+            Tuple t;
+            t.setNewSchema(output_schema_);
             aggregated_values_[hash_key] = {
-                Tuple(output_schema_),
+                t,
                 0
             };
 
-            int agg_base_idx = total_size - (aggregates_.size());
-            for(int i = 0;i < aggregates_.size(); ++i) {
-                if(aggregates_[i]->type_ == COUNT)
+            int agg_base_idx = total_size - (aggregates_->size());
+            for(int i = 0;i < aggregates_->size(); ++i) {
+                if((*aggregates_)[i]->type_ == COUNT)
                     aggregated_values_[hash_key].first.put_val_at(i+agg_base_idx, Value(0)); // count can't be null.
             }
             output_ = aggregated_values_[hash_key].first;
@@ -1176,17 +1161,17 @@ void AggregationExecutor::init() {
         *counter += 1;
 
         int base_size = child_output.size();
-        for(int i = 0; i < aggregates_.size(); i++){
-            ExpressionNode* exp = aggregates_[i]->exp_;
+        for(int i = 0; i < aggregates_->size(); i++){
+            ExpressionNode* exp = (*aggregates_)[i]->exp_;
             if(exp){
                 Value val = evaluate_expression(ctx_, exp, output_);
-                if(aggregates_[i]->distinct_){
+                if((*aggregates_)[i]->distinct_){
                     if(distinct_counters_[hash_key][i].count(val.toString())) continue;
                     distinct_counters_[hash_key][i].insert(val.toString());
                 }
             }
             int idx = base_size+i;
-            switch(aggregates_[i]->type_){
+            switch((*aggregates_)[i]->type_){
                 case COUNT:
                     {
                         if(exp == nullptr){
@@ -1252,15 +1237,15 @@ Tuple AggregationExecutor::next() {
     }
     output_ = it_->second.first;
     int cnt = it_->second.second;
-    for(int i = 0; i < aggregates_.size(); i++){
-        int idx = (i + output_schema_->numOfCols() - aggregates_.size());
-        if(aggregates_[i]->type_ == AVG && cnt != 0) {
+    for(int i = 0; i < aggregates_->size(); i++){
+        int idx = (i + output_schema_->numOfCols() - aggregates_->size());
+        if((*aggregates_)[i]->type_ == AVG && cnt != 0) {
             if(output_.get_val_at(idx).isNull()){
                 break;
             } 
             else {
                 float denom = cnt;
-                if(aggregates_[i]->distinct_) 
+                if((*aggregates_)[i]->distinct_) 
                     denom = distinct_counters_[it_->first][i].size();
                 output_.get_val_at(idx) /= Value(denom);
             }
@@ -1272,29 +1257,30 @@ Tuple AggregationExecutor::next() {
     return output_;
 }
 
-void ProjectionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor) {
-
+ProjectionExecutor::ProjectionExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor):
+    Executor(arena, ctx, plan_node, nullptr, child_executor, PROJECTION_EXECUTOR)
+{
     assert(plan_node != nullptr && plan_node->type_ == PROJECTION);
-    type_ = PROJECTION_EXECUTOR;
-    ctx_ = ctx; 
-    plan_node_ = plan_node;
-    child_executor_ = child_executor;
+    //type_ = PROJECTION_EXECUTOR;
+    //ctx_ = ctx; 
+    //plan_node_ = plan_node;
+    //child_executor_ = child_executor;
 
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
-    
-    fields_ = ((ProjectionOperation*)plan_node_)->fields_;
+
+    fields_ = &((ProjectionOperation*)plan_node_)->fields_;
     // TODO: build the output schema using fields.
     //output_ = Tuple(output_schema_);
 
     // build the new output schema.
     Vector<Column> new_cols;
-    for(int i = 0; i < fields_.size(); i++){
+    for(int i = 0; i < fields_->size(); i++){
         // can't use (select *) syntanx without a child.
         // either the field exists or the child exist.
-        assert(fields_[i] || (child_executor_ && child_executor_->output_schema_)); 
-        if(!fields_[i]){
+        assert((*fields_)[i] || (child_executor_ && child_executor_->output_schema_)); 
+        if(!(*fields_)[i]){
             // TODO: do we need to update the offset of each column in the schema?
             for(auto& col : child_executor_->output_schema_->getColumns())
                 new_cols.push_back(col);
@@ -1305,7 +1291,7 @@ void ProjectionExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, E
     }
 
     output_schema_ = New(TableSchema, ctx_->arena_, "tmp_projection_schema", nullptr, new_cols, true);
-    output_ = Tuple(output_schema_, Value(0));
+    output_.setNewSchema(output_schema_, Value(0));
 }
 
 void ProjectionExecutor::init() {
@@ -1333,35 +1319,37 @@ Tuple ProjectionExecutor::next() {
 
 
     int cur_idx = 0;
-    for(int i = 0; i < fields_.size(); i++){
-        if(fields_[i] == nullptr){
+    for(int i = 0; i < fields_->size(); i++){
+        if((*fields_)[i] == nullptr){
             output_.put_tuple_at_end(&child_output);
             cur_idx += child_output.size();
         } else {
-            output_.put_val_at(cur_idx, evaluate_expression(ctx_, fields_[i], child_output));
+            output_.put_val_at(cur_idx, evaluate_expression(ctx_, (*fields_)[i], child_output));
             cur_idx++;
         }
     }
     return output_;
 }
 
-void SortExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor) {
-
+SortExecutor::SortExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor):
+    Executor(arena, ctx, plan_node, nullptr, child_executor, SORT_EXECUTOR),
+    tuples_(arena)
+{
     assert(plan_node != nullptr && plan_node->type_ == SORT);
     assert(child_executor != nullptr);
-    type_ = SORT_EXECUTOR;
-    ctx_ = ctx; 
-    plan_node_ = plan_node;
-    child_executor_ = child_executor;
+    //type_ = SORT_EXECUTOR;
+    //ctx_ = ctx; 
+    //plan_node_ = plan_node;
+    //child_executor_ = child_executor;
     output_schema_ = child_executor_->output_schema_;
 
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
     
-    order_by_list_ = ((SortOperation*)plan_node_)->order_by_list_;
+    order_by_list_ = &((SortOperation*)plan_node_)->order_by_list_;
 
-    output_ = Tuple(output_schema_);
+    output_.setNewSchema(output_schema_);
 }
 
 void SortExecutor::init() {
@@ -1383,13 +1371,12 @@ void SortExecutor::init() {
         if(child_executor_->finished_) break;
     }
 
-    Vector<int> order_by = order_by_list_;
-
     std::sort(tuples_.begin(), tuples_.end(), 
-            [&order_by](Tuple& lhs, Tuple& rhs){
-            for(int i = 0; i < order_by.size(); i++){
-            auto lhs_val = lhs.get_val_at(order_by[i]);
-            auto rhs_val = rhs.get_val_at(order_by[i]);
+            [this](Tuple& lhs, Tuple& rhs){
+            auto order_by_list_ = this->order_by_list_;
+            for(int i = 0; i < order_by_list_->size(); i++){
+            auto lhs_val = lhs.get_val_at((*order_by_list_)[i]);
+            auto rhs_val = rhs.get_val_at((*order_by_list_)[i]);
             if(lhs_val.isNull() && !rhs_val.isNull()) return true;
             if(!lhs_val.isNull()&& rhs_val.isNull()) return false;
             if(lhs_val.isNull() && rhs_val.isNull()) return false;
@@ -1408,18 +1395,21 @@ Tuple SortExecutor::next() {
     return output_;
 }
 
-void DistinctExecutor::construct(QueryCTX* ctx, Executor* child_executor) {
+DistinctExecutor::DistinctExecutor(Arena* arena, QueryCTX* ctx, Executor* child_executor):
+    Executor(arena, ctx, nullptr, nullptr, child_executor, DISTINCT_EXECUTOR),
+    hashed_tuples_(arena)
+{
     assert(child_executor != nullptr);
-    type_ = DISTINCT_EXECUTOR;
-    ctx_ = ctx; 
-    child_executor_ = child_executor;
+    //type_ = DISTINCT_EXECUTOR;
+    //ctx_ = ctx; 
+    //child_executor_ = child_executor;
     plan_node_ = child_executor_->plan_node_;
     output_schema_ = child_executor_->output_schema_;
 
     query_idx_ = child_executor_->query_idx_;
     parent_query_idx_ = child_executor_->parent_query_idx_; 
     
-    output_ = Tuple(output_schema_);
+    output_.setNewSchema(output_schema_);
 }
 
 void DistinctExecutor::init() {
@@ -1447,18 +1437,21 @@ Tuple DistinctExecutor::next() {
     }
 }
 
-void SubQueryExecutor::construct(QueryCTX* ctx, Executor* child_executor) {
+SubQueryExecutor::SubQueryExecutor(Arena* arena, QueryCTX* ctx, Executor* child_executor):
+    Executor(arena, ctx, nullptr, nullptr, child_executor, SUB_QUERY_EXECUTOR),
+    tuple_list_(arena)
+{
     assert(child_executor != nullptr);
-    type_ = SUB_QUERY_EXECUTOR;
-    ctx_ = ctx; 
-    child_executor_ = child_executor;
+    //type_ = SUB_QUERY_EXECUTOR;
+    //ctx_ = ctx; 
+    //child_executor_ = child_executor;
     plan_node_ = child_executor_->plan_node_;
     output_schema_ = child_executor_->output_schema_;
 
     query_idx_ = child_executor_->query_idx_;
     parent_query_idx_ = child_executor_->parent_query_idx_; 
 
-    output_ = Tuple(output_schema_);
+    output_.setNewSchema(output_schema_);
 }
 
 void SubQueryExecutor::init() {
@@ -1499,32 +1492,25 @@ Tuple SubQueryExecutor::next() {
     return output_;
 }
 
-void FilterExecutor::construct(QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor) {
-
+FilterExecutor::FilterExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child_executor):
+    Executor(arena, ctx, plan_node, nullptr, child_executor, FILTER_EXECUTOR)
+{
     assert(plan_node != nullptr && plan_node->type_ == FILTER);
-    type_ = FILTER_EXECUTOR;
-    ctx_ = ctx; 
-    plan_node_ = plan_node;
-    child_executor_ = child_executor;
     if(child_executor_) {
         output_schema_ = child_executor_->output_schema_;
     } else {
         output_schema_ = New(TableSchema, ctx_->arena_,
                 "TMP_FILTER_SCHEMA", nullptr, {Column("?column?", INVALID, 0)}, true);
     }
-
-
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
-    
     /*
     fields_      = ((FilterOperation*)plan_node_)->fields_;
     field_names_ = ((FilterOperation*)plan_node_)->field_names_;
     */
     filter_      = ((FilterOperation*)plan_node_)->filter_;
-
-    output_ = Tuple(output_schema_);
+    output_.setNewSchema(output_schema_);
 }
 
 
