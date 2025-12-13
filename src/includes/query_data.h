@@ -86,6 +86,7 @@ struct CreateIndexStatementData : QueryData {
     Vector<IndexField> fields_ = {};
     String index_name_ = {};
     String table_name_ = {};
+    bool is_unique_index_ = false;
 };
 
 struct DropTableStatementData : QueryData {

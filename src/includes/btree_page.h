@@ -9,7 +9,7 @@
 
 #define BTREE_HEADER_SIZE 25
 
-enum class BTreePageType { 
+enum class BTreePageType: u8 { 
   INVALID_PAGE  = '0',
   LEAF_PAGE     = '1',
   INTERNAL_PAGE = '2'
@@ -89,7 +89,7 @@ class BTreePage {
   static const size_t SLOT_ARRAY_OFFSET_ = 21;          //  4 bytes.
   static const size_t SLOT_ARRAY_KEY_SIZE_ = 4;         //  2 bytes(offset) + 2 bytes(size).
   static const size_t INTERNAL_SLOT_ENTRY_SIZE_ = SLOT_ARRAY_KEY_SIZE_  + 4;//  4 bytes key + 4  bytes page number.
-  static const size_t LEAF_SLOT_ENTRY_SIZE_ = SLOT_ARRAY_KEY_SIZE_  + 12;   //  4 bytes key + 12 bytes record id.
+  static const size_t LEAF_SLOT_ENTRY_SIZE_ = SLOT_ARRAY_KEY_SIZE_;         //  4 bytes key.
   static const size_t HEADER_SIZE_ = BTREE_HEADER_SIZE; // 25 bytes are used for storing header data.
 };
 

@@ -43,13 +43,13 @@ Value::Value(Type type){
     type_ = type;
 } 
 
-Value::Value(char* content, Type t, uint16_t size) {
+Value::Value(char* content, Type t, u32 size) {
     type_ = t;
     size_ = size;
     setValue(t, content);
 }
 
-Value::Value(char* str, uint16_t size) {
+Value::Value(char* str, u32 size) {
     content_ = (uintptr_t)str;
     size_ = size;
     type_ = VARCHAR;
@@ -545,13 +545,13 @@ Value Value::operator-(Value rhs) {
                     }
         case BIGINT:{
                         if(rhs.type_ == INT) {
-                            return Value(getBigIntVal() - rhs.getIntVal());
+                            return Value((i64)(getBigIntVal() - rhs.getIntVal()));
                         } else if(rhs.type_ == FLOAT || rhs.type_ == DOUBLE) {
                             double val = getBigIntVal();
                             val -= rhs.type_ == FLOAT ? rhs.getFloatVal() : rhs.getDoubleVal();
                             return Value(val);
                         } else if(rhs.type_ == BIGINT) {
-                            return Value(getBigIntVal() - rhs.getBigIntVal());
+                            return Value((i64)(getBigIntVal() - rhs.getBigIntVal()));
                         } else {
                             assert(0 && "NOT SUPPORTED TYPE CONVERSION");
                         }
@@ -615,10 +615,10 @@ Value::Value(int val){
     type_ = INT;
     cast_as(int, content_) = val;
 }
-Value::Value(long long val){
+Value::Value(i64 val){
     size_ = 8; 
     type_ = BIGINT;
-    cast_as(long long, content_) = val;
+    cast_as(i64 , content_) = val;
 }
 Value::Value(float val){
     size_ = 4; 

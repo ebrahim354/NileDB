@@ -45,108 +45,99 @@ PageID BTreeInternalPage::ValueAt(int index, FileID fid) {
 
 
 PageID BTreeInternalPage::NextPage(IndexKey key, FileID fid){
-  int size = get_num_of_slots();
-  int mid;
-  int low = 1;
-  int high = size;
-  while (low < high) {
-    mid = low + (high - low) / 2;
+    int size = get_num_of_slots();
+    int mid;
+    int low = 1;
+    int high = size;
+    while (low < high) {
+        mid = low + (high - low) / 2;
 
-    //if (!(key > array_[mid].first)) {
-    if (!(key > KeyAt(mid))) {
-      high = mid;
-    } else {
-      low = mid + 1;
+        if (!(key > KeyAt(mid))) {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
     }
-  }
-  //if (low < size && array_[low].first < key) {
-  if (low < size && KeyAt(low) < key) {
-    low++;
-  }
-  int cur = low;
+    if (low < size && KeyAt(low) < key) {
+        low++;
+    }
+    int cur = low;
 
-  if (cur != 0) {
-    cur--;
-  }
-  //return array_[cur].second;
-  return ValueAt(cur, fid);
+    if (cur != 0) {
+        cur--;
+    }
+    return ValueAt(cur, fid);
 }
 
 
 int BTreeInternalPage::InsertionPosition(IndexKey k) {
-  int size = get_num_of_slots();
-  int mid;
-  int low = 1;
-  int high = size;
-  while (low < high) {
-    mid = low + (high - low) / 2;
+    int size = get_num_of_slots();
+    int mid;
+    int low = 1;
+    int high = size;
+    while (low < high) {
+        mid = low + (high - low) / 2;
 
-    //if (!(k > array_[mid].first)) {
-    if (!(k > KeyAt(mid))) {
-      high = mid;
-    } else {
-      low = mid + 1;
+        if (!(k > KeyAt(mid))) {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
     }
-  }
-  //if (low < size && array_[low].first < k) {
-  if (low < size && KeyAt(low) < k) {
-    low++;
-  }
-  return low;
+    if (low < size && KeyAt(low) < k) {
+        low++;
+    }
+    return low;
 }
 
 
 int BTreeInternalPage::NextPageOffset(IndexKey k) {
-  int size = get_num_of_slots();
-  int mid;
-  int low = 1;
-  int high = size;
-  while (low < high) {
-    mid = low + (high - low) / 2;
+    int size = get_num_of_slots();
+    int mid;
+    int low = 1;
+    int high = size;
+    while (low < high) {
+        mid = low + (high - low) / 2;
 
-    //if (!(k > array_[mid].first)) {
-    if (!(k > KeyAt(mid))) {
-      high = mid;
-    } else {
-      low = mid + 1;
+        if (!(k > KeyAt(mid))) {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
     }
-  }
-  //if (low < size && array_[low].first < k) {
-  if (low < size && KeyAt(low) < k) {
-    low++;
-  }
-  int cur = low;
-  if (cur != 0) {
-    cur--;
-  }
-  return cur + 1;
+    if (low < size && KeyAt(low) < k) {
+        low++;
+    }
+    int cur = low;
+    if (cur != 0) {
+        cur--;
+    }
+    return cur + 1;
 }
 
 
 int BTreeInternalPage::PrevPageOffset(IndexKey k) {
-  int size = get_num_of_slots();
-  int mid;
-  int low = 1;
-  int high = size;
-  while (low < high) {
-    mid = low + (high - low) / 2;
+    int size = get_num_of_slots();
+    int mid;
+    int low = 1;
+    int high = size;
+    while (low < high) {
+        mid = low + (high - low) / 2;
 
-    //if (!(k > array_[mid].first)) {
-    if (!(k > KeyAt(mid))) {
-      high = mid;
-    } else {
-      low = mid + 1;
+        if (!(k > KeyAt(mid))) {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
     }
-  }
-  // if (low < size && array_[low].first <  k) {
-  if (low < size && KeyAt(low) <  k) {
-    low++;
-  }
-  int cur = low;
-  if (cur != 0) {
-    cur--;
-  }
-  return cur - 1;
+    if (low < size && KeyAt(low) <  k) {
+        low++;
+    }
+    int cur = low;
+    if (cur != 0) {
+        cur--;
+    }
+    return cur - 1;
 }
 
 /*

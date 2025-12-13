@@ -65,9 +65,10 @@ class ExecutionEngine {
             if(sch == nullptr) return false;
             if(!primary_key_cols.empty()) {
                 std::cout << "create idx from create pkey\n";
-              int err = catalog_->createIndex(&ctx, table_name, table_name+"_pkey", primary_key_cols);
-              // TODO: use CTX error status instead of this.
-              if(err) return false;
+                bool is_unique_index = true;
+                int err = catalog_->createIndex(&ctx, table_name, table_name+"_pkey", primary_key_cols, is_unique_index);
+                // TODO: use CTX error status instead of this.
+                if(err) return false;
             }
             return true;
         }
@@ -77,7 +78,8 @@ class ExecutionEngine {
             String index_name = create_index->index_name_;
             String table_name = create_index->table_name_;
             Vector<IndexField> fields = create_index->fields_;
-            bool err = catalog_->createIndex(&ctx, table_name, index_name, fields);
+            bool is_unique_index = create_index->is_unique_index_;
+            bool err = catalog_->createIndex(&ctx, table_name, index_name, fields, is_unique_index);
             if(err) return false;
             return true;
         }

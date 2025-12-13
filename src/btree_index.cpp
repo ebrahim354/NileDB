@@ -12,7 +12,11 @@
 #include "table_schema.cpp"
 #include "btree_index.h"
 
-void BTreeIndex::init(CacheManager* cm, FileID fid, PageID root_page_id, TableSchema* index_meta_schema){
+void BTreeIndex::init(
+        CacheManager* cm, FileID fid, PageID root_page_id, 
+        TableSchema* index_meta_schema, int nvals, bool is_unique){
+    is_unique_index_ = is_unique;
+    index_nvals_ = nvals;
     cache_manager_ = cm;
     fid_ = fid;
     root_page_id_ = root_page_id;
@@ -62,6 +66,7 @@ void BTreeIndex::SetRootPageId(QueryCTX* ctx, PageID root_page_id, int insert_re
 }
 
 // true means value is returned.
+/*
 bool BTreeIndex::GetValue(QueryCTX* ctx, IndexKey &key, Vector<RecordID> *result) {
     // read lock on the root_page_id_
     // std::cerr << "GET VALUE CALL\n";
@@ -107,7 +112,7 @@ bool BTreeIndex::GetValue(QueryCTX* ctx, IndexKey &key, Vector<RecordID> *result
     // start_page->mutex_.unlock_shared();
     cache_manager_->unpinPage(start->GetPageId(fid_), false);
     return status;
-}
+}*/
 
 // new_page_raw (output).
 BTreeLeafPage* BTreeIndex::create_leaf_page(PageID parent_pid, Page** new_page_raw){
@@ -139,7 +144,7 @@ BTreeInternalPage* BTreeIndex::create_internal_page(PageID parent_pid, Page** ne
 
 
 // return true if inserted successfully.
-bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key, const RecordID &value) {
+bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
     std::unique_lock locker(root_page_id_lock_);
     if((key.size_ + 16) * 3 > BTreePage::get_max_key_size()){
       std::cout << "Key can't fit in one page\n";
@@ -232,7 +237,7 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key, const RecordID &valu
     // one edge case is when the top node is actually the root node and it's full too so we create a new node
     // and update the root id.
     auto current_key = key;
-    auto current_value = value;
+    //auto current_value = value;
     auto current_internal_value = INVALID_PAGE_ID;
     bool inserted = false;
     while (!custom_stk.empty()) {
@@ -241,7 +246,8 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key, const RecordID &valu
             // if it's empty then add the key
             bool full = cur->IsFull(key);
             if (!full) {
-                inserted = cur->Insert(current_key, current_value);
+                //inserted = cur->Insert(current_key, current_value);
+                inserted = cur->Insert(&ctx->arena_, current_key, index_nvals_, is_unique_index_);
                 break;
             }
             // in case of non root splits:
@@ -253,9 +259,16 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key, const RecordID &valu
             // TODO: fix dead lock.
             //new_page_raw->mutex_.lock();
 
-            inserted = cur->split_with_and_insert(new_page, current_key, current_value);
+            //inserted = cur->split_with_and_insert(new_page, current_key, current_value);
+            inserted = cur->split_with_and_insert(&ctx->arena_, index_nvals_, is_unique_index_,
+                    new_page, current_key);
             assert(inserted == true);
-            IndexKey middle_key = cur->get_last_key_cpy(&ctx->arena_); // TODO: fix leak.
+            int elements_to_chop = -1;
+            if(is_unique_index_) {
+                assert(index_nvals_ > 0);
+                elements_to_chop = index_nvals_;
+            }
+            IndexKey middle_key = cur->get_last_key_cpy(&ctx->arena_, elements_to_chop);
             current_key = middle_key;
             current_internal_value = new_page_id;
 
@@ -547,7 +560,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                     prev->increase_size(cur_size);
                     for (int i = 0; i < cur_size; i++) {
                         prev->SetKeyAt(prev_size + i, cur->KeyAt(i));
-                        prev->SetValAt(prev_size + i, cur->ValAt(i));
+                        //prev->SetValAt(prev_size + i, cur->ValAt(i));
                     }
                     prev->SetNextPageId(cur->GetNextPageId(fid_));
 
@@ -582,7 +595,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                     cur->increase_size(next_size);
                     for (int i = 0; i < next_size; i++) {
                         cur->SetKeyAt(cur_size + i, next->KeyAt(i));
-                        cur->SetValAt(cur_size + i, next->ValAt(i));
+                        //cur->SetValAt(cur_size + i, next->ValAt(i));
                     }
                     cur->SetNextPageId(next->GetNextPageId(fid_));
 

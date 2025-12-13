@@ -115,12 +115,12 @@ void Arena::clear_temp_arena(ArenaTemp temp) {
 
 
 void* Arena::do_allocate(size_t bytes, size_t alignment) {
-    std::cout << "[allocate] " << bytes << " bytes, alignment " << alignment << "\n";
+    //std::cout << "[allocate] " << bytes << " bytes, alignment " << alignment << "\n";
     return alloc(bytes);
 }
 
 void Arena::do_deallocate(void* p, size_t bytes, size_t alignment) {
-    std::cout << "[deallocate] " << bytes << " bytes, alignment " << alignment << "\n";
+    //std::cout << "[deallocate] " << bytes << " bytes, alignment " << alignment << "\n";
     //upstream_->deallocate(p, bytes, alignment);
 }
 

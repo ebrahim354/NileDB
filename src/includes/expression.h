@@ -440,7 +440,7 @@ Value evaluate_expression(
                           assert(errno == 0);
                           if(val < INT_MAX && val > INT_MIN)
                               return Value((int) val);
-                          return Value(val);
+                          return Value((i64)val);
                       }
         case NULL_CONSTANT: 
                       {

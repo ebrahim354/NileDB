@@ -48,12 +48,12 @@ class Value {
 
         void setValue(Type t, char* content);
         Value get_copy(Arena* arena);
-        Value(char* content, Type t, uint16_t size);
-        Value(char* str, uint16_t size);
+        Value(char* content, Type t, u32 size);
+        Value(char* str, u32 size);
         Value(Arena* arena, const String& str);
         Value(bool val);
         Value(int val);
-        Value(long long val);
+        Value(i64 val);
         Value(float val);
         Value(double val);
 

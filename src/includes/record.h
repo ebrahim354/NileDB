@@ -24,6 +24,11 @@ struct RecordID {
     uint32_t slot_number_ = 0;
 };
 
+const RecordID INVALID_RID = {
+    .page_id_ = INVALID_PAGE_ID,
+    .slot_number_ = 0,
+};
+
 
  /* starting with variable length columns, they are represended as 2 byte pairs (first 2 -> offset, last 2 -> length).
  *  then fixed size columns ( the user class should understand how to read those based on the size of each type).

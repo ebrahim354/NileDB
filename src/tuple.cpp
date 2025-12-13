@@ -5,7 +5,7 @@ Tuple::Tuple(){}
 Tuple::Tuple(Arena* arena): arena_(arena)
 {}
 void Tuple::setNewSchema(TableSchema* schema, Value val) {
-    assert(schema);
+    assert(schema && arena_);
     schema_ = schema;
     u32 size = schema_->numOfCols();
     values_ = (Value*) arena_->alloc(size * sizeof(Value));

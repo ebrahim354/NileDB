@@ -79,24 +79,24 @@ int IndexIterator::advance() {
 
 IndexKey IndexIterator::getCurKey() {
     if(isNull() || entry_idx_ > cur_page_->get_num_of_slots()) return IndexKey();
-    char* cur_data = nullptr;
-    std::pair<IndexKey, RecordID> cur_entry = cur_page_->getPointer(entry_idx_);
-    return cur_entry.first;
+    //std::pair<IndexKey, RecordID> cur_entry = cur_page_->getPointer(entry_idx_);
+    //return cur_entry.first;
+    return cur_page_->getPointer(entry_idx_);
 }
 
-RecordID IndexIterator::getCurRecordID() {
+RecordID IndexIterator::getCurRecordID(FileID fid) {
     if(isNull() || entry_idx_ > cur_page_->get_num_of_slots()) return RecordID(INVALID_PAGE_ID, -1);
-    char* cur_data = nullptr;
-    std::pair<IndexKey, RecordID> cur_entry = cur_page_->getPointer(entry_idx_);
-    if(!cur_entry.first.data_) return RecordID(INVALID_PAGE_ID, -1);
-    return cur_entry.second;
+    //std::pair<IndexKey, RecordID> cur_entry = cur_page_->getPointer(entry_idx_);
+    IndexKey cur_entry = cur_page_->getPointer(entry_idx_);
+    if(!cur_entry.data_) return RecordID(INVALID_PAGE_ID, -1);
+    return cur_entry.getRID(fid);
 }
 
-Record IndexIterator::getCurRecordCpy(Arena* arena) {
+Record IndexIterator::getCurRecordCpy(Arena* arena, FileID fid) {
     if(isNull()) return Record(nullptr, 0);
     char* cur_data = nullptr;
     uint32_t rsize = 0;
-    RecordID rid = getCurRecordID();
+    RecordID rid = getCurRecordID(fid);
     if(rid.page_id_ == INVALID_PAGE_ID) return Record(nullptr, 0);
     //---------------------------------------------------------------------
     // TODO: usually you don't need to unpin the table page because you will mostly need it for future records,

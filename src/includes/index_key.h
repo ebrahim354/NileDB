@@ -56,7 +56,7 @@ struct IndexHeader {
 // TODO: we only support header size of 255 (1 byte) and text fields cannot exceed (255-13) (1 byte).
 // until we support the 'varint' type used by sqlite.
 // NOTE: we use simpler serial types than the one sqlite uses.
-enum class SerialType {
+enum class SerialType : u8 {
     NIL  = 0, // 0 bytes.
     INT  = 1, // 4 bytes.
     LONG = 2, // 8 bytes.
@@ -65,31 +65,71 @@ enum class SerialType {
     TEXT = 13, // (N-13) bytes.
 };
 
+
 struct IndexKey {
     // size of the data is stored in the first byte.
     char* data_ = nullptr;
     char* sort_order_ = nullptr;
     uint32_t size_ = 0;
 
+    // the user should be sure before using this method that the last 2 entries are in fact a record id.
+    RecordID getRID(FileID fid) {
+        assert(size_ && data_ && get_header_size() > 2);
+        char* header = (get_header_ptr()+get_header_size())-2; // record id is stored at the last two entries.
+        char* payload = (data_+size_)-8; // record id is stored at the last 8 bytes.
+        assert(    *(SerialType*)header == SerialType::INT 
+                && *(SerialType*)(header+1) == SerialType::INT );
+        RecordID rid;
+        rid.page_id_.fid_ = fid;
+        rid.page_id_.page_num_ = (i32)(*(i32*)payload);
+        payload += 4;
+        rid.slot_number_ = (i32)(*(i32*)payload);
+        return rid;
+    }
+
+    Value get_val_at(u32 idx) {
+        assert(size_ && data_ && idx < get_header_size());
+        char* header = get_header_ptr();
+        char* payload = get_payload_ptr();
+        for(int i = 0; i < idx; ++i, header++){
+            switch(*(SerialType*)header){
+                case SerialType::INT:
+                case SerialType::FLOAT:
+                    payload += 4;
+                    break;
+                case SerialType::LONG:
+                    payload += 8;
+                case SerialType::NIL:
+                    payload += 0;
+                default:
+                    payload += (*(u8*)header - 13);
+            }
+        }
+        if(*header == 0) return Value(NULL_TYPE);
+        if(*header == 1) return Value((i32)(*(i32*)payload));
+        if(*header == 2) return Value((i64)(*(i64*)payload));
+        if(*header == 3) return Value((f32)(*(f32*)payload));
+        return Value(payload, (*(u8*)header - 13));
+    }
+
     void print() {
         if(!data_){
             std::cout << '-';
             return;
         }
-        for(int i = 0; i < size_; ++i){
-            if(i < 2){
-                //int c = *(uint8_t*)(cur);
-                //std::cout << c << " ";
-            } else if(i == 2){
-                int x = *(int*)(data_+i);
-                std::cout << x << " ";
-            } else break;
+        u8 sz = get_header_size();
+        std::cout << "IndexKey with " << (int)sz << " elements, Total size: " << size_ << ", elements: ";
+        for(int i = 0; i < sz; ++i){
+            std::cout << get_val_at(i).toString();
+            if(i + 1 < sz)
+                std::cout << ", "; 
         }
+        std::cout << "\n";
     }
 
     inline uint8_t get_header_size(){
         if(!data_) return 0;
-        return (uint8_t)*data_;
+        return *(uint8_t*)data_;
     }
 
     inline char* get_payload_ptr(){
@@ -103,6 +143,7 @@ struct IndexKey {
 
     IndexKey& operator=(const IndexKey& rhs){
         this->data_ = rhs.data_;
+        this->size_ = rhs.size_;
         return *this;
     } 
     bool operator==(const IndexKey &rhs) const {
@@ -135,6 +176,75 @@ struct IndexKey {
         return cmp >= 0;
     }
 };
+
+// removes the last n elements from a key (in-place).
+// arena is just used for temporary memory and cleared back.
+bool remove_last_n(Arena* arena, IndexKey* k, i32 n){
+    int k_header_sz = k->get_header_size();
+    assert(n > 0 && n < k_header_sz);
+    if(n == 0) false;
+    int original_ksize = k->size_;
+    char* data = (char*)arena->alloc(original_ksize);
+    *data = (*(k->data_))-n;
+    auto header = k->get_header_ptr();
+    auto payload = k->get_payload_ptr();
+    memcpy(data+1, header, k_header_sz - n);
+    i32 removed_payload_sz = 0;
+    int i = 0;
+    for(char* header_ptr = payload - 1; i < n; ++i, header_ptr--){
+        switch(*(SerialType*)header_ptr){
+            case SerialType::INT:
+            case SerialType::FLOAT:
+                removed_payload_sz += 4;
+                break;
+            case SerialType::LONG:
+                removed_payload_sz += 8;
+            case SerialType::NIL:
+                removed_payload_sz += 0;
+            default:
+                removed_payload_sz += (*(u8*)header_ptr - 13);
+        }
+    }
+    memcpy(data+1+(k_header_sz-n), payload, ((payload+original_ksize)-removed_payload_sz)-payload);
+    k->size_ = original_ksize-(n  + removed_payload_sz);
+    memcpy(k->data_, data, k->size_);
+    arena->dealloc(original_ksize);
+    return true;
+}
+
+// removes the last n elements from a key and returns a copy.
+IndexKey remove_last_n_cpy(Arena* arena, IndexKey k, i32 n){
+    int k_header_sz = k.get_header_size();
+    assert(n > 0 && n < k_header_sz);
+    int original_ksize = k.size_;
+    char* data = (char*)arena->alloc(original_ksize);
+    *data = (*(k.data_))-n;
+    auto header = k.get_header_ptr();
+    auto payload = k.get_payload_ptr();
+    memcpy(data+1, header, k_header_sz - n);
+    i32 removed_payload_sz = 0;
+    int i = 0;
+    for(char* header_ptr = payload - 1; i < n; ++i, header_ptr--){
+        switch(*(SerialType*)header_ptr){
+            case SerialType::INT:
+            case SerialType::FLOAT:
+                removed_payload_sz += 4;
+                break;
+            case SerialType::LONG:
+                removed_payload_sz += 8;
+            case SerialType::NIL:
+                removed_payload_sz += 0;
+            default:
+                removed_payload_sz += (*(u8*)header_ptr - 13);
+        }
+    }
+    memcpy(data+1+(k_header_sz-n), payload, ((payload+original_ksize)-removed_payload_sz)-payload);
+    u32 new_size = original_ksize-(n  + removed_payload_sz);
+    return {
+        .data_ = data,
+        .size_ = new_size,
+    };
+}
 
 
 // -1 ==> lhs < rhs, 0 eq, 1 ==> lhs > rhs
@@ -301,24 +411,35 @@ char* create_sort_order_bitmap(Arena* arena, Vector<NumberedIndexField>& fields)
     return bitmap;
 }
 
-IndexKey getIndexKeyFromTuple(Arena* arena, Vector<NumberedIndexField>& fields, Vector<Value>& values) {
+IndexKey getIndexKeyFromTuple(Arena* arena, Vector<NumberedIndexField>& fields, Vector<Value>& values, const RecordID rid) {
     Vector<Value> keys;
     for(int i = 0; i < fields.size(); ++i){
         if(fields[i].idx_ >= values.size()) 
             return {};
         keys.push_back(values[fields[i].idx_]);
     }
+    assert(keys.size() != 0);
+    if(rid.page_id_ != INVALID_PAGE_ID){
+        keys.push_back(Value(rid.page_id_.page_num_));
+        keys.push_back(Value((int)rid.slot_number_));
+    }
+
     IndexKey res = temp_index_key_from_values(arena, keys);
     res.sort_order_ = create_sort_order_bitmap(arena, fields);
     return res;
 }
 
-IndexKey getIndexKeyFromTuple(Arena* arena, Vector<NumberedIndexField>& fields, const Tuple& tuple) {
+IndexKey getIndexKeyFromTuple(Arena* arena, Vector<NumberedIndexField>& fields, const Tuple& tuple, const RecordID rid) {
     Vector<Value> keys;
     for(int i = 0; i < fields.size(); ++i){
         if(fields[i].idx_ >= tuple.size()) 
             return {};
         keys.push_back(tuple.get_val_at(fields[i].idx_));
+    }
+    assert(keys.size() != 0);
+    if(rid.page_id_ != INVALID_PAGE_ID){
+        keys.push_back(Value(rid.page_id_.page_num_));
+        keys.push_back(Value((int)rid.slot_number_));
     }
     IndexKey res = temp_index_key_from_values(arena, keys);
     res.sort_order_ = create_sort_order_bitmap(arena, fields);

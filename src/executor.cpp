@@ -686,13 +686,14 @@ Tuple IndexScanExecutor::next() {
         finished_ = 1;
         return {};
     };
-    Record r = start_it_.getCurRecordCpy(&ctx_->temp_arena_);
+    FileID fid = table_->getTable()->get_fid();
+    Record r = start_it_.getCurRecordCpy(&ctx_->temp_arena_, fid);
     if(r.isInvalidRecord()){
         std::cout << "Could not translate record\n";
         error_status_ = 1;
         return {};
     }
-    RecordID rid = start_it_.getCurRecordID();
+    RecordID rid = start_it_.getCurRecordID(fid);
     int err = table_->translateToTuple(r, output_, rid);
     if(err) {
         error_status_ = 1;
@@ -758,7 +759,7 @@ Tuple DeletionExecutor::next() {
         if(affected_records.count(rid_hash)) continue;
         affected_records.insert(rid_hash);
 
-        Tuple t;
+        Tuple t(&ctx_->temp_arena_);
         t.setNewSchema(child_executor_->output_schema_);
         t.put_tuple_at_start(&values);
         int err = table_->getTable()->deleteRecord(rid);
@@ -769,7 +770,7 @@ Tuple DeletionExecutor::next() {
         }
         // loop over table indexes.
         for(int i = 0; i < indexes_.size(); ++i){
-            IndexKey k = getIndexKeyFromTuple(&ctx_->temp_arena_, indexes_[i].fields_numbers_, t);
+            IndexKey k = getIndexKeyFromTuple(&ctx_->temp_arena_, indexes_[i].fields_numbers_, t, rid);
             assert(k.size_ != 0);
             if(k.size_ == 0) {
                 error_status_ = 1;
@@ -860,12 +861,12 @@ Tuple UpdateExecutor::next() {
         if(affected_records.count(rid_hash)) continue;
 
 
-        Tuple old_tuple;
+        Tuple old_tuple(&ctx_->temp_arena_);
         old_tuple.setNewSchema(table_);
         old_tuple.put_tuple_at_start(&values);
 
         for(int i = 0; i < indexes_.size(); ++i){
-            IndexKey k = getIndexKeyFromTuple(&ctx_->temp_arena_, indexes_[i].fields_numbers_, old_tuple);
+            IndexKey k = getIndexKeyFromTuple(&ctx_->temp_arena_, indexes_[i].fields_numbers_, old_tuple, rid);
             assert(k.size_ != 0);
             if(k.size_ == 0) {
                 error_status_ = 1;
@@ -895,13 +896,13 @@ Tuple UpdateExecutor::next() {
 
         // loop over table indexes.
         for(int i = 0; i < indexes_.size(); ++i){
-            IndexKey k = getIndexKeyFromTuple(&ctx_->temp_arena_, indexes_[i].fields_numbers_, new_tuple);
+            IndexKey k = getIndexKeyFromTuple(&ctx_->temp_arena_, indexes_[i].fields_numbers_, new_tuple, rid);
             assert(k.size_ != 0);
             if(k.size_ == 0) {
                 error_status_ = 1;
                 break;
             }
-            int inserted = indexes_[i].index_->Insert(ctx_, k, rid);
+            int inserted = indexes_[i].index_->Insert(ctx_, k);
             assert(inserted);
         }
         if(err || error_status_) {
@@ -1015,12 +1016,12 @@ Tuple InsertionExecutor::next() {
     }
     // loop over table indexes.
     for(int i = 0; i < indexes_.size(); ++i){
-        IndexKey k = getIndexKeyFromTuple(&ctx_->temp_arena_, indexes_[i].fields_numbers_, output_);
+        IndexKey k = getIndexKeyFromTuple(&ctx_->temp_arena_, indexes_[i].fields_numbers_, output_, rid);
         if(k.size_ == 0) {
             error_status_ = 1;
             break;
         }
-        bool success = indexes_[i].index_->Insert(ctx_, k, rid);
+        bool success = indexes_[i].index_->Insert(ctx_, k);
         //indexes_[i].index_->See();
         if(!success){
             std::cout << "Could Not insert into index\n";
@@ -1134,7 +1135,7 @@ void AggregationExecutor::init() {
 
             //int total_size = output_schema_->getCols().size() + 1;
             //aggregated_values_[hash_key] = Vector<Value> (total_size, Value(NULL_TYPE));
-            Tuple t;
+            Tuple t(&ctx_->arena_);
             t.setNewSchema(output_schema_);
             aggregated_values_[hash_key] = {
                 t,

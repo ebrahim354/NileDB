@@ -24,8 +24,8 @@ class IndexIterator {
         int advance();
 
         IndexKey getCurKey();
-        RecordID getCurRecordID();
-        Record getCurRecordCpy(Arena* arena);
+        RecordID getCurRecordID(FileID fid);
+        Record getCurRecordCpy(Arena* arena, FileID fid);
 
         bool operator==(IndexIterator& rhs);
 

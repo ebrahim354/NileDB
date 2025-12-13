@@ -51,7 +51,8 @@ class Catalog {
         TableSchema* createTable(QueryCTX* ctx, const String &table_name, Vector<Column> &columns);
         TableSchema* getTableSchema(const String &table_name);
 
-        bool createIndex(QueryCTX* ctx, const String &table_name, const String& index_name, Vector<IndexField> &fields);
+        bool createIndex(QueryCTX* ctx, const String &table_name,
+                const String& index_name, Vector<IndexField> &fields, bool is_unique);
         bool load_indexes();
         IndexHeader getIndexHeader(String& iname);
 

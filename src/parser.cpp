@@ -97,7 +97,7 @@ Value Parser::constVal(QueryCTX& ctx){
             long long val = str_to_ll(token.val_);
             if(val < LONG_MAX && val > LONG_MIN)
                 return Value((int) val);
-            return Value(val);
+            return Value((i64)val);
         }
         case TokenType::TRUE:
             return Value(true);
@@ -1226,15 +1226,18 @@ void Parser::createTableStatement(QueryCTX& ctx, int parent_idx){
 
 void Parser::createIndexStatement(QueryCTX& ctx, int parent_idx){
     if((bool)ctx.error_status_) return; 
+    bool is_unique_index = false;
     if(ctx.matchMultiTokenType({TokenType::CREATE , TokenType::INDEX})){
       ctx += 2;
     } else if(ctx.matchMultiTokenType({TokenType::CREATE, TokenType::UNIQUE , TokenType::INDEX})){
       ctx += 3;
+      is_unique_index = true;
     } else {
       return;
     }
     CreateIndexStatementData* statement = New(CreateIndexStatementData, ctx.arena_, parent_idx);
     statement->idx_ = ctx.queries_call_stack_.size();
+    statement->is_unique_index_ = is_unique_index;
     ctx.queries_call_stack_.push_back(statement);
 
     if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
