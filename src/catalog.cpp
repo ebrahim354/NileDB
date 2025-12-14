@@ -56,9 +56,7 @@ void Catalog::init(CacheManager *cm) {
 
 
     // loading the hard coded meta data table schema.
-    //PageID meta_pid = {.fid_ = meta_data_fid, .page_num_ = 1};
     Table* meta_data_table = nullptr; 
-    //ALLOCATE_INIT(arena_, meta_data_table, Table, cm, meta_pid);
     ALLOCATE_INIT(arena_, meta_data_table, Table, cm, meta_data_fid);
 
     Vector<Column> meta_data_columns;
@@ -66,11 +64,8 @@ void Catalog::init(CacheManager *cm) {
     meta_data_columns.emplace_back(&arena_, "table_name"      , VARCHAR, 0);
     meta_data_columns.emplace_back(&arena_, "query"           , VARCHAR, 4); // query used to create the table.
     meta_data_columns.emplace_back(&arena_, "fid"             , INT    , 8);
-    //meta_data_columns.emplace_back(&arena_, "fpnum"           , INT    , 12);
-    //meta_data_columns.emplace_back(&arena_, "lpnum"           , INT    , 16);
     meta_table_schema_ =  New(TableSchema, arena_, META_DATA_TABLE, meta_data_table, meta_data_columns);
     tables_[META_DATA_TABLE] = meta_table_schema_;
-
 
     // temporary parser.
     Parser parser(nullptr);
@@ -86,8 +81,6 @@ void Catalog::init(CacheManager *cm) {
         String  table_name = values[0].getStringVal();
         String  query      = values[1].getStringVal();
         FileID  fid        = values[2].getIntVal();
-        //PageNum fpnum      = values[3].getIntVal();
-        //PageNum lpnum      = values[4].getIntVal();
         // "temporary" query ctx.
         QueryCTX pctx;
         pctx.init(query);
@@ -117,10 +110,7 @@ void Catalog::init(CacheManager *cm) {
         assert((fid_to_fname.count(fid) == 0) && "[FATAL] fid already exists!"); 
         fid_to_fname[fid] = fname;
         fid_to_fname[fid+1] = fsm;
-        //PageID first_page = {.fid_ = fid, .page_num_ = fpnum};
-        //PageID last_page  = {.fid_ = fid, .page_num_ = lpnum};
         Table* table = nullptr; 
-        //ALLOCATE_INIT(arena_, table, Table, cm, first_page);
         ALLOCATE_INIT(arena_, table, Table, cm, fid);
         TableSchema* schema = New(TableSchema, arena_, table_name, table, cols);
         tables_.insert({table_name, schema});
@@ -130,8 +120,8 @@ void Catalog::init(CacheManager *cm) {
     }
     it.destroy();
     // load indexes meta data:
-    // indexes_meta_data (text index_name, text table_name, int fid, int root_page_num).
-    // indexs_keys      (text index_name, int field_number_in_table, int field_number_in_index).
+    // indexes_meta_data (text index_name, text table_name, int fid, boolean is_unique).
+    // indexs_keys       (text index_name, int field_number_in_table, int field_number_in_index).
     assert(tables_.count(INDEX_META_TABLE) == tables_.count(INDEX_KEYS_TABLE)); // both should either exist or not.
     if(tables_.count(INDEX_META_TABLE)){
         load_indexes();
@@ -141,14 +131,13 @@ void Catalog::init(CacheManager *cm) {
         String index_query = 
             "CREATE TABLE " 
             INDEX_META_TABLE
-            "(index_name TEXT, table_name TEXT, fid INTEGER, root_page_num INTEGER, is_unique BOOLEAN)";
+            "(index_name TEXT, table_name TEXT, fid INTEGER, is_unique BOOLEAN)";
         pctx.init(index_query);
         Vector<Column> index_meta_columns;
-        index_meta_columns.emplace_back(&arena_, "index_name"    , VARCHAR, 0);
-        index_meta_columns.emplace_back(&arena_, "table_name"    , VARCHAR, 4);
-        index_meta_columns.emplace_back(&arena_, "fid"           , INT    , 8);
-        index_meta_columns.emplace_back(&arena_, "root_page_num" , INT    , 12);
-        index_meta_columns.emplace_back(&arena_, "is_unique"     , BOOLEAN, 16);
+        index_meta_columns.emplace_back(&arena_, "index_name"    , VARCHAR, 0 );
+        index_meta_columns.emplace_back(&arena_, "table_name"    , VARCHAR, 4 );
+        index_meta_columns.emplace_back(&arena_, "fid"           , INT    , 8 );
+        index_meta_columns.emplace_back(&arena_, "is_unique"     , BOOLEAN, 12);
         TableSchema* ret = createTable(&pctx, INDEX_META_TABLE, index_meta_columns); 
         assert(ret != nullptr);
 
@@ -184,9 +173,7 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const String &table_name, Vecto
     fid_to_fname[nfid+1] = fsm;
 
     // initialize the table
-    //PageID first_page = {.fid_ = nfid, .page_num_ = 1};
     Table* table = nullptr;
-    //ALLOCATE_INIT(arena_, table, Table, cache_manager_, first_page);
     ALLOCATE_INIT(arena_, table, Table, cache_manager_, nfid);
     TableSchema* schema = New(TableSchema, arena_, table_name, table, columns);
     tables_.insert({table_name, schema});
@@ -195,8 +182,6 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const String &table_name, Vecto
     vals.emplace_back(Value(&ctx->arena_, table_name));
     vals.emplace_back(Value(&ctx->arena_, ctx->query_));
     vals.emplace_back(Value(nfid));
-    //vals.emplace_back(Value(1)); // page number 1 is the first an last.
-    //vals.emplace_back(Value(1));
     // translate the vals to a record and persist them.
     Record record = meta_table_schema_->translateToRecord(&ctx->arena_, vals);
     assert(record.isInvalidRecord() == false);
@@ -219,7 +204,6 @@ bool Catalog::createIndex(QueryCTX* ctx, const String &table_name, const String&
         cols.push_back({col, fields[i].desc_});
     }
     // initialize the index
-    //PageID first_page = {.file_name_ = index_name+"_INDEX.ndb", .page_num_ = -1};
     String index_fname = index_name+"_INDEX.ndb";
     FileID nfid = generate_max_fid(); 
     assert(fid_to_fname.count(nfid) == 0); // TODO: replace assertion with error.
@@ -227,7 +211,6 @@ bool Catalog::createIndex(QueryCTX* ctx, const String &table_name, const String&
 
 
     // persist the index.
-    // indexes_meta_data (text index_name, text table_name, int fid, int root_page_num, bool is_unique).
     assert(tables_.count(INDEX_META_TABLE) && tables_.count(INDEX_KEYS_TABLE));
     TableSchema* index_meta_data = tables_[INDEX_META_TABLE];
     TableSchema* index_keys      = tables_[INDEX_KEYS_TABLE];
@@ -235,8 +218,7 @@ bool Catalog::createIndex(QueryCTX* ctx, const String &table_name, const String&
     BTreeIndex* index = nullptr; 
     // table indexes always have nvals = 2.
     ALLOCATE_INIT(arena_, index, 
-            BTreeIndex, cache_manager_, nfid, INVALID_PAGE_ID, index_meta_data,
-            TABLE_BTREE_NVALS, is_unique);
+            BTreeIndex, cache_manager_, nfid, TABLE_BTREE_NVALS, is_unique);
     IndexHeader header = {
         .index_ = index,
         .index_name_ = index_name, 
@@ -254,7 +236,6 @@ bool Catalog::createIndex(QueryCTX* ctx, const String &table_name, const String&
     vals.emplace_back(Value(&ctx->arena_, index_name));
     vals.emplace_back(Value(&ctx->arena_, table_name));
     vals.emplace_back(Value(nfid));
-    vals.emplace_back(Value(-1)); // -1 means no root yet.
     vals.emplace_back(Value((bool)is_unique));
     Record record = index_meta_data->translateToRecord(&ctx->arena_, vals);
     assert(record.isInvalidRecord() == false);
@@ -342,7 +323,7 @@ Vector<IndexHeader> Catalog::getIndexesOfTable(String& tname) {
 }
 
 bool Catalog::load_indexes() {
-    // indexes_meta_data (text index_name, text table_name, int fid, int root_page_num).
+    // indexes_meta_data (text index_name, text table_name, int fid, is_unique).
     TableSchema* indexes_meta_schema = tables_[INDEX_META_TABLE];
     TableIterator it_meta = indexes_meta_schema->getTable()->begin();
     bool success = true;
@@ -360,9 +341,8 @@ bool Catalog::load_indexes() {
 
         String index_name = values[0].getStringVal();
         String table_name = values[1].getStringVal();
-        FileID fid = values[2].getIntVal();
-        PageNum root_page_num = values[3].getIntVal();
-        bool is_unique = values[4].getBoolVal();
+        FileID fid        = values[2].getIntVal();
+        bool is_unique    = values[3].getBoolVal();
 
         // each index must exist only once on this table.
         assert(indexes_.count(index_name) == 0 && "Index accured multiple times on meta data!");
@@ -373,12 +353,9 @@ bool Catalog::load_indexes() {
         fid_to_fname[fid] = index_fname;
 
         // save results into memory.
-        PageID root_page_id = {.fid_ = fid, .page_num_ = root_page_num};
         BTreeIndex* index_ptr = nullptr; 
         ALLOCATE_INIT(arena_, index_ptr, 
-                        BTreeIndex, cache_manager_, fid, root_page_id, indexes_meta_schema, 
-                        TABLE_BTREE_NVALS, is_unique
-                        );
+                        BTreeIndex, cache_manager_, fid, TABLE_BTREE_NVALS, is_unique);
         indexes_.insert({index_name, {.index_ = index_ptr, .index_name_ = index_name}});
         if(indexes_of_table_.count(table_name))
             indexes_of_table_[table_name].push_back(index_name);
@@ -454,7 +431,7 @@ int Catalog::deleteIndex(QueryCTX* ctx, const String& index_name) {
     TableSchema* index_keys      = tables_[INDEX_KEYS_TABLE];
 
     // clear index_meta_data.
-    // indexes_meta_data (text index_name, text table_name, int fid, int root_page_num).
+    // indexes_meta_data (text index_name, text table_name, int fid).
     TableIterator it_meta = index_meta_data->getTable()->begin();
     std::set<u64> halloween_preventer;
     it_meta.init();
@@ -468,7 +445,7 @@ int Catalog::deleteIndex(QueryCTX* ctx, const String& index_name) {
         assert(err == 0 && "Could not traverse the indexes meta table.");
 
         String cur_table_name = values[1].getStringVal();
-        FileID index_fid = values[2].getIntVal();
+        FileID index_fid      = values[2].getIntVal();
         if(index_fid != fid) {
             ctx->arena_.clear_temp_arena(tmp);
             continue;

@@ -17,6 +17,8 @@ void Table::init(CacheManager* cm, FileID fid) {
     fid_  = fid;
     PageID zero_pid = {.fid_ = fid_, .page_num_ = 0};
 
+    // TODO: consider moving this into the system catalog?
+    //
     // page number 0 is reserved for meta data.
     Page* meta_page = cache_manager_->fetchPage(zero_pid); 
     assert(meta_page != 0);

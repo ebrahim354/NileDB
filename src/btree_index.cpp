@@ -12,57 +12,33 @@
 #include "table_schema.cpp"
 #include "btree_index.h"
 
-void BTreeIndex::init(
-        CacheManager* cm, FileID fid, PageID root_page_id, 
-        TableSchema* index_meta_schema, int nvals, bool is_unique){
-    is_unique_index_ = is_unique;
-    index_nvals_ = nvals;
+void BTreeIndex::init(CacheManager* cm, FileID fid, int nvals, bool is_unique) {
     cache_manager_ = cm;
     fid_ = fid;
-    root_page_id_ = root_page_id;
-    index_meta_schema_ = index_meta_schema;
+    index_nvals_ = nvals;
+    is_unique_index_ = is_unique;
+
+    // TODO: consider moving this into the system catalog?
+    PageID zero_pid = {.fid_ = fid_, .page_num_ = 0};
+
+    // page number 0 is reserved for meta data.
+    Page* meta_page = cache_manager_->fetchPage(zero_pid); 
+    assert(meta_page != 0);
+
+    PageNum root_pnum = *(PageNum*)(meta_page->data_+ROOT_PNUM_OFFSET);
+    if(root_pnum == 0) root_page_id_ = INVALID_PAGE_ID;
+    else root_page_id_   = {.fid_ = fid_, .page_num_ = root_pnum};
+
+    cache_manager_->unpinPage(zero_pid, false);
 }
+
 void BTreeIndex::destroy(){}
 
-void BTreeIndex::update_index_root(QueryCTX* ctx, FileID fid, PageNum new_root_pid) {
-    TableSchema* indexes_meta_schema = index_meta_schema_; 
-    TableIterator it_meta = indexes_meta_schema->getTable()->begin();
-
-    std::set<u64> halloween_preventer;
-
-    it_meta.init();
-    while(it_meta.advance()){
-        if(halloween_preventer.count(it_meta.getCurRecordID().get_hash())) break;
-        Record r = it_meta.getCurRecordCpy(&ctx->arena_);
-        assert(!r.isInvalidRecord());
-        Vector<Value> values;
-        int err = indexes_meta_schema->translateToValues(r, values);
-        assert(err == 0 && "Could not traverse the indexes schema.");
-
-        String index_name = values[0].getStringVal();
-        String table_name = values[1].getStringVal();
-        FileID index_fid = values[2].getIntVal();
-        PageNum root_pid = values[3].getIntVal();
-        if(index_fid != fid) continue;
-
-        RecordID rid = it_meta.getCurRecordID();
-
-        values[3] = Value(new_root_pid);
-        Record new_record = indexes_meta_schema->translateToRecord(&ctx->arena_, values);
-        assert(new_record.isInvalidRecord() == false);
-        err = indexes_meta_schema->getTable()->updateRecord(&rid, new_record);
-        assert(err == 0 && "Could not update record.");
-        halloween_preventer.insert(rid.get_hash());
-    }
-    it_meta.destroy();
-}
-
-void BTreeIndex::SetRootPageId(QueryCTX* ctx, PageID root_page_id, int insert_record) {
+void BTreeIndex::SetRootPageId(QueryCTX* ctx, PageID root_page_id) {
     // TODO: fix dead lock.
     //std::unique_lock locker(this->root_page_id_lock_);
     root_page_id_ = root_page_id;
-    assert(index_meta_schema_ != 0);
-    update_index_root(ctx, fid_, root_page_id.page_num_);
+    cache_manager_->update_root_page_number(root_page_id_.fid_, root_page_id_.page_num_);
 }
 
 // true means value is returned.
@@ -168,7 +144,7 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
         leaf->Init(leaf_page->page_id_, INVALID_PAGE_ID);
         leaf->SetPageType(BTreePageType::LEAF_PAGE);
         root = leaf;
-        SetRootPageId(ctx, leaf_page->page_id_, 1);
+        SetRootPageId(ctx, leaf_page->page_id_);
     } else {
         auto *root_page = cache_manager_->fetchPage(root_page_id_);
         // could not fetch a page.

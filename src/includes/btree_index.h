@@ -18,12 +18,10 @@
 
 class BTreeIndex {
     public:
-        void init(CacheManager* cm, FileID fid, PageID root_page_id,
-                TableSchema* index_meta_schema, int nvals, bool is_unique);
+        void init(CacheManager* cm, FileID fid, int nvals, bool is_unique);
         void destroy();
 
-        void update_index_root(QueryCTX* ctx, FileID fid, PageNum new_root_pid);
-        void SetRootPageId(QueryCTX* ctx, PageID root_page_id, int insert_record = 0);
+        void SetRootPageId(QueryCTX* ctx, PageID root_page_id);
         // true means value is returned.
         //bool GetValue(QueryCTX* ctx, IndexKey &key, Vector<RecordID> *result);
         // new_page_raw (output).
@@ -45,9 +43,8 @@ class BTreeIndex {
     private:
         bool isEmpty();
         CacheManager* cache_manager_ = nullptr;
-        TableSchema*  index_meta_schema_ = nullptr;
-        FileID fid_                  = -1;
-        PageID root_page_id_         = INVALID_PAGE_ID;
+        FileID fid_                  = INVALID_FID;
+        PageID root_page_id_         = INVALID_PAGE_ID; // TODO: just turn this into a page number.
         std::shared_mutex root_page_id_lock_;
 
         int index_nvals_ = -1;
