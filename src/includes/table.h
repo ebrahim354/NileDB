@@ -32,11 +32,9 @@ class TableIterator;
  */
 class Table {
     public:
-        void init(CacheManager* cm, PageID first_page_id);
+        void init(CacheManager* cm, FileID fid);
         void destroy();
-
-        // should use the free space map to find the closest free space inside of the file
-        // or just append it to the end of the file.
+        void update_first_page_number(PageNum pnum);
 
         // rid (output)
         // return 1 in case of an error.
@@ -54,9 +52,10 @@ class Table {
         TableIterator begin();
         FileID get_fid();
     private:
-        CacheManager* cache_manager_ = nullptr;
-        PageID first_page_id_ = INVALID_PAGE_ID;
         FreeSpaceMap free_space_map_;
+        CacheManager* cache_manager_ = nullptr;
+        FileID fid_ = INVALID_FID;
+        PageNum first_pnum_ = INVALID_PAGE_NUM;
 };
 
 #endif // TABLE_H 

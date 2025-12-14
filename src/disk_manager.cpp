@@ -78,6 +78,8 @@ int DiskManager::allocateNewPage(FileID fid, char* buffer , PageID *page_id){
     auto file_stream = &cached_files_[file_name].fs_;
     int next_free_page = cached_files_[file_name].freelist_ptr_;
     int offset_to_eof = (cached_files_[file_name].num_of_pages_) * PAGE_SIZE;
+    // when allocting a new page it can't be page 0.
+    assert(offset_to_eof != 0 && "allocating page 0 is no possible"); 
     // no free pages => append to the end.
     if(next_free_page == 0){
         file_stream->seekp(offset_to_eof);
@@ -184,6 +186,30 @@ int DiskManager::writePage(PageID page_id, char* input_buffer) {
     return 0;
 }
 
+int DiskManager::update_root_page_number(FileID fid, PageNum pnum){
+    assert(sizeof(pnum) == 4);
+    assert(fid_to_fname.count(fid) != 0); // TODO: replace assertion with an error message.
+    auto file_name = fid_to_fname[fid];
+    int open_err = openFile(file_name);
+    if(open_err) {
+        assert(0);
+        return 1;
+    }
+    auto file_stream = &cached_files_[file_name].fs_;
+    file_stream->seekp(ROOT_PNUM_OFFSET);
+
+    char bytes[4];
+    memcpy(bytes, &pnum, sizeof(pnum));
+    file_stream->write(bytes, sizeof(pnum));
+    if (file_stream->bad()) {
+        std::cerr << "I/O error while writing" << std::endl;
+        file_stream->clear();
+        return 1;
+    }
+    file_stream->flush();
+    return 0;
+}
+
 int DiskManager::openFile(String file_name){
     // bad file format.
     String::size_type n = file_name.rfind(FILE_EXT);
@@ -200,7 +226,7 @@ int DiskManager::openFile(String file_name){
     }
     // file doesn't exist.
     // create a new one and return 1 on failure.
-    if(!cached_files_[file_name].fs_.is_open()){
+    if(!cached_files_[file_name].fs_.is_open()) {
         cached_files_[file_name].fs_ = std::fstream
             (file_name.c_str(), std::ios::binary | std::ios::trunc | std::ios::out | std::ios::in);
         cached_files_[file_name].fs_.clear();
@@ -209,7 +235,7 @@ int DiskManager::openFile(String file_name){
             return 1;
         }
 
-        char first_page[PAGE_SIZE];
+        char first_page[PAGE_SIZE]{0};
         int one = 1;
         int zero = 0;
         // assigning first 4 bytes to 0  => next free page for allocatation.
@@ -222,7 +248,7 @@ int DiskManager::openFile(String file_name){
         cached_files_[file_name].fs_.write(first_page, PAGE_SIZE);
         cached_files_[file_name].fs_.flush();
         if (cached_files_[file_name].fs_.bad()) {
-            // std::cout << "I/O error while writing" << std::endl;
+            std::cout << "I/O error while writing" << std::endl;
             cached_files_.erase(file_name);
             return 1;
         }

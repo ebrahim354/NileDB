@@ -56,17 +56,18 @@ void Catalog::init(CacheManager *cm) {
 
 
     // loading the hard coded meta data table schema.
-    PageID meta_pid = {.fid_ = meta_data_fid, .page_num_ = 1};
+    //PageID meta_pid = {.fid_ = meta_data_fid, .page_num_ = 1};
     Table* meta_data_table = nullptr; 
-    ALLOCATE_INIT(arena_, meta_data_table, Table, cm, meta_pid);
+    //ALLOCATE_INIT(arena_, meta_data_table, Table, cm, meta_pid);
+    ALLOCATE_INIT(arena_, meta_data_table, Table, cm, meta_data_fid);
 
     Vector<Column> meta_data_columns;
     meta_data_columns.reserve(5);
     meta_data_columns.emplace_back(&arena_, "table_name"      , VARCHAR, 0);
     meta_data_columns.emplace_back(&arena_, "query"           , VARCHAR, 4); // query used to create the table.
     meta_data_columns.emplace_back(&arena_, "fid"             , INT    , 8);
-    meta_data_columns.emplace_back(&arena_, "fpnum"           , INT    , 12);
-    meta_data_columns.emplace_back(&arena_, "lpnum"           , INT    , 16);
+    //meta_data_columns.emplace_back(&arena_, "fpnum"           , INT    , 12);
+    //meta_data_columns.emplace_back(&arena_, "lpnum"           , INT    , 16);
     meta_table_schema_ =  New(TableSchema, arena_, META_DATA_TABLE, meta_data_table, meta_data_columns);
     tables_[META_DATA_TABLE] = meta_table_schema_;
 
@@ -85,8 +86,8 @@ void Catalog::init(CacheManager *cm) {
         String  table_name = values[0].getStringVal();
         String  query      = values[1].getStringVal();
         FileID  fid        = values[2].getIntVal();
-        PageNum fpnum      = values[3].getIntVal();
-        PageNum lpnum      = values[4].getIntVal();
+        //PageNum fpnum      = values[3].getIntVal();
+        //PageNum lpnum      = values[4].getIntVal();
         // "temporary" query ctx.
         QueryCTX pctx;
         pctx.init(query);
@@ -116,10 +117,11 @@ void Catalog::init(CacheManager *cm) {
         assert((fid_to_fname.count(fid) == 0) && "[FATAL] fid already exists!"); 
         fid_to_fname[fid] = fname;
         fid_to_fname[fid+1] = fsm;
-        PageID first_page = {.fid_ = fid, .page_num_ = fpnum};
-        PageID last_page  = {.fid_ = fid, .page_num_ = lpnum};
+        //PageID first_page = {.fid_ = fid, .page_num_ = fpnum};
+        //PageID last_page  = {.fid_ = fid, .page_num_ = lpnum};
         Table* table = nullptr; 
-        ALLOCATE_INIT(arena_, table, Table, cm, first_page);
+        //ALLOCATE_INIT(arena_, table, Table, cm, first_page);
+        ALLOCATE_INIT(arena_, table, Table, cm, fid);
         TableSchema* schema = New(TableSchema, arena_, table_name, table, cols);
         tables_.insert({table_name, schema});
 
@@ -182,9 +184,10 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const String &table_name, Vecto
     fid_to_fname[nfid+1] = fsm;
 
     // initialize the table
-    PageID first_page = {.fid_ = nfid, .page_num_ = 1};
+    //PageID first_page = {.fid_ = nfid, .page_num_ = 1};
     Table* table = nullptr;
-    ALLOCATE_INIT(arena_, table, Table, cache_manager_, first_page);
+    //ALLOCATE_INIT(arena_, table, Table, cache_manager_, first_page);
+    ALLOCATE_INIT(arena_, table, Table, cache_manager_, nfid);
     TableSchema* schema = New(TableSchema, arena_, table_name, table, columns);
     tables_.insert({table_name, schema});
     // persist the table schema in the meta data table.
@@ -192,8 +195,8 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const String &table_name, Vecto
     vals.emplace_back(Value(&ctx->arena_, table_name));
     vals.emplace_back(Value(&ctx->arena_, ctx->query_));
     vals.emplace_back(Value(nfid));
-    vals.emplace_back(Value(1)); // page number 1 is the first an last.
-    vals.emplace_back(Value(1));
+    //vals.emplace_back(Value(1)); // page number 1 is the first an last.
+    //vals.emplace_back(Value(1));
     // translate the vals to a record and persist them.
     Record record = meta_table_schema_->translateToRecord(&ctx->arena_, vals);
     assert(record.isInvalidRecord() == false);

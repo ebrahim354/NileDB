@@ -28,6 +28,8 @@ class CacheManager {
         void resetPage(PageID page_id, u32 frame);
         bool deletePage(PageID page_id);
         bool deleteFile(FileID fid);
+        // this function call skips the cache manager and updates the disk directly.
+        bool update_root_page_number(FileID fid, PageNum pnum);
 
     private:
 

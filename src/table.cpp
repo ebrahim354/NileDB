@@ -8,17 +8,31 @@
 #include "record.cpp"
 #include "table_data_page.cpp"
 
-// fsm file id is by convention the next file id after the table's file id.
-void Table::init(CacheManager* cm, PageID first_page_id) {
-    assert(first_page_id != INVALID_PAGE_ID);
-    cache_manager_  = cm;
-    first_page_id_  = first_page_id;
-    free_space_map_.init(cm, first_page_id_.fid_+1); 
-}
-void Table::destroy(){}
 
-// should use the free space map to find the closest free space inside of the file
-// or just append it to the end of the file.
+
+
+void Table::init(CacheManager* cm, FileID fid) {
+    assert(fid != INVALID_FID);
+    cache_manager_  = cm;
+    fid_  = fid;
+    PageID zero_pid = {.fid_ = fid_, .page_num_ = 0};
+
+    // page number 0 is reserved for meta data.
+    Page* meta_page = cache_manager_->fetchPage(zero_pid); 
+    assert(meta_page != 0);
+    first_pnum_ = *(PageNum*)(meta_page->data_+ROOT_PNUM_OFFSET);
+    cache_manager_->unpinPage(zero_pid, false);
+
+    // fsm file id is by convention the next file id after the table's file id.
+    free_space_map_.init(cm, fid_+1); 
+}
+
+void Table::update_first_page_number(PageNum pnum) {
+    first_pnum_ = pnum;
+    cache_manager_->update_root_page_number(fid_, pnum);
+}
+
+void Table::destroy(){}
 
 // rid (output)
 // return 1 in case of an error.
@@ -27,7 +41,7 @@ int Table::insertRecord(RecordID* rid, Record &record){
         std::cout << "Record size is larger than page size.\n";
         return 1; 
     }
-    rid->page_id_ = first_page_id_;
+    rid->page_id_.fid_ = fid_;
     PageNum page_num = 0;
     TableDataPage* table_page = nullptr;
     // TODO: try to apply the best case :
@@ -41,12 +55,13 @@ int Table::insertRecord(RecordID* rid, Record &record){
     // allocate a new one with the cache manager
     // or if there is free space fetch the page with enough free space.
     if(no_free_space) {
-        table_page = reinterpret_cast<TableDataPage*>(cache_manager_->newPage(first_page_id_.fid_));
+        table_page = reinterpret_cast<TableDataPage*>(cache_manager_->newPage(fid_));
         // couldn't fetch any pages for any reason.
         if(table_page == nullptr) {
             std::cout << " could not create a new table_page " << std::endl;
             return 1;
         }
+        if(first_pnum_ == 0) update_first_page_number(table_page->page_id_.page_num_);
         table_page->init();
         // this is the last page.
         table_page->setNextPageNumber(0);
@@ -138,10 +153,10 @@ int Table::updateRecord(RecordID *rid, Record &new_record){
 }
 // we allow only forward scans for now via tableIterator.advance().
 TableIterator Table::begin() {
-    return TableIterator(cache_manager_, first_page_id_);
+    return TableIterator(cache_manager_, {.fid_ = fid_, .page_num_ = first_pnum_});
 }
 
 FileID Table::get_fid(){
-    return first_page_id_.fid_;
+    return fid_;
 }
 
