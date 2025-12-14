@@ -24,8 +24,6 @@ class TableSchema {
         bool checkValidValue(String& field, Value& val);
         int getColIdx(String& field, Value& val);
         bool isValidCol(String& col_name);
-        void addColumn(Arena* arena, const String& name, Type type,
-            u8 col_offset, ConstraintType constraints = CONSTRAINT_NOTHING);
         String typeToString(Type t);
         void printSchema(std::stringstream& ss);
         void printSchema();

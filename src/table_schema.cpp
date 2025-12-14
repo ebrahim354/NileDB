@@ -71,15 +71,6 @@ bool TableSchema::isValidCol(String& col_name){
     return false;
 }
 
-void TableSchema::addColumn(Arena* arena, const String& name, Type type,
-        u8 col_offset, ConstraintType constraints){
-    size_ += getSizeFromType(type);
-    columns_.emplace_back(arena, name, type, col_offset, constraints);
-    std::sort(columns_.begin(), columns_.end(), [](Column& a, Column& b){
-            return a.getOffset() < b.getOffset();
-            });
-}
-
 String TableSchema::typeToString(Type t){
     if(t == BOOLEAN)        return "BOOLEAN";
     else if(t == INT)       return "INT";

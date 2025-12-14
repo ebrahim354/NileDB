@@ -23,6 +23,7 @@ void Table::init(CacheManager* cm, FileID fid) {
     Page* meta_page = cache_manager_->fetchPage(zero_pid); 
     assert(meta_page != 0);
     first_pnum_ = *(PageNum*)(meta_page->data_+ROOT_PNUM_OFFSET);
+    if(first_pnum_ == 0) first_pnum_ = INVALID_PAGE_NUM;
     cache_manager_->unpinPage(zero_pid, false);
 
     // fsm file id is by convention the next file id after the table's file id.
@@ -63,27 +64,30 @@ int Table::insertRecord(RecordID* rid, Record &record){
             std::cout << " could not create a new table_page " << std::endl;
             return 1;
         }
-        if(first_pnum_ == 0) update_first_page_number(table_page->page_id_.page_num_);
+        if(first_pnum_ == INVALID_PAGE_NUM) update_first_page_number(table_page->page_id_.page_num_);
         table_page->init();
         // this is the last page.
         table_page->setNextPageNumber(0);
         // we assume this is also the first page and will be updated if not.
         table_page->setPrevPageNumber(0);
-        // fetch the previous page if this page is not the first page.
-        // this methods assumes that pages are connected which is not always the case, and it needs to be
-        // improved.
-        // should set the next and prev page pointers but we assume that pages are connected for now.
 
         // if you are not the first page:
-        if(table_page->page_id_.page_num_ != 1){
-            auto prev_page_id = table_page->page_id_;
-            prev_page_id.page_num_--;
-            TableDataPage* prev_page = reinterpret_cast<TableDataPage*>
-                (cache_manager_->fetchPage(prev_page_id));
-            prev_page->setNextPageNumber(table_page->getPageNumber());
-            table_page->setPrevPageNumber(prev_page->getPageNumber());
-            //cache_manager_->flushPage(prev_page->page_id_);
-            cache_manager_->unpinPage(prev_page->page_id_, true);
+        if(table_page->page_id_.page_num_ != first_pnum_){
+            PageID first_page_id = {
+                .fid_ = fid_,
+                .page_num_ = first_pnum_,
+            };
+            auto first_page = (TableDataPage*)cache_manager_->fetchPage(first_page_id);
+
+            // new pages are appended after the first page:
+            // first_page->p1->p2->p3
+            // first_page->new_page->p1->p2->p3
+            //
+            table_page->setPrevPageNumber(first_page->getPageNumber());
+            table_page->setNextPageNumber(first_page->getNextPageNumber());
+            first_page->setNextPageNumber(table_page->getPageNumber());
+
+            cache_manager_->unpinPage(first_page->page_id_, true);
         }
         // if you are the first page and you just got created that means,
         // you are the first and last so we don't need to update any other pages.
