@@ -31,7 +31,7 @@ struct QueryCTX {
     // Delete move assignment operator
     QueryCTX& operator=(QueryCTX&&) = delete;
 
-    void init(int query_string_size);
+    void init(String& query);
     inline bool matchTokenType(TokenType type);
     inline bool matchAnyTokenType(Vector<TokenType> types);
     inline bool matchMultiTokenType(Vector<TokenType> types);
@@ -43,6 +43,7 @@ struct QueryCTX {
 
     void clean();
 
+    String query_;
     Vector<Token> tokens_;
     Vector<QueryData*> queries_call_stack_ = {};
     Vector<QueryData*> set_operations_ = {};

@@ -11,7 +11,9 @@ QUERY::QueryCTX (QueryCTX& rhs){
 }
 */
 
-void QueryCTX::init(int query_string_size) {
+void QueryCTX::init(String& query) {
+    query_ = query;
+    int query_string_size = query_.size();
     int avg_num_of_tokens = query_string_size / AVG_TOKEN_SIZE;
     tokens_.reserve(avg_num_of_tokens);
     arena_.init();

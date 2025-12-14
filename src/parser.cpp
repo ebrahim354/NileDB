@@ -64,9 +64,7 @@ class Parser {
         void dropTableStatement(QueryCTX& ctx, int parent_idx);
         void dropIndexStatement(QueryCTX& ctx, int parent_idx);
 
-        // query : input.
-        // ctx   : output.
-        void parse(String& query, QueryCTX& ctx);
+        void parse(QueryCTX& ctx);
 
     private:
         Tokenizer tokenizer_ {};
@@ -111,9 +109,9 @@ Value Parser::constVal(QueryCTX& ctx){
 }
 
 
-void Parser::parse(String& query, QueryCTX& ctx){
+void Parser::parse(QueryCTX& ctx){
     if((bool)ctx.error_status_) return; 
-    tokenizer_.tokenize(query, ctx.tokens_);
+    tokenizer_.tokenize(ctx.query_, ctx.tokens_);
 
     if(ctx.tokens_.size() == 0)
         return;

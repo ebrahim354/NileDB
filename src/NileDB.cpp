@@ -40,18 +40,8 @@ class NileDB {
         void flush(){
             cache_manager_->flushAllPages();
         }
-        bool SQL(QueryCTX& query_ctx, String query, Executor** execution_root){
-            std::cout << "[INFO] runing the following query: " << query << std::endl;
-            /*
-            int diff = 'A' - 'a';
-            bool inside_string_literal = false;
-            for(int i = 0; i < query.size(); i++){
-                if(query[i] == '\'') inside_string_literal = !inside_string_literal;
-                if(query[i] >= 'a' && query[i] <= 'z' && !inside_string_literal){
-                    query[i] += diff;
-                }
-            }*/
-            bool res =  query_processor_->handleQuery(query_ctx, query, execution_root);
+        bool SQL(QueryCTX& query_ctx, Executor** execution_root){
+            bool res =  query_processor_->handleQuery(query_ctx, execution_root);
             return res;
         }
         bool CMD(String command){

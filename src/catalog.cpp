@@ -8,6 +8,7 @@
 #include "tokenizer.cpp"
 #include "btree_index.cpp"
 #include "table_schema.cpp"
+#include "parser.cpp"
 #include <sstream>
 #include <algorithm>
 #include <cstdint>
@@ -60,20 +61,18 @@ void Catalog::init(CacheManager *cm) {
     ALLOCATE_INIT(arena_, meta_data_table, Table, cm, meta_pid);
 
     Vector<Column> meta_data_columns;
-    meta_data_columns.reserve(9);
-    meta_data_columns.emplace_back(&arena_, "table_name", VARCHAR, 0);
-    meta_data_columns.emplace_back(&arena_, "col_name"  , VARCHAR, 4);
-    meta_data_columns.emplace_back(&arena_, "fid"       , INT    , 8);
-    meta_data_columns.emplace_back(&arena_, "col_type"  , INT    , 12);
-    meta_data_columns.emplace_back(&arena_, "col_offset", INT    , 16);
-    meta_data_columns.emplace_back(&arena_, "nullable"  , BOOLEAN, 20);
-    meta_data_columns.emplace_back(&arena_, "primary"   , BOOLEAN, 21);
-    meta_data_columns.emplace_back(&arena_, "foreign"   , BOOLEAN, 22);
-    meta_data_columns.emplace_back(&arena_, "unique"    , BOOLEAN, 23);
+    meta_data_columns.reserve(5);
+    meta_data_columns.emplace_back(&arena_, "table_name"      , VARCHAR, 0);
+    meta_data_columns.emplace_back(&arena_, "query"           , VARCHAR, 4); // query used to create the table.
+    meta_data_columns.emplace_back(&arena_, "fid"             , INT    , 8);
+    meta_data_columns.emplace_back(&arena_, "fpnum"           , INT    , 12);
+    meta_data_columns.emplace_back(&arena_, "lpnum"           , INT    , 16);
     meta_table_schema_ =  New(TableSchema, arena_, META_DATA_TABLE, meta_data_table, meta_data_columns);
     tables_[META_DATA_TABLE] = meta_table_schema_;
 
 
+    // temporary parser.
+    Parser parser(nullptr);
     // loading TableSchema of each table into memory.
     TableIterator it = meta_data_table->begin();
     it.init();
@@ -83,40 +82,49 @@ void Catalog::init(CacheManager *cm) {
         int err = meta_table_schema_->translateToValues(r, values);
         if(err) break;
         // extract the data of this row.
-        String table_name = values[0].getStringVal();
-        String col_name(values[1].getStringVal(), &arena_);
-        FileID fid = values[2].getIntVal();
-        Type col_type = static_cast<Type>(values[3].getIntVal());
-        int col_offset = values[4].getIntVal();
-        int not_null = values[5].getBoolVal();
-        int primary_key = values[6].getBoolVal();
-        int foreign_key = values[7].getBoolVal();
-        int unique = values[8].getBoolVal();
-
-        // first time seeing this table? if yes then we need to initialize it.
-        if(!tables_.count(table_name)){
-            String fname = table_name+".ndb";
-            String fsm = table_name+"_fsm.ndb";
-            assert((fid_to_fname.count(fid) == 0) && "[FATAL] fid already exists!"); 
-            fid_to_fname[fid] = fname;
-            fid_to_fname[fid+1] = fsm;
-
-            PageID first_page = {.fid_ = fid, .page_num_ = 1};
-            // the table owns its free space map pointer and is responsible for deleting it.
-            Table* table = nullptr; 
-            ALLOCATE_INIT(arena_, table, Table, cm, first_page);
-            TableSchema* schema = New(TableSchema, arena_, table_name, table, {});
-            tables_.insert({table_name, schema});
+        String  table_name = values[0].getStringVal();
+        String  query      = values[1].getStringVal();
+        FileID  fid        = values[2].getIntVal();
+        PageNum fpnum      = values[3].getIntVal();
+        PageNum lpnum      = values[4].getIntVal();
+        // "temporary" query ctx.
+        QueryCTX pctx;
+        pctx.init(query);
+        parser.parse(pctx);
+        assert(pctx.queries_call_stack_.size() == 1);
+        auto table_data =  (CreateTableStatementData*) pctx.queries_call_stack_[0];
+        assert(table_data->type_ == CREATE_TABLE_DATA && table_data->table_name_ == table_name);
+        // collect column data.
+        Vector<FieldDef>* fields = &table_data->field_defs_;
+        assert(fields->size());
+        Vector<Column> cols; cols.reserve(fields->size());
+        
+        u8 col_offset = 0;
+        for(int i = 0; i < fields->size(); ++i){
+            Type type = tokenTypeToColType((*fields)[i].type_);
+            if(type == INVALID) {
+                std::cout << "[ERROR] Invalid type\n";
+                assert(0);
+            }
+            cols.emplace_back(&arena_, (*fields)[i].field_name_, type, col_offset, (*fields)[i].constraints_);
+            col_offset += getSizeFromType(type);
         }
 
-        // add the column to the table's meta data.
-        ConstraintType  cons = CONSTRAINT_NOTHING;
-        if(not_null)    cons |= CONSTRAINT_NOT_NULL;
-        if(primary_key) cons |= CONSTRAINT_PRIMARY_KEY; 
-        if(foreign_key) cons |= CONSTRAINT_FOREIGN_KEY;
-        if(unique)      cons |= CONSTRAINT_UNIQUE; 
+        // initialize the table.
+        String fname = table_name+".ndb";
+        String fsm = table_name+"_fsm.ndb";
+        assert((fid_to_fname.count(fid) == 0) && "[FATAL] fid already exists!"); 
+        fid_to_fname[fid] = fname;
+        fid_to_fname[fid+1] = fsm;
+        PageID first_page = {.fid_ = fid, .page_num_ = fpnum};
+        PageID last_page  = {.fid_ = fid, .page_num_ = lpnum};
+        Table* table = nullptr; 
+        ALLOCATE_INIT(arena_, table, Table, cm, first_page);
+        TableSchema* schema = New(TableSchema, arena_, table_name, table, cols);
+        tables_.insert({table_name, schema});
 
-        tables_[table_name]->addColumn(&arena_, col_name, col_type, col_offset, cons);
+        // clean the temporary query ctx.
+        pctx.clean();
     }
     it.destroy();
     // load indexes meta data:
@@ -128,7 +136,11 @@ void Catalog::init(CacheManager *cm) {
     } else {
         // create a pseudo context and destroy it after.
         QueryCTX pctx;
-        pctx.init(0);
+        String index_query = 
+            "CREATE TABLE " 
+            INDEX_META_TABLE
+            "(index_name TEXT, table_name TEXT, fid INTEGER, root_page_num INTEGER, is_unique BOOLEAN)";
+        pctx.init(index_query);
         Vector<Column> index_meta_columns;
         index_meta_columns.emplace_back(&arena_, "index_name"    , VARCHAR, 0);
         index_meta_columns.emplace_back(&arena_, "table_name"    , VARCHAR, 4);
@@ -137,6 +149,12 @@ void Catalog::init(CacheManager *cm) {
         index_meta_columns.emplace_back(&arena_, "is_unique"     , BOOLEAN, 16);
         TableSchema* ret = createTable(&pctx, INDEX_META_TABLE, index_meta_columns); 
         assert(ret != nullptr);
+
+        String index_keys_query = 
+            "CREATE TABLE "
+            INDEX_KEYS_TABLE 
+            "(index_name TEXT, field_number_in_table INTEGER, field_number_in_index INTEGER, is_desc_order BOOLEAN)";
+        pctx.query_ = index_keys_query;
 
         Vector<Column> index_keys_columns;
         index_keys_columns.emplace_back(&arena_, "index_name"            , VARCHAR   , 0);
@@ -170,27 +188,19 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const String &table_name, Vecto
     TableSchema* schema = New(TableSchema, arena_, table_name, table, columns);
     tables_.insert({table_name, schema});
     // persist the table schema in the meta data table.
-    // create a vector of Values per column,
-    // then insert it to the meta table.
-    for(auto& c : columns){
-        Vector<Value> vals;
-        vals.emplace_back(Value(&ctx->arena_, table_name));
-        vals.emplace_back(Value(&ctx->arena_, c.getName()));
-        vals.emplace_back(Value(nfid));
-        vals.emplace_back(Value((int)c.getType()));
-        vals.emplace_back(Value(c.getOffset()));
-        vals.emplace_back(Value(c.isNullable()));
-        vals.emplace_back(Value(c.isPrimaryKey()));
-        vals.emplace_back(Value(c.isForeignKey()));
-        vals.emplace_back(Value(c.isUnique()));
-        // translate the vals to a record and persist them.
-        Record record = meta_table_schema_->translateToRecord(&ctx->arena_, vals);
-        assert(record.isInvalidRecord() == false);
-        // rid is not used for now.
-        RecordID rid = RecordID();
-        int err = meta_table_schema_->getTable()->insertRecord(&rid, record);
-        if(err) return nullptr;
-    }
+    Vector<Value> vals; vals.reserve(5);
+    vals.emplace_back(Value(&ctx->arena_, table_name));
+    vals.emplace_back(Value(&ctx->arena_, ctx->query_));
+    vals.emplace_back(Value(nfid));
+    vals.emplace_back(Value(1)); // page number 1 is the first an last.
+    vals.emplace_back(Value(1));
+    // translate the vals to a record and persist them.
+    Record record = meta_table_schema_->translateToRecord(&ctx->arena_, vals);
+    assert(record.isInvalidRecord() == false);
+    // rid is not used for now.
+    RecordID rid = RecordID();
+    int err = meta_table_schema_->getTable()->insertRecord(&rid, record);
+    if(err) return nullptr;
     return schema;
 }
 

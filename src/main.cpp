@@ -39,8 +39,8 @@ int main() {
             clock_gettime(CLOCK_MONOTONIC, &start);
 
             QueryCTX query_ctx;
-            query_ctx.init(query.size());
-            bool status = ndb->SQL(query_ctx, query, &result);
+            query_ctx.init(query);
+            bool status = ndb->SQL(query_ctx, &result);
             if(!status){
                 std::cout << "FAIL" << std::endl;
                 query_ctx.clean();
