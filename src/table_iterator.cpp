@@ -8,11 +8,12 @@
 
 TableIterator::TableIterator(){}
 
-TableIterator::TableIterator(CacheManager *cm, PageID page_id): cache_manager_(cm), cur_page_id_(page_id)
+TableIterator::TableIterator(CacheManager *cm, TableSchema* schema, PageID page_id):
+    cache_manager_(cm), schema_(schema), cur_page_id_(page_id)
 {}
 
 void TableIterator::init() {
-    assert(cache_manager_ != nullptr && cur_page_id_ != INVALID_PAGE_ID);
+    assert(cache_manager_ != nullptr && schema_ != nullptr && cur_page_id_ != INVALID_PAGE_ID);
     cur_page_ = reinterpret_cast<TableDataPage*>(cache_manager_->fetchPage(cur_page_id_));
     if(cur_page_){
         cur_num_of_slots_ = cur_page_->getNumOfSlots();
@@ -90,6 +91,41 @@ Record TableIterator::getCurRecordCpy(Arena* arena){
     char* data_cpy = (char*) arena->alloc(rsize);
     memcpy(data_cpy, cur_data, rsize);
     return  Record(data_cpy, rsize);
+}
+
+int  TableIterator::getCurTupleCpy(Arena& arena, Tuple* out) {
+    Record cur_r = getCurRecordCpy(&arena);
+    RecordID cur_rid = getCurRecordID();
+    *out = Tuple(&arena);
+    out->setNewSchema(schema_);
+    //*out = t;
+    // translate the tuple.
+    for(int i = 0; i < out->size(); ++i){
+        Column col = schema_->getCol(i);
+        // check the bitmap if this value is null.
+        char * bitmap_ptr = cur_r.getFixedPtr(schema_->getSize())+(i/8);  
+        int is_null = *bitmap_ptr & (1 << (i%8));
+        if(is_null) {
+            out->put_val_at(i, Value(NULL_TYPE));
+            continue;
+        }
+        uint16_t sz = 0;
+        char* content = schema_->getValue(col.getName(), cur_r, &sz);
+        if(!content)
+            return 1;
+        // this means it's an overflow text.
+        if(sz == MAX_U16 && col.getType() == VARCHAR) {
+            PageNum pnum = *(PageNum*)content;
+            OverflowIterator* it = (OverflowIterator*) arena.alloc(sizeof(OverflowIterator));
+            *it = schema_->getTable()->get_overflow_iterator(pnum);
+
+            out->put_val_at(i, Value((char*)it, OVERFLOW_ITERATOR, sz));
+        } else {
+            out->put_val_at(i, Value(content, col.getType(), sz));
+        }
+    }
+    out->left_most_rid_ = cur_rid;
+    return 0;
 }
 
 RecordID TableIterator::getCurRecordID(){

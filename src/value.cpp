@@ -651,6 +651,9 @@ void Value::setValue(Type t, char* content) {
         case DOUBLE:
             setDoubleValue(*(double*)content);
             break;
+        case OVERFLOW_ITERATOR:
+            content_ = (uintptr_t) content;
+            break;
         case NULL_TYPE:
             return;
         case INVALID:
@@ -675,6 +678,8 @@ String Value::toString() const {
             return floatToStr(getFloatVal());
         case DOUBLE:
             return doubleToStr(getDoubleVal());
+        case OVERFLOW_ITERATOR:
+            return getLargeStringVal();
         case NULL_TYPE:
             return "NULL";
         case INVALID:
@@ -693,6 +698,7 @@ inline bool Value::isNull() const {
 }
 String Value::getStringVal() const {
     if(!content_) return "";
+    if(type_ == OVERFLOW_ITERATOR) return getLargeStringVal();
     String str = "";
     char* ptr = (char*) content_;
     for(int i = 0; i < size_; ++i, ptr++)
@@ -700,6 +706,24 @@ String Value::getStringVal() const {
     return str;
     //return String((char*)content_, size_);  
 }
+
+String Value::getLargeStringVal() const {
+    if(!content_) return "";
+    String str = "";
+    OverflowIterator* it_ = (OverflowIterator*) content_;
+    Arena tmp;
+    tmp.init();
+    u16 bytes_read = 0;
+    const char* ptr = nullptr;
+    while(ptr = it_->get_data_cpy_and_advance(&tmp, &bytes_read)) {
+        assert(bytes_read > 0);
+        for(int i = 0; i < bytes_read; ++i, ptr++)
+            str += *ptr;
+    }
+    tmp.destroy();
+    return str;
+}
+
 bool Value::getBoolVal() const{
     if(!content_) return false;
     if(type_ == BOOLEAN) return (bool)content_;

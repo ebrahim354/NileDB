@@ -4,8 +4,10 @@
 #include "column.h"
 #include "table.h"
 #include "record.h"
+#include "table_iterator.h"
 
 class Table;
+class TableIterator;
 struct Record;
 struct RecordID;
 struct Tuple;
@@ -23,6 +25,10 @@ class TableSchema {
         bool checkValidValues(Vector<String>& fields, Vector<Value>& vals);
         bool checkValidValue(String& field, Value& val);
         int getColIdx(String& field, Value& val);
+
+        Column getCol(int idx);
+        u32 getSize();
+
         bool isValidCol(String& col_name);
         String typeToString(Type t);
         void printSchema(std::stringstream& ss);
@@ -46,13 +52,19 @@ class TableSchema {
         // we assume that the variable length columns are represented first.
         Record translateToRecord(Arena* arena, Vector<Value>& values);
         Record translateToRecord(Arena* arena, Tuple tuple);
+        // rid is output.
+        // return non 0 value in case of an error.
+        int insert(Arena& arena, const Tuple& tuple, RecordID* rid);
+        int remove(RecordID& rid);
+
+        TableIterator begin(); 
         Table* getTable();
     private:
         bool tmp_schema_ = false;
         String table_name_;
         Table* table_;
         Vector<Column> columns_;
-        uint32_t size_;
+        u32 size_;
 };
 
 #endif // TABLE_SCHEMA_H

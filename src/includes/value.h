@@ -63,6 +63,7 @@ class Value {
         inline bool isInvalid() const;
         inline bool isNull() const;
         String getStringVal() const;
+        String getLargeStringVal() const;
         bool getBoolVal() const;
         int getIntVal() const;
         long long getBigIntVal() const;

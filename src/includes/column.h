@@ -13,11 +13,22 @@
 //
 //
 // EXECUTOR_ID is integer index that points to the executor inside of the QueryCTX object.
-enum Type { INVALID = -1, BOOLEAN, INT, BIGINT, FLOAT, DOUBLE, TIMESTAMP, VARCHAR, NULL_TYPE, EXECUTOR_ID};
+enum Type : i8 { 
+    INVALID = -1,
+    BOOLEAN,
+    INT,
+    BIGINT,
+    FLOAT,
+    DOUBLE,
+    TIMESTAMP,
+    VARCHAR,
+    OVERFLOW_ITERATOR, // contains a pointer to an iterator of type OverflowIterator, used for large values.
+    EXECUTOR_ID,
+    NULL_TYPE
+};
 
-// enum Constraint { NOT_NULL = 0, PRIMARY_KEY, FOREIGN_KEY, UNIQUE };
 // constants for constraints masks.
-#define ConstraintType           uint8_t
+#define ConstraintType           u8
 #define CONSTRAINT_NOTHING       0
 #define CONSTRAINT_NOT_NULL      1
 #define CONSTRAINT_PRIMARY_KEY   2

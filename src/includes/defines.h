@@ -20,6 +20,9 @@
 // boolean
 #define b8 bool
 
+#define MAX_U16 ((u16)(0xFFFF))
+#define MAX_U32 ((u32)(0xFFFFFFFF))
+
 #define Gigabytes(count) (u64) (count * 1024 * 1024 * 1024)
 #define Megabytes(count) (u64) (count * 1024 * 1024)
 #define Kilobytes(count) (u64) (count * 1024)

@@ -117,7 +117,7 @@ int TableDataPage::insertRecord(char* rec_data, uint32_t rec_size, uint32_t* slo
     // either way, its offset is inside of the slot_offset variable. 
     // if we didn't reach this point, that means no free space available.
 
-    auto new_free_space_offset = getFreeSpaceOffset() - rec_size;
+    u32 new_free_space_offset = getFreeSpaceOffset() - rec_size;
     char* new_record_ptr = getFreeSpacePtr() - rec_size;
     memcpy(new_record_ptr, rec_data, rec_size);
     setFreeSpaceOffset(new_free_space_offset);

@@ -25,7 +25,7 @@ void Table::init(CacheManager* cm, FileID fid) {
     first_pnum_ = *(PageNum*)(meta_page->data_+ROOT_PNUM_OFFSET);
     if(first_pnum_ == 0) first_pnum_ = INVALID_PAGE_NUM;
     cache_manager_->unpinPage(zero_pid, false);
-
+    std::cout << "first_pnum_: " << first_pnum_ << "\n";
     // fsm file id is by convention the next file id after the table's file id.
     free_space_map_.init(cm, fid_+1); 
 }
@@ -125,7 +125,7 @@ int Table::insertRecord(RecordID* rid, Record &record){
 
 // return 1 in case of an error.
 int Table::deleteRecord(RecordID &rid){
-    TableDataPage* table_page = reinterpret_cast<TableDataPage *>(cache_manager_->fetchPage(rid.page_id_));
+    TableDataPage* table_page = (TableDataPage *)cache_manager_->fetchPage(rid.page_id_);
     if(table_page == nullptr) return 1;
     int err = table_page->deleteRecord(rid.slot_number_);
     if(err) return err;
@@ -157,10 +157,47 @@ int Table::updateRecord(RecordID *rid, Record &new_record){
     // WILL BE HANDLED LATER(TODO).
     return this->insertRecord(rid, new_record);
 }
-// we allow only forward scans for now via tableIterator.advance().
-TableIterator Table::begin() {
-    return TableIterator(cache_manager_, {.fid_ = fid_, .page_num_ = first_pnum_});
+
+OverflowPage* Table::new_overflow_page() {
+    auto pg = (OverflowPage*)cache_manager_->newPage(fid_);
+    assert(pg != nullptr);
+    // overflow pages are always reserved.
+    int err = free_space_map_.updateFreeSpace(pg->page_id_, PAGE_SIZE - 1);
+    assert(!err);
+    return pg;
 }
+
+OverflowPage* Table::get_overflow_page(PageNum pnum) {
+    return (OverflowPage*) cache_manager_->fetchPage({.fid_ = fid_, .page_num_ = pnum });
+}
+
+void Table::release_overflow_page(PageNum pnum) {
+    cache_manager_->unpinPage({ .fid_ = fid_, .page_num_= pnum }, true);
+}
+
+void Table::delete_overflow_page(PageNum pnum) {
+    release_overflow_page(pnum);
+    cache_manager_->deletePage({ .fid_ = fid_, .page_num_= pnum });
+}
+
+// read only pages.
+TableDataPage* Table::get_data_page(PageNum pnum){
+    return (TableDataPage*) cache_manager_->fetchPage({.fid_ = fid_, .page_num_ = pnum });
+}
+
+void Table::release_data_page(PageNum pnum) {
+    cache_manager_->unpinPage({ .fid_ = fid_, .page_num_= pnum }, false);
+}
+
+// we allow only forward scans for now via tableIterator.advance().
+TableIterator Table::begin(TableSchema* schema) {
+    return TableIterator(cache_manager_, schema, {.fid_ = fid_, .page_num_ = first_pnum_});
+}
+
+OverflowIterator Table::get_overflow_iterator(PageNum pnum) {
+    return OverflowIterator(cache_manager_, { .fid_ = fid_, .page_num_ = pnum });
+}
+
 
 FileID Table::get_fid(){
     return fid_;

@@ -7,8 +7,10 @@
 #include "table_iterator.h"
 #include "record.h"
 #include "table_data_page.h"
+#include "overflow_page.h"
 
 class TableIterator;
+class OverflowIterator;
 
 /*
  * the current model we are using is:              "Heap File Organization".
@@ -31,11 +33,14 @@ class TableIterator;
  * 6- implement a table iterator to help doing scans.
  */
 class Table {
+    friend TableSchema;
     public:
         void init(CacheManager* cm, FileID fid);
         void destroy();
         void update_first_page_number(PageNum pnum);
 
+
+    private:
         // rid (output)
         // return 1 in case of an error.
         int insertRecord(RecordID* rid, Record &record);
@@ -47,9 +52,20 @@ class Table {
         // rid is both an input to find the record and an output of the new position of the updated record. 
         // updates are performed by deleting the old record followed by an insertion of the new one.
         int updateRecord(RecordID *rid, Record &new_record);
+    public:
+
+        OverflowPage* new_overflow_page();
+        void          release_overflow_page(PageNum pnum);
+        OverflowPage* get_overflow_page(PageNum pnum);
+        void          delete_overflow_page(PageNum pnum);
+
+        // read only pages.
+        TableDataPage* get_data_page(PageNum pnum);
+        void release_data_page(PageNum pnum);
 
         // we allow only forward scans for now via tableIterator.advance().
-        TableIterator begin();
+        TableIterator begin(TableSchema* schema);
+        OverflowIterator get_overflow_iterator(PageNum pnum);
         FileID get_fid();
     private:
         FreeSpaceMap free_space_map_;

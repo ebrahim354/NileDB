@@ -560,7 +560,8 @@ void SeqScanExecutor::init() {
     error_status_ = 0;
     finished_ = 0;
     //output_.resize(output_schema_->numOfCols());
-    it_ = table_->getTable()->begin();
+    //it_ = table_->getTable()->begin();
+    it_ = table_->begin();
     it_.init();
     ctx_->table_handles_.push_back(&it_);
 }
@@ -571,9 +572,12 @@ Tuple SeqScanExecutor::next() {
         finished_ = 1;
         return {};
     };
+    /*
     Record r = it_.getCurRecordCpy(&ctx_->temp_arena_);
     RecordID rid = it_.getCurRecordID();
     int err = table_->translateToTuple(r, output_, rid);
+    */
+    int err = it_.getCurTupleCpy(ctx_->temp_arena_, &output_);
     if(err) {
         error_status_ = 1;
         return {};
@@ -762,7 +766,8 @@ Tuple DeletionExecutor::next() {
         Tuple t(&ctx_->temp_arena_);
         t.setNewSchema(child_executor_->output_schema_);
         t.put_tuple_at_start(&values);
-        int err = table_->getTable()->deleteRecord(rid);
+        //int err = table_->getTable()->deleteRecord(rid);
+        int err = table_->remove(rid);
         assert(err == 0);
         if(err){
             error_status_ = 1;
@@ -875,6 +880,7 @@ Tuple UpdateExecutor::next() {
             indexes_[i].index_->Remove(ctx_, k);
         }
 
+
         Tuple new_tuple = old_tuple;
 
         for(int i = 0; i < statement_->values_.size(); ++i){
@@ -882,8 +888,15 @@ Tuple UpdateExecutor::next() {
             Value evaluated_val = evaluate_expression(ctx_, statement_->values_[i], values);
             new_tuple.put_val_at(idx, evaluated_val);
         }
+
+        int err = table_->remove(rid);
+        assert(err == 0);
+        err = table_->insert(ctx_->temp_arena_, new_tuple, &rid);
+
+        /*
         Record record = table_->translateToRecord(&ctx_->temp_arena_, new_tuple);
         int err = table_->getTable()->updateRecord(&rid, record);
+        */
         assert(err == 0);
         if(err){
             error_status_ = 1;
@@ -1009,7 +1022,8 @@ Tuple InsertionExecutor::next() {
 
     RecordID rid = RecordID();
     Record record = table_->translateToRecord(&ctx_->temp_arena_, output_);
-    int err = table_->getTable()->insertRecord(&rid, record);
+    //int err = table_->getTable()->insertRecord(&rid, record);
+    int err = table_->insert(ctx_->temp_arena_, output_, &rid);
     if(err){
         error_status_ = 1;
         return {};
