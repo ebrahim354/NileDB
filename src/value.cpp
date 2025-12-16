@@ -715,7 +715,7 @@ String Value::getLargeStringVal() const {
     tmp.init();
     u16 bytes_read = 0;
     const char* ptr = nullptr;
-    while(ptr = it_->get_data_cpy_and_advance(&tmp, &bytes_read)) {
+    while((ptr = it_->get_data_cpy_and_advance(&tmp, &bytes_read))) {
         assert(bytes_read > 0);
         for(int i = 0; i < bytes_read; ++i, ptr++)
             str += *ptr;

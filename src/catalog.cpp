@@ -235,11 +235,7 @@ bool Catalog::createIndex(QueryCTX* ctx, const String &table_name, const String&
     // table indexes always have nvals = 2.
     ALLOCATE_INIT(arena_, index, 
             BTreeIndex, cache_manager_, nfid, TABLE_BTREE_NVALS, is_unique);
-    IndexHeader header = {
-        .index_ = index,
-        .index_name_ = index_name, 
-        .fields_numbers_ = cols
-    };
+    IndexHeader header = IndexHeader(index, index_name, cols);
     indexes_.insert({index_name, header});
 
     if(indexes_of_table_.count(table_name))
@@ -400,7 +396,8 @@ bool Catalog::load_indexes() {
         BTreeIndex* index_ptr = nullptr; 
         ALLOCATE_INIT(arena_, index_ptr, 
                         BTreeIndex, cache_manager_, fid, TABLE_BTREE_NVALS, is_unique);
-        indexes_.insert({index_name, {.index_ = index_ptr, .index_name_ = index_name}});
+        std::pair<String, IndexHeader> entry = {index_name, IndexHeader(index_ptr, index_name)};
+        indexes_.insert(entry);
         if(indexes_of_table_.count(table_name))
             indexes_of_table_[table_name].push_back(index_name);
         else 

@@ -182,7 +182,7 @@ struct IndexKey {
 bool remove_last_n(Arena* arena, IndexKey* k, i32 n){
     int k_header_sz = k->get_header_size();
     assert(n > 0 && n < k_header_sz);
-    if(n == 0) false;
+    if(n == 0) return false;
     int original_ksize = k->size_;
     char* data = (char*)arena->alloc(original_ksize);
     *data = (*(k->data_))-n;

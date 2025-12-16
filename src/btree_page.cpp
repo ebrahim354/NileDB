@@ -7,7 +7,7 @@
 
 
 int BTreePage::get_max_key_size() {
-    auto mx = std::max(LEAF_SLOT_ENTRY_SIZE_, INTERNAL_SLOT_ENTRY_SIZE_);
+    auto mx = std::max((u32)LEAF_SLOT_ENTRY_SIZE_, (u32)INTERNAL_SLOT_ENTRY_SIZE_);
     return PAGE_SIZE-(BTREE_HEADER_SIZE+mx);
 }
 
@@ -264,6 +264,7 @@ PageID BTreePage::GetPageId(FileID fid) const {
         .page_num_ = pg_num,
     };
 }
+
 void BTreePage::SetPageId(PageID page_id) { 
   set_page_number(page_id.page_num_);
 }
