@@ -14,6 +14,53 @@ int index_key_cmp(IndexKey lhs,IndexKey rhs);
 IndexKey temp_index_key_from_values(Vector<Value>& vals);
 #define EPS 1e-6
 
+//https://www.sqlite.org/fileformat2.html#varint
+int varint_encode(uint8_t* bytes, uint64_t number) {
+    int sz = 0;
+    uint8_t reserved_bytes[9]{0};
+    bool handled = false;
+    while(number) {
+        if( !handled && number > MAX_8B_VARINT){
+            reserved_bytes[sz++] = number & MAX_U8;
+            number >>=  8;
+            handled = true;
+        } else {
+            reserved_bytes[sz++] = (number & MAX_I8) | (1 << 7);
+            number >>=  7;
+        }
+    }
+
+    for(int i = 0; i < sz; ++i){
+        bytes[i] = reserved_bytes[(sz-(i+1))];
+        if(i == sz - 1 && sz != 9)
+            bytes[i] = bytes[i]&(~(1<<7));
+    }
+    if(sz == 0) {
+        sz++;
+        bytes[0] = 0;
+    }
+    return sz;
+}
+
+int varint_decode(uint8_t* bytes, uint64_t* output) {
+    uint64_t val = 0;
+    int i = 0;
+    while(true) {
+        if(i == 8){
+            val = (val << 8) | (bytes[i++] & MAX_U8);
+            break;
+        } else {
+            val = (val << 7) | (bytes[i++] & MAX_I8);
+            bool is_last_byte = ((bytes[i-1]&(1<<7)) == 0);
+            if(is_last_byte)
+                break;
+        }
+    }
+    *output = val;
+    return i;
+}
+
+
 struct IndexField {
     String name_;
     bool desc_ = false;

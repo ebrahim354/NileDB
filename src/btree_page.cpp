@@ -247,11 +247,12 @@ void BTreePage::increase_size(int amount) {
 PageID BTreePage::GetParentPageId(FileID parent_fid) const { 
     PageNum pg_num = get_parent_page_number();
     if(pg_num == INVALID_PAGE_NUM) return INVALID_PAGE_ID;
-  return {
-    .fid_ = parent_fid,
-    .page_num_ = pg_num,
-  };
+    return {
+        .fid_ = parent_fid,
+            .page_num_ = pg_num,
+    };
 }
+
 void BTreePage::SetParentPageId(PageID parent_page_id) {
   set_parent_page_number(parent_page_id.page_num_);
 }
