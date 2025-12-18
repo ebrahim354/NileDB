@@ -12,15 +12,14 @@
 #include "table_schema.cpp"
 #include "btree_index.h"
 
-void BTreeIndex::init(CacheManager* cm, FileID fid, int nvals, bool is_unique) {
+void BTreeIndex::init(CacheManager* cm, FileID fid, int nkey_cols, bool is_unique) {
     cache_manager_ = cm;
     fid_ = fid;
-    index_nvals_ = nvals;
+    nkey_cols_ = nkey_cols;
     is_unique_index_ = is_unique;
 
     // TODO: consider moving this into the system catalog?
     PageID zero_pid = {.fid_ = fid_, .page_num_ = 0};
-
     // page number 0 is reserved for meta data.
     Page* meta_page = cache_manager_->fetchPage(zero_pid); 
     assert(meta_page != 0);
@@ -39,6 +38,10 @@ void BTreeIndex::SetRootPageId(QueryCTX* ctx, PageID root_page_id) {
     //std::unique_lock locker(this->root_page_id_lock_);
     root_page_id_ = root_page_id;
     cache_manager_->update_root_page_number(root_page_id_.fid_, root_page_id_.page_num_);
+}
+
+void BTreeIndex::resize_nkey_cols(int nkey_cols){
+    nkey_cols_ = nkey_cols;
 }
 
 // true means value is returned.
@@ -223,7 +226,7 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
             bool full = cur->IsFull(key);
             if (!full) {
                 //inserted = cur->Insert(current_key, current_value);
-                inserted = cur->Insert(&ctx->arena_, current_key, index_nvals_, is_unique_index_);
+                inserted = cur->Insert(&ctx->arena_, current_key, nkey_cols_, is_unique_index_);
                 break;
             }
             // in case of non root splits:
@@ -236,13 +239,14 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
             //new_page_raw->mutex_.lock();
 
             //inserted = cur->split_with_and_insert(new_page, current_key, current_value);
-            inserted = cur->split_with_and_insert(&ctx->arena_, index_nvals_, is_unique_index_,
+            inserted = cur->split_with_and_insert(
+                    &ctx->arena_,
+                    nkey_cols_, is_unique_index_,
                     new_page, current_key);
             assert(inserted == true);
             int elements_to_chop = -1;
             if(is_unique_index_) {
-                assert(index_nvals_ > 0);
-                elements_to_chop = index_nvals_;
+                elements_to_chop = nkey_cols_;
             }
             IndexKey middle_key = cur->get_last_key_cpy(&ctx->arena_, elements_to_chop);
             current_key = middle_key;
@@ -794,6 +798,7 @@ IndexIterator BTreeIndex::begin() {
 
 // for range queries
 IndexIterator BTreeIndex::begin(const IndexKey &key) {
+    See();
     if (isEmpty()) {
         return IndexIterator(nullptr, INVALID_PAGE_ID, 0);
     }
@@ -876,6 +881,7 @@ void BTreeIndex::ToString(BTreePage* page){
             << " next: " << leaf->GetNextPageId(fid_).page_num_ << std::endl;
         for (int i = 0; i < leaf->get_num_of_slots(); i++) {
             leaf->KeyAt(i).print();
+            std::cout << ",";
         }
         std::cout << std::endl;
         std::cout << std::endl;

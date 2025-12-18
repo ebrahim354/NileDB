@@ -55,7 +55,7 @@ Value::Value(char* str, u32 size) {
     type_ = VARCHAR;
 }
 
-char* Value::get_ptr() {
+char* Value::get_ptr() const {
     if(type_ == VARCHAR) return (char*) content_;
     return (char*)&content_;
 }

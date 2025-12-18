@@ -37,8 +37,9 @@ inline IndexKey BTreeLeafPage::get_last_key_cpy(Arena* arena, int elements_to_ch
         .data_ = data,
         .size_ = k.size_,
     };
-    if(elements_to_chop > 0)
-        remove_last_n(arena, &tmp, elements_to_chop);
+    if(elements_to_chop > 0){
+        index_key_resize(arena, &tmp, elements_to_chop);
+    }
 
     return tmp;
 }
@@ -149,7 +150,7 @@ bool BTreeLeafPage::Insert(Arena* arena, IndexKey input_k, i32 nvals, bool is_un
     ArenaTemp tmp_arena = arena->start_temp_arena();
     if(is_unique){
         assert(nvals > 0);
-        k = remove_last_n_cpy(arena, input_k, nvals);
+        k = index_key_resize_cpy(arena, input_k, nvals);
     }
 
 

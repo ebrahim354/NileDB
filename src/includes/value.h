@@ -26,14 +26,14 @@ class Value {
     private:
         uintptr_t content_ = 0;
     public:
-        uint16_t size_ = 0;
+        u32 size_ = 0;
         Type type_ = INVALID;
         //Value(){} 
         ~Value();
 
         Value(Type type = NULL_TYPE);
         bool cast_up();
-        char* get_ptr();
+        char* get_ptr() const;
 
 
         Value& operator+=(const Value& rhs);

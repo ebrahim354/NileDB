@@ -83,7 +83,7 @@ IndexKey BTreePage::KeyAtCpy(Arena* arena, int index) {
     memcpy(k, ptr, sz);
     return {
         .data_ = k,
-            .size_ = sz, 
+        .size_ = sz, 
     };
 }
 

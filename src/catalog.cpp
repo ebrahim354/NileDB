@@ -70,22 +70,13 @@ void Catalog::init(CacheManager *cm) {
     // temporary parser.
     Parser parser(nullptr);
     // loading TableSchema of each table into memory.
-    //TableIterator it = meta_data_table->begin();
     TableIterator it = meta_table_schema_->begin();
     it.init();
     while(it.advance()){
         Tuple t;
         int err = it.getCurTupleCpy(arena_, &t);
-        //Record r = it.getCurRecord();
-        //Vector<Value> values;
-        //int err = meta_table_schema_->translateToValues(r, values);
         if(err) break;
         // extract the data of this row.
-        /*
-        String  table_name = values[0].getStringVal();
-        String  query      = values[1].getStringVal();
-        FileID  fid        = values[2].getIntVal();
-        */
         String  table_name = t.get_val_at(0).getStringVal();
         String  query      = t.get_val_at(1).getStringVal();
         FileID  fid        = t.get_val_at(2).getIntVal();
@@ -192,17 +183,7 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const String &table_name, Vecto
     t.put_val_at(1, Value(&ctx->arena_, ctx->query_));
     t.put_val_at(2, Value(nfid));
 
-    /*
-    Vector<Value> vals; vals.reserve(5);
-    vals.emplace_back(Value(&ctx->arena_, table_name));
-    vals.emplace_back(Value(&ctx->arena_, ctx->query_));
-    vals.emplace_back(Value(nfid));*/
-    // translate the vals to a record and persist them.
-    //Record record = meta_table_schema_->translateToRecord(&ctx->arena_, vals);
-    //assert(record.isInvalidRecord() == false);
-    // rid is not used for now.
     RecordID rid = RecordID();
-    //int err = meta_table_schema_->getTable()->insertRecord(&rid, record);
     int err = meta_table_schema_->insert(ctx->arena_, t, &rid);
     if(err) return nullptr;
     return schema;
@@ -232,9 +213,8 @@ bool Catalog::createIndex(QueryCTX* ctx, const String &table_name, const String&
     TableSchema* index_keys      = tables_[INDEX_KEYS_TABLE];
 
     BTreeIndex* index = nullptr; 
-    // table indexes always have nvals = 2.
     ALLOCATE_INIT(arena_, index, 
-            BTreeIndex, cache_manager_, nfid, TABLE_BTREE_NVALS, is_unique);
+            BTreeIndex, cache_manager_, nfid, cols.size(), is_unique);
     IndexHeader header = IndexHeader(index, index_name, cols);
     indexes_.insert({index_name, header});
 
@@ -250,14 +230,6 @@ bool Catalog::createIndex(QueryCTX* ctx, const String &table_name, const String&
     t.put_val_at(1, Value(&ctx->arena_, table_name));
     t.put_val_at(2, Value(nfid));
     t.put_val_at(3, Value((bool) is_unique));
-    /*
-    Vector<Value> vals;
-    vals.emplace_back(Value(&ctx->arena_, index_name));
-    vals.emplace_back(Value(&ctx->arena_, table_name));
-    vals.emplace_back(Value(nfid));
-    vals.emplace_back(Value((bool)is_unique));
-    Record record = index_meta_data->translateToRecord(&ctx->arena_, vals);
-    assert(record.isInvalidRecord() == false);*/
     RecordID rid = RecordID();
     int err = index_meta_data->insert(ctx->arena_, t, &rid);
     assert(err == 0);
@@ -272,38 +244,21 @@ bool Catalog::createIndex(QueryCTX* ctx, const String &table_name, const String&
         t.put_val_at(1, Value(c.idx_));
         t.put_val_at(2, Value(i));
         t.put_val_at(3, Value((bool)c.desc_));
-    /*
-        Vector<Value> vals;
-        vals.emplace_back(Value(&ctx->arena_, index_name));
-        vals.emplace_back(Value(c.idx_));         // c is the offset inside of the table.
-        vals.emplace_back(Value(i));              // i is the offset inside of the index  key.
-        vals.emplace_back(Value((bool)c.desc_));  // asc or desc ordering.
-        // translate the vals to a record and persist them.
-        Record record = index_keys->translateToRecord(&ctx->arena_, vals);
-        assert(record.isInvalidRecord() == false);*/
         int err = index_keys->insert(ctx->arena_, t, &rid);
         assert(err == 0);
         if(err) return false;
     }
 
     // insert rows of the table.
-    //TableIterator table_it = table->getTable()->begin();
     TableIterator table_it = table->begin();
     table_it.init();
     ArenaTemp tmp = ctx->arena_.start_temp_arena();
     while(table_it.advance()) {
         ctx->arena_.clear_temp_arena(tmp);
-
-        /*
-        Record r = table_it.getCurRecord();
-        rid = table_it.getCurRecordID();
-        Vector<Value> vals;
-        int err = table->translateToValues(r, vals);
-        */
         Tuple t;
         int err = table_it.getCurTupleCpy(ctx->arena_, &t);
         assert(err == 0 && "Could not traverse the table.");
-        IndexKey k = getIndexKeyFromTuple(tmp.arena_, indexes_[index_name].fields_numbers_, t, rid);
+        IndexKey k = getIndexKeyFromTuple(tmp.arena_, indexes_[index_name].fields_numbers_, t, table_it.getCurRecordID());
         assert(k.size_ != 0);
         bool success = indexes_[index_name].index_->Insert(ctx, k);
         assert(success);
@@ -364,21 +319,12 @@ bool Catalog::load_indexes() {
     while(it_meta.advance()){
         Tuple t;
         int err = it_meta.getCurTupleCpy(arena_, &t);
-        //Record r = it_meta.getCurRecord();
-        //Vector<Value> values;
-        //int err = indexes_meta_schema->translateToValues(r, values);
         assert(err == 0 && "Could not traverse the indexes schema.");
         if(err){
             success = false;
             break;
         };
 
-        /*
-        String index_name = values[0].getStringVal();
-        String table_name = values[1].getStringVal();
-        FileID fid        = values[2].getIntVal();
-        bool is_unique    = values[3].getBoolVal();
-        */
         String index_name = t.get_val_at(0).getStringVal();
         String table_name = t.get_val_at(1).getStringVal();
         FileID fid        = t.get_val_at(2).getIntVal();
@@ -395,7 +341,7 @@ bool Catalog::load_indexes() {
         // save results into memory.
         BTreeIndex* index_ptr = nullptr; 
         ALLOCATE_INIT(arena_, index_ptr, 
-                        BTreeIndex, cache_manager_, fid, TABLE_BTREE_NVALS, is_unique);
+                        BTreeIndex, cache_manager_, fid, 1, is_unique);
         std::pair<String, IndexHeader> entry = {index_name, IndexHeader(index_ptr, index_name)};
         indexes_.insert(entry);
         if(indexes_of_table_.count(table_name))
@@ -411,14 +357,10 @@ bool Catalog::load_indexes() {
     // indexs_keys      (text index_name, int field_number_in_table, int field_number_in_index).
     // this table holds the data for all key mappings of all indexes of the system.
     TableSchema* index_keys_schema = tables_[INDEX_KEYS_TABLE];
-    //TableIterator it_keys = index_keys_schema->getTable()->begin();
     TableIterator it_keys = index_keys_schema->begin();
     it_keys.init();
 
     while(it_keys.advance()){
-        //Record r = it_keys.getCurRecord();
-        //Vector<Value> values;
-        //int err = index_keys_schema->translateToValues(r, values);
         Tuple t;
         int err = it_keys.getCurTupleCpy(arena_, &t);
         assert(err == 0 && "Could not traverse the indexes keys.");
@@ -428,17 +370,10 @@ bool Catalog::load_indexes() {
         };
 
         // we need field_number_in_index to know the order of the fields used to form keys.
-        /*
-        String index_name = values[0].getStringVal();
-        int field_number_in_table = values[1].getIntVal();
-        int field_number_in_index = values[2].getIntVal();
-        bool is_desc_order = values[3].getBoolVal();*/
-
         String index_name            = t.get_val_at(0).getStringVal();
         int field_number_in_table    = t.get_val_at(1).getIntVal();
         int field_number_in_index    = t.get_val_at(2).getIntVal();
         bool is_desc_order           = t.get_val_at(3).getBoolVal();
-
 
         assert(indexes_.count(index_name) == 1); // index must exist.
         IndexHeader* header = &indexes_[index_name];
@@ -449,6 +384,7 @@ bool Catalog::load_indexes() {
             .idx_ = field_number_in_table,
             .desc_ = is_desc_order
         };
+        header->index_->resize_nkey_cols(header->fields_numbers_.size());
     }
     it_keys.destroy();
     return success;
@@ -512,7 +448,6 @@ int Catalog::deleteIndex(QueryCTX* ctx, const String& index_name) {
 
         RecordID rid = it_meta.getCurRecordID();
 
-        //err = index_meta_data->getTable()->deleteRecord(rid);
         err = index_meta_data->remove(rid);
         ctx->arena_.clear_temp_arena(tmp);
         assert(err == 0 && "Could not delete record.");
@@ -546,7 +481,6 @@ int Catalog::deleteIndex(QueryCTX* ctx, const String& index_name) {
         }
 
         RecordID rid = it_keys.getCurRecordID();
-        //err = index_keys->getTable()->deleteRecord(rid);
         err = index_keys->remove(rid);
         ctx->arena_.clear_temp_arena(tmp);
         assert(err == 0 && "Could not delete record.");
@@ -617,7 +551,6 @@ int Catalog::deleteTable(QueryCTX* ctx, const String& table_name) {
         }
 
         RecordID rid = it_meta.getCurRecordID();
-        //err = meta_table_schema_->getTable()->deleteRecord(rid);
         err = meta_table_schema_->remove(rid);
         ctx->arena_.clear_temp_arena(tmp);
         assert(err == 0 && "Could not delete record.");
