@@ -15,7 +15,7 @@ IndexKey temp_index_key_from_values(Vector<Value>& vals);
 #define EPS 1e-6
 
 // https://www.sqlite.org/fileformat2.html#varint
-// return value: the number of consumed bytes.
+// return : the number of consumed bytes.
 // passing bytes as null will only return the size that this number would take.
 u8 varint_encode(u8* bytes, u64 number) {
     u8 sz = 0;
@@ -43,7 +43,7 @@ u8 varint_encode(u8* bytes, u64 number) {
     return sz;
 }
 
-// return value: the number of consumed bytes.
+// return : the number of consumed bytes.
 u8 varint_decode(u8* bytes, u64* output) {
     u64 val = 0;
     u8 i = 0;
@@ -103,13 +103,13 @@ struct IndexHeader {
  * you can make the argument that either formats are ok to use both in an index or a table,
  * But the goal is to try multiple ways and understand the different trade offs.
  */
-// NOTE: we use only a subset of the serial types that sqlite uses.
+// NOTE: we only use a subset of the serial types that sqlite uses.
 enum class SerialType: u8 {
     NIL           = 0, // 0 bytes.
     BOOL_FALSE    = 1, // 0 bytes.
     BOOL_TRUE     = 2, // 0 bytes.
     INT           = 3, // 4 bytes.
-    LONG          = 4, // 8 bytes. (timestamps are stored as long).
+    LONG          = 4, // 8 bytes. (timestamps are stored as a long type).
     FLOAT         = 5, // 4 bytes.
     DOUBLE        = 6, // 4 bytes.
     TEXT          = 7, // 7 >= bytes => is TEXT type with size (N-7).

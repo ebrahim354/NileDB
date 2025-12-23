@@ -97,7 +97,7 @@ IndexKey BTreePage::KeyAt(int index) {
     };
 }
 
-void BTreePage::SetKeyAt(int index, IndexKey k) { 
+void BTreePage::insert_cell_at(int index, IndexKey k) { 
     char* key = k.data_;
     uint16_t size = k.size_;
 

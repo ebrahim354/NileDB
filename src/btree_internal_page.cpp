@@ -7,7 +7,11 @@
 
 
 bool BTreeInternalPage::IsFull(IndexKey k) { 
-    return (INTERNAL_SLOT_ENTRY_SIZE_ + k.size_ >= get_free_space_size());
+    u64 ksz = normalize_index_key_size(k);
+    // 9 for worst case varint + 4 for the overflow page number
+    if(ksz != k.size_)
+        ksz += 9 + 4; 
+    return (INTERNAL_SLOT_ENTRY_SIZE_ + ksz >= get_free_space_size());
 }
 
 void BTreeInternalPage::Init(PageID page_id, PageID parent_id) {
@@ -140,18 +144,13 @@ int BTreeInternalPage::PrevPageOffset(IndexKey k) {
     return cur - 1;
 }
 
-/*
 
-void BTreeInternalPage::InsertKeyAtStart(IndexKey k, PageID start_val) {
-  int sz = get_num_of_slots();
-  for (int i = sz; i > 0; i--) {
-    SetKeyAt(i, KeyAt(i - 1));
-    SetValAt(i, ValueAt(i - 1));
-  }
-  SetKeyAt(1, k);
-  SetValAt(0, start_val);
-  increase_size(1);
-} */
+void BTreeInternalPage::insert_first_entry(PageID lpage, IndexKey key, PageID rpage) {
+    set_num_of_slots(2);
+    SetValAt(0, lpage);
+    insert_cell_at(1, key);
+    SetValAt(1, rpage);
+}
 
 void BTreeInternalPage::insert_key_at_start(Arena* arena, IndexKey key, PageID start_val) {
   int sz = get_num_of_slots();
@@ -160,9 +159,9 @@ void BTreeInternalPage::insert_key_at_start(Arena* arena, IndexKey key, PageID s
   if(entry_sz + key.size_ > get_free_space_size()) return; // no space.
   memmove(get_ptr_to(SLOT_ARRAY_OFFSET_) + entry_sz, get_ptr_to(SLOT_ARRAY_OFFSET_), sz*entry_sz);
   increase_size(1);
-  SetKeyAt(1, key);
+  insert_cell_at(1, key);
   if(key.data_)
-    SetKeyAt(0, null_index_key(arena, *(key.data_)));
+    insert_cell_at(0, null_index_key(arena, *(key.data_)));
   SetValAt(0, start_val);
 }
 
@@ -191,65 +190,40 @@ void BTreeInternalPage::remove_entry_at(int pos) {
 }
 
 
-/*
-void BTreeInternalPage::RemoveFromStart() {
-  int sz = get_num_of_slots();
-  if(sz <= 1) return;
-  for (int i = 1; i < sz; i++) {
-    SetKeyAt(i - 1, KeyAt(i));
-    SetValAt(i - 1, ValueAt(i));
-  }
-  increase_size(-1);
-}*/
-
-
 bool BTreeInternalPage::Insert(IndexKey k, PageID v){
-  int size = get_num_of_slots();
-  int entry_sz = INTERNAL_SLOT_ENTRY_SIZE_;
-  if(entry_sz + k.size_ > get_free_space_size()) return false; // no space.
+    int size = get_num_of_slots();
+    int entry_sz = INTERNAL_SLOT_ENTRY_SIZE_;
+    if(entry_sz + k.size_ > get_free_space_size()) return false; // no space.
 
 
-  int mid;
-  int low = 1;
-  int high = size;
-  while (low < high) {
-    mid = low + (high - low) / 2;
+    int mid;
+    int low = 1;
+    int high = size;
+    while (low < high) {
+        mid = low + (high - low) / 2;
 
-    //if (!(k > array_[mid].first)) {
-    if (!(k > KeyAt(mid))) {
-      high = mid;
-    } else {
-      low = mid + 1;
+        if (!(k > KeyAt(mid))) {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
     }
-  }
-  //if (low < size && array_[low].first < k) {
-  if (low < size && KeyAt(low) < k) {
-    low++;
-  }
-  int cur = low;
+    if (low < size && KeyAt(low) < k) {
+        low++;
+    }
+    int cur = low;
 
-  if(cur < size){
-    memmove(get_ptr_to(SLOT_ARRAY_OFFSET_) + 
-        (entry_sz * cur) + entry_sz, 
-        get_ptr_to(SLOT_ARRAY_OFFSET_) +
-        (entry_sz * cur), 
-        (size-cur)*entry_sz);
-  }
-  increase_size(1);
-  SetKeyAt(cur, k);
-  SetValAt(cur, v);
-  /*
-  array_[size] = {k, v};
-  int tmp_sz = size;
-  while (cur < tmp_sz) {
-    auto tmp = array_[tmp_sz - 1];
-    array_[tmp_sz - 1] = array_[tmp_sz];
-    array_[tmp_sz] = tmp;
-    tmp_sz--;
-  }
-  increase_size(1);
-  */
-  return true;
+    if(cur < size){
+        memmove(get_ptr_to(SLOT_ARRAY_OFFSET_) + 
+                (entry_sz * cur) + entry_sz, 
+                get_ptr_to(SLOT_ARRAY_OFFSET_) +
+                (entry_sz * cur), 
+                (size-cur)*entry_sz);
+    }
+    increase_size(1);
+    insert_cell_at(cur, k);
+    SetValAt(cur, v);
+    return true;
 }
 
 

@@ -8,6 +8,24 @@
 
 
 #define BTREE_HEADER_SIZE 25
+// NOTE: these constats are used by sqlite to decide if
+// the key should be stored in an overflow page or not,
+// and they are picked in way that gives a good fanout to the overall btree page,
+// and to keep the tree more balanced while keeping enough data of the key local.
+// the '23' at the end is a fudge factor to make sure no out of bounds errors happen.
+// https://www.sqlite.org/fileformat2.html#cellformat
+//
+#define BTREE_U_CONST (PAGE_SIZE - BTREE_HEADER_SIZE)
+#define BTREE_X_CONST (((BTREE_U_CONST-BTREE_HEADER_SIZE)*64/255)-23)
+#define BTREE_M_CONST (((BTREE_U_CONST-BTREE_HEADER_SIZE)*32/255)-23)
+// TODO: provide compile time assertions for positive values.
+
+u64 normalize_index_key_size(const IndexKey& key) {
+    if(key.size_ <= BTREE_X_CONST) return key.size_;
+	u64 k =  BTREE_M_CONST+((key.size_-BTREE_M_CONST)%(BTREE_U_CONST-4));
+    if(k <= BTREE_X_CONST) return k;
+    return BTREE_M_CONST; 
+}
 
 enum class BTreePageType: u8 { 
   INVALID_PAGE  = '0',
@@ -52,7 +70,7 @@ class BTreePage {
   IndexKey KeyAtCpy(Arena* arena, int index);
   IndexKey KeyAt(int index);
 
-  void SetKeyAt(int index, IndexKey k);
+  void insert_cell_at(int index, IndexKey k);
   uint16_t compact();
 
   char* get_val_ptr(int idx);
@@ -80,6 +98,8 @@ class BTreePage {
   char* get_free_space_ptr() const;
 
 
+  // TODO: Remove unnecessary data such as parent page number and page number,
+  // also shrink the sized of other meta data entries to only 2 bytes / entry.
   static const size_t PAGE_TYPE_OFFSET_ = 0  ;          //  1 byte .
   static const size_t PAGE_NUMBER_OFFSET_ = 1;          //  4 bytes.
   static const size_t PARENT_PAGE_NUMBER_OFFSET_ = 5;   //  4 bytes.

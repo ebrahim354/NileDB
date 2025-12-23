@@ -265,10 +265,14 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
 
               // every root starts with only 1 key and 2 pointers.
               // TODO: FIX STARTING KEY.
+              /*
               new_root->set_num_of_slots(2);
               new_root->SetValAt(0, cur->GetPageId(fid_));
               new_root->SetKeyAt(1, current_key);
               new_root->SetValAt(1, new_page_id);
+              */
+              new_root->insert_first_entry(cur->GetPageId(fid_), current_key, new_page_id);
+
               SetRootPageId(ctx, tmp_root_id);
               new_root_raw->mutex_.unlock();
               cache_manager_->unpinPage(root_page_id_, true);
@@ -297,18 +301,11 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
             }
 
             // in case of non root splits:
-            auto *new_page_raw = cache_manager_->newPage(fid_);
-            // could not create page.
-            if(!new_page_raw) 
-                return false;
+            Page* new_page_raw = nullptr; 
+            auto new_page = create_internal_page(cur->GetParentPageId(fid_), &new_page_raw);
+            if(!new_page_raw) return false;
             auto new_page_id = new_page_raw->page_id_;
-            // TODO: Fix dead lock.
-            //new_page_raw->mutex_.lock();
-            auto *new_page = reinterpret_cast<BTreeInternalPage *>(new_page_raw->data_);
-            new_page->Init(new_page_id, cur->GetParentPageId(fid_));
-            new_page->SetPageType(BTreePageType::INTERNAL_PAGE);
-            //int md = std::ceil(static_cast<float>(cur->GetMaxSize() + 1) / 2);
-            //TODO: FIX md value.
+
             int md = std::ceil(static_cast<float>(cur->get_num_of_slots() + 1) / 2);
             int pos = cur->InsertionPosition(current_key);
             int inserted_on_new = 0;  // 1 => on new page, 0 => no insertion, -1 => cur page.
@@ -342,7 +339,7 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
             }
             for (int i = md + inc, j = 1; i < cur->get_num_of_slots(); i++, j++) {
                 new_page->increase_size(1);
-                new_page->SetKeyAt(j, cur->KeyAt(i));
+                new_page->insert_cell_at(j, cur->KeyAt(i));
                 new_page->SetValAt(j, cur->ValueAt(i, fid_));
 
                 auto *tmp_page = cache_manager_->fetchPage(new_page->ValueAt(j, fid_));
@@ -413,10 +410,13 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
                 new_root->SetPageType(BTreePageType::INTERNAL_PAGE);
 
                 // every root starts with only 1 key and 2 pointers.
+                new_root->insert_first_entry(cur->GetPageId(fid_), current_key, current_internal_value);
+                /*
                 new_root->set_num_of_slots(2);
                 new_root->SetValAt(0, cur->GetPageId(fid_));
                 new_root->SetKeyAt(1, current_key);
                 new_root->SetValAt(1, current_internal_value);
+                */
 
                 SetRootPageId(ctx, tmp_root_id);
                 new_root_raw->mutex_.unlock();
@@ -539,7 +539,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                     // merge into prev and delete cur, update the parent(remove the key-value) then break.
                     prev->increase_size(cur_size);
                     for (int i = 0; i < cur_size; i++) {
-                        prev->SetKeyAt(prev_size + i, cur->KeyAt(i));
+                        prev->insert_cell_at(prev_size + i, cur->KeyAt(i));
                         //prev->SetValAt(prev_size + i, cur->ValAt(i));
                     }
                     prev->SetNextPageId(cur->GetNextPageId(fid_));
@@ -574,7 +574,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                     got_in = true;
                     cur->increase_size(next_size);
                     for (int i = 0; i < next_size; i++) {
-                        cur->SetKeyAt(cur_size + i, next->KeyAt(i));
+                        cur->insert_cell_at(cur_size + i, next->KeyAt(i));
                         //cur->SetValAt(cur_size + i, next->ValAt(i));
                     }
                     cur->SetNextPageId(next->GetNextPageId(fid_));
@@ -666,7 +666,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                     // add the key from the parent and the first pointer from current as a new key-value pair.
                     auto parent_key = parent->KeyAt(pos);
                     prev->increase_size(1);
-                    prev->SetKeyAt(prev_size, parent_key);
+                    prev->insert_cell_at(prev_size, parent_key);
                     prev->SetValAt(prev_size, cur->ValueAt(0, fid_));
                     prev_size++;
 
@@ -687,7 +687,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
 
                     prev->increase_size(cur_size - 1);
                     for (int i = 1; i < cur_size; i++) {
-                        prev->SetKeyAt(prev_size + (i - 1), cur->KeyAt(i));
+                        prev->insert_cell_at(prev_size + (i - 1), cur->KeyAt(i));
                         prev->SetValAt(prev_size + (i - 1), cur->ValueAt(i, fid_));
                     }
                     lock_cnt--;
@@ -715,7 +715,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                 if (cur->can_merge_with_me(next)) {
                     // add the key from the parent and the first pointer from next as a new key-value pair.
                     cur->increase_size(1);
-                    cur->SetKeyAt(cur_size, parent_key);
+                    cur->insert_cell_at(cur_size, parent_key);
                     cur->SetValAt(cur_size, next->ValueAt(0, fid_));
                     for (int i = 0; i < next->get_num_of_slots(); i++) {
                         auto *child_page = cache_manager_->fetchPage(next->ValueAt(i, fid_));
@@ -733,7 +733,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
 
                     cur->increase_size((next_size - 1));
                     for (int i = 1; i < next_size; i++) {
-                        cur->SetKeyAt(cur_size + (i - 1), next->KeyAt(i));
+                        cur->insert_cell_at(cur_size + (i - 1), next->KeyAt(i));
                         cur->SetValAt(cur_size + (i - 1), next->ValueAt(i, fid_));
                     }
                     cur_size += (next_size - 1);
@@ -798,7 +798,6 @@ IndexIterator BTreeIndex::begin() {
 
 // for range queries
 IndexIterator BTreeIndex::begin(const IndexKey &key) {
-    See();
     if (isEmpty()) {
         return IndexIterator(nullptr, INVALID_PAGE_ID, 0);
     }

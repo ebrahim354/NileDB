@@ -13,7 +13,7 @@ bool BTreeLeafPage::split_with_and_insert(Arena* arena, i32 nvals, bool unique_i
     md--;
     for (int i = md + 1, j = 0; i < sz; i++, j++) {
         new_page->increase_size(1);
-        new_page->SetKeyAt(j, KeyAt(i));
+        new_page->insert_cell_at(j, KeyAt(i));
         //new_page->SetValAt(j, ValAt(i));
     }
     sz = md+1;
@@ -44,7 +44,11 @@ inline IndexKey BTreeLeafPage::get_last_key_cpy(Arena* arena, int elements_to_ch
     return tmp;
 }
 bool BTreeLeafPage::IsFull(IndexKey k) { 
-    return ((LEAF_SLOT_ENTRY_SIZE_ + k.size_) >= get_free_space_size());
+    u64 ksz = normalize_index_key_size(k);
+    // 9 for worst case varint + 4 for the overflow page number
+    if(ksz != k.size_)
+        ksz += 9 + 4; 
+    return ((LEAF_SLOT_ENTRY_SIZE_ + ksz) >= get_free_space_size());
 }
 
 void BTreeLeafPage::Init(PageID page_id, PageID parent_id) {
@@ -183,7 +187,7 @@ bool BTreeLeafPage::Insert(Arena* arena, IndexKey input_k, i32 nvals, bool is_un
                 (size-cur)*entry_sz);
     }
     increase_size(1);
-    SetKeyAt(cur, input_k);
+    insert_cell_at(cur, input_k);
     arena->clear_temp_arena(tmp_arena);
     return true;
 }
