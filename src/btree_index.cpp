@@ -40,6 +40,10 @@ void BTreeIndex::SetRootPageId(QueryCTX* ctx, PageID root_page_id) {
     cache_manager_->update_root_page_number(root_page_id_.fid_, root_page_id_.page_num_);
 }
 
+bool BTreeIndex::is_root_page(PageNum pnum) {
+    return (pnum == root_page_id_.page_num_);
+}
+
 void BTreeIndex::resize_nkey_cols(int nkey_cols){
     nkey_cols_ = nkey_cols;
 }
@@ -231,7 +235,7 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
             }
             // in case of non root splits:
             Page* new_page_raw = nullptr;
-            auto new_page = create_leaf_page(cur->GetParentPageId(fid_), &new_page_raw);
+            auto new_page = create_leaf_page(INVALID_PAGE_ID, &new_page_raw);
             if(!new_page_raw) return false;
             auto new_page_id = new_page_raw->page_id_;
             // write latch.
@@ -255,7 +259,7 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
             // the edge case of the root being the current and the root is not empty
             // we add two nodes inestead of just one.
             // the splitted node and the new root.
-            if (cur->IsRootPage()) {
+            if (is_root_page(cur->get_page_number())) {
               // create a new root
               Page* new_root_raw = nullptr;
               auto new_root = create_internal_page(INVALID_PAGE_ID, &new_root_raw);
@@ -276,9 +280,6 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
               SetRootPageId(ctx, tmp_root_id);
               new_root_raw->mutex_.unlock();
               cache_manager_->unpinPage(root_page_id_, true);
-
-              cur->SetParentPageId(root_page_id_);
-              new_page->SetParentPageId(root_page_id_);
             }
             new_page->set_next_page_number(cur->get_next_page_number());
             cur->set_next_page_number(new_page_id.page_num_);
@@ -302,7 +303,7 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
 
             // in case of non root splits:
             Page* new_page_raw = nullptr; 
-            auto new_page = create_internal_page(cur->GetParentPageId(fid_), &new_page_raw);
+            auto new_page = create_internal_page(INVALID_PAGE_ID, &new_page_raw);
             if(!new_page_raw) return false;
             auto new_page_id = new_page_raw->page_id_;
 
@@ -326,7 +327,6 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
             //TODO: Fix dead lock.
             //tmp1_page->mutex_.lock();
             auto *tmp1 = reinterpret_cast<BTreeInternalPage *>(tmp1_page->data_);
-            tmp1->SetParentPageId(new_page_id);
             tmp1_page->mutex_.unlock();
             cache_manager_->unpinPage(tmp1->GetPageId(fid_), true);
             // cur key = 3, cur val = 4.
@@ -349,7 +349,6 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
                 // TODO: Fix daed lock.
                 // tmp_page->mutex_.lock();
                 auto *tmp = reinterpret_cast<BTreeInternalPage *>(tmp_page->data_);
-                tmp->SetParentPageId(new_page_id);
                 tmp_page->mutex_.unlock();
                 cache_manager_->unpinPage(tmp->GetPageId(fid_), true);
             }
@@ -369,8 +368,6 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
                 //tmp2_page->mutex_.lock();
                 auto *tmp2 = reinterpret_cast<BTreeInternalPage *>(tmp2_page->data_);
 
-                tmp2->SetParentPageId(cur->GetPageId(fid_));
-
                 // TODO: Fix Dead lock.
                 //tmp2_page->mutex_.lock();
                 cache_manager_->unpinPage(tmp2->GetPageId(fid_), true);
@@ -385,8 +382,6 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
                 //tmp2_page->mutex_.lock();
                 auto *tmp2 = reinterpret_cast<BTreeInternalPage *>(tmp2_page->data_);
 
-                tmp2->SetParentPageId(new_page_id);
-
                 tmp2_page->mutex_.unlock();
                 cache_manager_->unpinPage(tmp2->GetPageId(fid_), true);
             }
@@ -396,7 +391,7 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
             // the edge case of the root being the current and the root is not empty
             // we add two nodes inestead of just one.
             // the splitted node and the new root.
-            if (cur->IsRootPage()) {
+            if (is_root_page(cur->get_page_number())) {
                 // create a new root
                 auto *new_root_raw = cache_manager_->newPage(fid_);
                 // could not create page.
@@ -421,9 +416,6 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
                 SetRootPageId(ctx, tmp_root_id);
                 new_root_raw->mutex_.unlock();
                 cache_manager_->unpinPage(root_page_id_, true);
-
-                cur->SetParentPageId(root_page_id_);
-                new_page->SetParentPageId(root_page_id_);
             }
             // unpin the current_page and the new_page we don't need them any more and they are dirty.
             page_deque.back()->mutex_.unlock();
@@ -490,10 +482,10 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
             page_deque.pop_back();
             // check to see if the key is deleted or not.
             auto deleted = cur->Remove(key);
-            bool too_short = cur->TooShort();
+            bool too_short = cur->TooShort(is_root_page(cur->get_page_number()));
             // no deletion happened or the node is not short even after deletion then just get out.
             // if the current leaf is the root can't merge just return.
-            if (!too_short || !deleted || cur->IsRootPage()) {
+            if (!too_short || !deleted || is_root_page(cur->get_page_number())) {
                 auto tmp_id = cur->GetPageId(fid_);
                 lock_cnt--;
                 // TODO: fix deadlock
@@ -509,23 +501,24 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
             // (if no. entries on cur + no. entries on sibling"left or right" is less than max size of a leaf node).
             // left and right are going to be fetched using iterators and check if they share the same parent with
             // the current node.
-            auto next_page_id = cur->GetNextPageId(fid_);
-            //auto cur_size = cur->get_num_of_slots();
             auto cur_size = cur->get_num_of_slots();
             auto cur_page_id = cur->GetPageId(fid_);
-            auto parent_page_id = cur->GetParentPageId(fid_);
-            // check it out later IMPORTANT.
-            // auto *parent = reinterpret_cast<InternalPage *>(cache_manager_->fetchPage(parent_page_id)->data_);
             auto *parent = reinterpret_cast<BTreeInternalPage *>(custom_stk.back());
+            auto parent_page_id = parent->GetPageId(fid_);
             assert(parent_page_id == custom_stk.back()->GetPageId(fid_));
-            //      auto pos = parent->InsertionPosition(key, comparator_);
-            //     pos--;
-            PageID prev_page_id = INVALID_PAGE_ID;
+
             auto prev_pos = parent->PrevPageOffset(key);
+            auto next_pos = parent->NextPageOffset(key);
+
+            PageID prev_page_id = INVALID_PAGE_ID;
             if (prev_pos != -1) {
                 prev_page_id = parent->ValueAt(prev_pos, fid_);
             }
-            // check it out later IMPORTANT.
+            auto next_page_id = INVALID_PAGE_ID; 
+            if(next_pos != -1){
+                next_page_id = parent->ValueAt(next_pos, fid_);
+            }
+
             auto done = false;
             if (prev_page_id != INVALID_PAGE_ID && !done) {
                 auto *prev_page = cache_manager_->fetchPage(prev_page_id);
@@ -534,7 +527,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                 //prev_page->mutex_.lock();
                 auto *prev = reinterpret_cast<BTreeLeafPage *>(prev_page->data_);
                 auto prev_size = prev->get_num_of_slots();
-                if (prev->GetParentPageId(fid_) == parent_page_id && cur->can_merge_with_me(prev)) {
+                if (cur->can_merge_with_me(prev)) {
                     done = true;
                     // merge into prev and delete cur, update the parent(remove the key-value) then break.
                     prev->increase_size(cur_size);
@@ -569,7 +562,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                 auto *next = reinterpret_cast<BTreeLeafPage *>(next_page->data_);
                 auto next_size = next->get_num_of_slots();
                 bool got_in = false;
-                if (next->GetParentPageId(fid_) == parent_page_id && cur->can_merge_with_me(next)) {
+                if (cur->can_merge_with_me(next)) {
                     done = true;
                     got_in = true;
                     cur->increase_size(next_size);
@@ -602,7 +595,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
             auto *cur = reinterpret_cast<BTreeInternalPage *>(custom_stk.back());
             page_deque.pop_back();
             custom_stk.pop_back();
-            bool too_short = cur->TooShort();
+            bool too_short = cur->TooShort(is_root_page(cur->get_page_number()));
             if (!too_short) {
                 lock_cnt--;
                 cur_page->mutex_.unlock();
@@ -610,7 +603,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                 cur_unpined = true;
                 break;
             }
-            if (cur->IsRootPage()) {
+            if (is_root_page(cur->get_page_number())) {
                 SetRootPageId(ctx, cur->ValueAt(0, fid_));
 
                 auto *child_page = cache_manager_->fetchPage(cur->ValueAt(0, fid_));
@@ -618,7 +611,6 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                 // TODO: Fix Dead lock.
                 // child_page->mutex_.lock();
                 auto *child = reinterpret_cast<BTreePage *>(child_page->data_);
-                child->SetParentPageId(INVALID_PAGE_ID);
                 lock_cnt--;
                 child_page->mutex_.unlock();
                 cache_manager_->unpinPage(cur->ValueAt(0, fid_), true);
@@ -634,9 +626,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
             // no prev and next pointer so need to get them from the parent.
             // may as well just fetch the parent right away.
             auto cur_page_id = cur->GetPageId(fid_);
-            // auto parent_page_id = cur->GetParentPageId(fid_);
             auto cur_size = cur->get_num_of_slots();
-            // IMPORTANT.
             auto *parent = reinterpret_cast<BTreeInternalPage *>(custom_stk.back());
 
             auto parent_size = parent->get_num_of_slots();
@@ -677,8 +667,6 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                         // child_page->mutex_.lock();
                         auto *child = reinterpret_cast<BTreePage *>(child_page->data_);
                         auto tmp_child_page_id = child->GetPageId(fid_);
-
-                        child->SetParentPageId(prev_page_id);
 
                         lock_cnt--;
                         child_page->mutex_.unlock();
@@ -724,7 +712,6 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                         //child_page->mutex_.lock();
                         auto *child = reinterpret_cast<BTreePage *>(child_page->data_);
                         auto tmp_child_page_id = child->GetPageId(fid_);
-                        child->SetParentPageId(cur_page_id);
                         lock_cnt--;
                         child_page->mutex_.unlock();
                         cache_manager_->unpinPage(tmp_child_page_id, true);
@@ -798,6 +785,7 @@ IndexIterator BTreeIndex::begin() {
 
 // for range queries
 IndexIterator BTreeIndex::begin(const IndexKey &key) {
+    See();
     if (isEmpty()) {
         return IndexIterator(nullptr, INVALID_PAGE_ID, 0);
     }
@@ -876,7 +864,7 @@ void BTreeIndex::See(){
 void BTreeIndex::ToString(BTreePage* page){
     if (page->IsLeafPage()) {
         auto *leaf = reinterpret_cast<BTreeLeafPage *>(page);
-        std::cout << "Leaf Page: " << leaf->GetPageId(fid_).page_num_ << " parent: " << leaf->GetParentPageId(fid_).page_num_
+        std::cout << "Leaf Page: " << leaf->GetPageId(fid_).page_num_
             << " next: " << leaf->GetNextPageId(fid_).page_num_ << std::endl;
         for (int i = 0; i < leaf->get_num_of_slots(); i++) {
             leaf->KeyAt(i).print();
@@ -886,7 +874,8 @@ void BTreeIndex::ToString(BTreePage* page){
         std::cout << std::endl;
     } else {
         auto *internal = reinterpret_cast<BTreeInternalPage *>(page);
-        std::cout << "Internal Page: " << internal->GetPageId(fid_).page_num_ << " parent: " << internal->GetParentPageId(fid_).page_num_ << std::endl;
+        std::cout << "Internal Page: " << internal->GetPageId(fid_).page_num_ 
+            << std::endl;
         for (int i = 0; i < internal->get_num_of_slots(); i++) {
             internal->KeyAt(i).print();
             std::cout << ": " << internal->ValueAt(i, fid_).page_num_ << ",";

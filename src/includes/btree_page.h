@@ -7,7 +7,7 @@
 #include "index_key.h"
 
 
-#define BTREE_HEADER_SIZE 25
+#define BTREE_HEADER_SIZE 21
 // NOTE: these constats are used by sqlite to decide if
 // the key should be stored in an overflow page or not,
 // and they are picked in way that gives a good fanout to the overall btree page,
@@ -36,7 +36,6 @@ enum class BTreePageType: u8 {
 class BTreePage {
  public:
   bool IsLeafPage() const;
-  bool IsRootPage() const;
   void SetPageType(BTreePageType page_type);
 
   static int get_max_key_size();
@@ -49,16 +48,13 @@ class BTreePage {
   uint32_t get_used_space();
   bool can_merge_with_me(BTreePage* other);
 
-  bool TooShort();
-  bool TooShortBefore();
+  bool TooShort(bool is_root_page);
+  bool TooShortBefore(bool is_root_page);
   /*
   uint32_t GetMinSize() const;
   void SetMaxSize(int max_size);
   */
   void increase_size(int amount);
-
-  PageID GetParentPageId(FileID parent_fid) const;
-  void SetParentPageId(PageID parent_page_id);
 
   PageID GetPageId(FileID fid) const;
   void SetPageId(PageID page_id);
@@ -83,13 +79,10 @@ class BTreePage {
 
   inline PageNum get_page_number() const;
 
-  inline  PageNum get_parent_page_number() const;
 
   inline void set_page_type(BTreePageType t);
 
   inline void set_page_number(PageNum page_num);
-
-  inline void set_parent_page_number(PageNum page_num);
 
   void set_free_space_offset(uint32_t free_space_ptr);
 
@@ -102,11 +95,10 @@ class BTreePage {
   // also shrink the sized of other meta data entries to only 2 bytes / entry.
   static const size_t PAGE_TYPE_OFFSET_ = 0  ;          //  1 byte .
   static const size_t PAGE_NUMBER_OFFSET_ = 1;          //  4 bytes.
-  static const size_t PARENT_PAGE_NUMBER_OFFSET_ = 5;   //  4 bytes.
-  static const size_t NEXT_PAGE_NUMBER_OFFSET_ = 9;     //  4 bytes (only used for leaf pages).
-  static const size_t FREE_SPACE_PTR_OFFSET_ = 13;      //  4 bytes.
-  static const size_t NUMBER_OF_SLOTS_OFFSET_ = 17;     //  4 bytes.
-  static const size_t SLOT_ARRAY_OFFSET_ = 21;          //  4 bytes.
+  static const size_t NEXT_PAGE_NUMBER_OFFSET_ = 5;     //  4 bytes (only used for leaf pages).
+  static const size_t FREE_SPACE_PTR_OFFSET_ = 9;      //  4 bytes.
+  static const size_t NUMBER_OF_SLOTS_OFFSET_ = 13;     //  4 bytes.
+  static const size_t SLOT_ARRAY_OFFSET_ = 17;          //  4 bytes.
   static const size_t SLOT_ARRAY_KEY_SIZE_ = 4;         //  2 bytes(offset) + 2 bytes(size).
   static const size_t INTERNAL_SLOT_ENTRY_SIZE_ = SLOT_ARRAY_KEY_SIZE_  + 4;//  4 bytes key + 4  bytes page number.
   static const size_t LEAF_SLOT_ENTRY_SIZE_ = SLOT_ARRAY_KEY_SIZE_;         //  4 bytes key.

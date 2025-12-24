@@ -17,7 +17,7 @@ bool BTreeInternalPage::IsFull(IndexKey k) {
 void BTreeInternalPage::Init(PageID page_id, PageID parent_id) {
   SetPageType(BTreePageType::INTERNAL_PAGE);
   SetPageId(page_id);
-  SetParentPageId(parent_id);
+  //SetParentPageId(parent_id);
   set_free_space_offset(PAGE_SIZE - 1);
   increase_size(1);
   //SetMaxSize(max_size);
@@ -115,6 +115,10 @@ int BTreeInternalPage::NextPageOffset(IndexKey k) {
     int cur = low;
     if (cur != 0) {
         cur--;
+    }
+    if(cur + 1 >= get_num_of_slots()) {
+        std::cout << "last pos\n";
+        return -1;
     }
     return cur + 1;
 }

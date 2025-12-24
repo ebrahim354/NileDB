@@ -30,17 +30,17 @@ bool BTreePage::can_merge_with_me(BTreePage* other) {
     return (get_free_space_size() > other->get_used_space());
 }
 
-bool BTreePage::TooShort() {
+bool BTreePage::TooShort(bool is_root_page) {
     // root page is special.
-    if (IsRootPage()) {
+    if (is_root_page) {
         return get_num_of_slots() <= 1;
     }
     return get_free_space_size() > get_used_space(); 
 }
 
-bool BTreePage::TooShortBefore() {
+bool BTreePage::TooShortBefore(bool is_root_page) {
     // root page is special.
-    if (IsRootPage()) {
+    if (is_root_page) {
         return get_num_of_slots() <= 1;
     }
     return get_free_space_size() > (get_used_space()); 
@@ -186,9 +186,6 @@ inline PageNum BTreePage::get_page_number() const {
     return *(PageNum*)get_ptr_to(PAGE_NUMBER_OFFSET_);
 }
 
-inline  PageNum BTreePage::get_parent_page_number() const {
-    return *(PageNum*)get_ptr_to(PARENT_PAGE_NUMBER_OFFSET_);
-}
 
 inline void BTreePage::set_page_type(BTreePageType t) {
     char* ptr = get_ptr_to(PAGE_TYPE_OFFSET_);
@@ -197,11 +194,6 @@ inline void BTreePage::set_page_type(BTreePageType t) {
 
 inline void BTreePage::set_page_number(PageNum page_num) {
     PageNum* ptr = (PageNum*)get_ptr_to(PAGE_NUMBER_OFFSET_);
-    *ptr = page_num;
-}
-
-inline void BTreePage::set_parent_page_number(PageNum page_num) {
-    PageNum* ptr = (PageNum*)get_ptr_to(PARENT_PAGE_NUMBER_OFFSET_);
     *ptr = page_num;
 }
 
@@ -219,7 +211,6 @@ char* BTreePage::get_free_space_ptr() const {
 }
 
 bool BTreePage::IsLeafPage() const { return get_page_type() == BTreePageType::LEAF_PAGE; }
-bool BTreePage::IsRootPage() const { return get_parent_page_number() == INVALID_PAGE_NUM; }
 void BTreePage::SetPageType(BTreePageType page_type) { set_page_type(page_type); }
 
 
@@ -242,19 +233,6 @@ void BTreePage::increase_size(int amount) {
   *size_ptr += amount;
 
   if(amount < 0) compact();
-}
-
-PageID BTreePage::GetParentPageId(FileID parent_fid) const { 
-    PageNum pg_num = get_parent_page_number();
-    if(pg_num == INVALID_PAGE_NUM) return INVALID_PAGE_ID;
-    return {
-        .fid_ = parent_fid,
-            .page_num_ = pg_num,
-    };
-}
-
-void BTreePage::SetParentPageId(PageID parent_page_id) {
-  set_parent_page_number(parent_page_id.page_num_);
 }
 
 PageID BTreePage::GetPageId(FileID fid) const {

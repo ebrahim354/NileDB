@@ -23,6 +23,7 @@ class BTreeIndex {
         void resize_nkey_cols(int nkey_cols);
 
         void SetRootPageId(QueryCTX* ctx, PageID root_page_id);
+        bool is_root_page(PageNum pnum);
         // true means value is returned.
         //bool GetValue(QueryCTX* ctx, IndexKey &key, Vector<RecordID> *result);
         // new_page_raw (output).

@@ -54,7 +54,6 @@ bool BTreeLeafPage::IsFull(IndexKey k) {
 void BTreeLeafPage::Init(PageID page_id, PageID parent_id) {
   SetPageType(BTreePageType::LEAF_PAGE);
   SetPageId(page_id);
-  SetParentPageId(parent_id);
   set_next_page_number(INVALID_PAGE_NUM);
   set_free_space_offset(PAGE_SIZE - 1);
 }
