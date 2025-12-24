@@ -51,7 +51,7 @@ bool BTreeLeafPage::IsFull(IndexKey k) {
     return ((LEAF_SLOT_ENTRY_SIZE_ + ksz) >= get_free_space_size());
 }
 
-void BTreeLeafPage::Init(PageID page_id, PageID parent_id) {
+void BTreeLeafPage::Init(PageID page_id) {
   SetPageType(BTreePageType::LEAF_PAGE);
   SetPageId(page_id);
   set_next_page_number(INVALID_PAGE_NUM);

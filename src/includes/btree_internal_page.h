@@ -9,7 +9,7 @@ struct IndexKey;
 
 class BTreeInternalPage : public BTreePage {
     public:
-        void Init(PageID page_id, PageID parent_id = INVALID_PAGE_ID);
+        void Init(PageID page_id);
 
         // insert the first entry ever since the creation of the page 
         // (doesn't do any offsetting of the slot array).

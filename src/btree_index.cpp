@@ -98,7 +98,7 @@ bool BTreeIndex::GetValue(QueryCTX* ctx, IndexKey &key, Vector<RecordID> *result
 }*/
 
 // new_page_raw (output).
-BTreeLeafPage* BTreeIndex::create_leaf_page(PageID parent_pid, Page** new_page_raw){
+BTreeLeafPage* BTreeIndex::create_leaf_page(Page** new_page_raw){
   *new_page_raw = cache_manager_->newPage(fid_);
   if(!(*new_page_raw)) return nullptr;
   auto new_page_id = (*new_page_raw)->page_id_;
@@ -106,13 +106,13 @@ BTreeLeafPage* BTreeIndex::create_leaf_page(PageID parent_pid, Page** new_page_r
   // TODO: fix dead lock.
   // new_page_raw->mutex_.lock();
   auto *new_page = reinterpret_cast<BTreeLeafPage *>((*new_page_raw)->data_);
-  new_page->Init(new_page_id, parent_pid);
+  new_page->Init(new_page_id);
   new_page->SetPageType(BTreePageType::LEAF_PAGE);
   return new_page;
 }
 
 // new_page_raw (output).
-BTreeInternalPage* BTreeIndex::create_internal_page(PageID parent_pid, Page** new_page_raw){
+BTreeInternalPage* BTreeIndex::create_internal_page(Page** new_page_raw){
   *new_page_raw = cache_manager_->newPage(fid_);
   if(!(*new_page_raw)) 
     return nullptr;
@@ -120,7 +120,7 @@ BTreeInternalPage* BTreeIndex::create_internal_page(PageID parent_pid, Page** ne
   //TODO: Fix DEAD LOCK.
   //new_page_raw->mutex_.lock();
   auto *new_page = reinterpret_cast<BTreeInternalPage *>((*new_page_raw)->data_);
-  new_page->Init(new_page_id, parent_pid);
+  new_page->Init(new_page_id);
   new_page->SetPageType(BTreePageType::INTERNAL_PAGE);
   return new_page;
 }
@@ -148,7 +148,7 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
         page_deque.push_back(leaf_page);
         auto *leaf = reinterpret_cast<BTreeLeafPage *>(leaf_page->data_);
 
-        leaf->Init(leaf_page->page_id_, INVALID_PAGE_ID);
+        leaf->Init(leaf_page->page_id_);
         leaf->SetPageType(BTreePageType::LEAF_PAGE);
         root = leaf;
         SetRootPageId(ctx, leaf_page->page_id_);
@@ -235,7 +235,7 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
             }
             // in case of non root splits:
             Page* new_page_raw = nullptr;
-            auto new_page = create_leaf_page(INVALID_PAGE_ID, &new_page_raw);
+            auto new_page = create_leaf_page(&new_page_raw);
             if(!new_page_raw) return false;
             auto new_page_id = new_page_raw->page_id_;
             // write latch.
@@ -262,7 +262,7 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
             if (is_root_page(cur->get_page_number())) {
               // create a new root
               Page* new_root_raw = nullptr;
-              auto new_root = create_internal_page(INVALID_PAGE_ID, &new_root_raw);
+              auto new_root = create_internal_page(&new_root_raw);
               if(!new_root_raw) return false;
               auto tmp_root_id = new_root_raw->page_id_;
               // create a new root
@@ -303,7 +303,7 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
 
             // in case of non root splits:
             Page* new_page_raw = nullptr; 
-            auto new_page = create_internal_page(INVALID_PAGE_ID, &new_page_raw);
+            auto new_page = create_internal_page(&new_page_raw);
             if(!new_page_raw) return false;
             auto new_page_id = new_page_raw->page_id_;
 
@@ -401,7 +401,7 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
                 // TODO: Fix Dead lock.
                 // new_root_raw->mutex_.lock();
                 auto *new_root = reinterpret_cast<BTreeInternalPage *>(new_root_raw->data_);
-                new_root->Init(tmp_root_id, INVALID_PAGE_ID);
+                new_root->Init(tmp_root_id);
                 new_root->SetPageType(BTreePageType::INTERNAL_PAGE);
 
                 // every root starts with only 1 key and 2 pointers.

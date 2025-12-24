@@ -14,13 +14,11 @@ bool BTreeInternalPage::IsFull(IndexKey k) {
     return (INTERNAL_SLOT_ENTRY_SIZE_ + ksz >= get_free_space_size());
 }
 
-void BTreeInternalPage::Init(PageID page_id, PageID parent_id) {
+void BTreeInternalPage::Init(PageID page_id) {
   SetPageType(BTreePageType::INTERNAL_PAGE);
   SetPageId(page_id);
-  //SetParentPageId(parent_id);
   set_free_space_offset(PAGE_SIZE - 1);
   increase_size(1);
-  //SetMaxSize(max_size);
 }
 
 /*

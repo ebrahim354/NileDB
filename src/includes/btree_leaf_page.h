@@ -10,7 +10,7 @@
 
 class BTreeLeafPage : public BTreePage {
     public:
-        void Init(PageID page_id, PageID parent_id = INVALID_PAGE_ID);
+        void Init(PageID page_id);
 
         PageID GetNextPageId(FileID fid);
         void SetNextPageId(PageID next_page_id);

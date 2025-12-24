@@ -27,9 +27,9 @@ class BTreeIndex {
         // true means value is returned.
         //bool GetValue(QueryCTX* ctx, IndexKey &key, Vector<RecordID> *result);
         // new_page_raw (output).
-        BTreeLeafPage* create_leaf_page(PageID parent_pid, Page** new_page_raw);
+        BTreeLeafPage* create_leaf_page(Page** new_page_raw);
         // new_page_raw (output).
-        BTreeInternalPage* create_internal_page(PageID parent_pid, Page** new_page_raw);
+        BTreeInternalPage* create_internal_page(Page** new_page_raw);
         // return true if inserted successfully.
         //bool Insert(QueryCTX* ctx, const IndexKey &key, const RecordID &value);
         bool Insert(QueryCTX* ctx, const IndexKey &key);
