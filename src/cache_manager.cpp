@@ -223,6 +223,7 @@ bool CacheManager::deletePage(PageID page_id) {
     if (res == page_table_.end() && frame == -1) {
         return true;
     }
+    assert(pages_[frame].pin_count_ == 0);
     if (pages_[frame].pin_count_ != 0) {
         return false;
     }

@@ -229,7 +229,6 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
             // if it's empty then add the key
             bool full = cur->IsFull(key);
             if (!full) {
-                //inserted = cur->Insert(current_key, current_value);
                 inserted = cur->Insert(&ctx->arena_, current_key, nkey_cols_, is_unique_index_);
                 break;
             }
@@ -242,7 +241,6 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
             // TODO: fix dead lock.
             //new_page_raw->mutex_.lock();
 
-            //inserted = cur->split_with_and_insert(new_page, current_key, current_value);
             inserted = cur->split_with_and_insert(
                     &ctx->arena_,
                     nkey_cols_, is_unique_index_,
@@ -266,15 +264,6 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
               if(!new_root_raw) return false;
               auto tmp_root_id = new_root_raw->page_id_;
               // create a new root
-
-              // every root starts with only 1 key and 2 pointers.
-              // TODO: FIX STARTING KEY.
-              /*
-              new_root->set_num_of_slots(2);
-              new_root->SetValAt(0, cur->GetPageId(fid_));
-              new_root->SetKeyAt(1, current_key);
-              new_root->SetValAt(1, new_page_id);
-              */
               new_root->insert_first_entry(cur->GetPageId(fid_), current_key, new_page_id);
 
               SetRootPageId(ctx, tmp_root_id);
@@ -320,15 +309,6 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
             } else {
                 new_page->SetValAt(0, current_internal_value);
             }
-            auto *tmp1_page = cache_manager_->fetchPage(new_page->ValueAt(0, fid_));
-            // could not fetch page.
-            if(!tmp1_page) 
-                return false;
-            //TODO: Fix dead lock.
-            //tmp1_page->mutex_.lock();
-            auto *tmp1 = reinterpret_cast<BTreeInternalPage *>(tmp1_page->data_);
-            tmp1_page->mutex_.unlock();
-            cache_manager_->unpinPage(tmp1->GetPageId(fid_), true);
             // cur key = 3, cur val = 4.
             // pos > md => md = 2
             // pos < md => md = 1
@@ -341,16 +321,6 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
                 new_page->increase_size(1);
                 new_page->insert_cell_at(j, cur->KeyAt(i));
                 new_page->SetValAt(j, cur->ValueAt(i, fid_));
-
-                auto *tmp_page = cache_manager_->fetchPage(new_page->ValueAt(j, fid_));
-                // could not fetch page.
-                if(!tmp_page)
-                    return false;
-                // TODO: Fix daed lock.
-                // tmp_page->mutex_.lock();
-                auto *tmp = reinterpret_cast<BTreeInternalPage *>(tmp_page->data_);
-                tmp_page->mutex_.unlock();
-                cache_manager_->unpinPage(tmp->GetPageId(fid_), true);
             }
             IndexKey middle_key = current_key;
             if (inserted_on_new != 0) {
@@ -359,31 +329,8 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
             cur->set_num_of_slots(md);
             if (inserted_on_new == -1) {
                 cur->Insert(current_key, current_internal_value);
-
-                auto *tmp2_page = cache_manager_->fetchPage(current_internal_value);
-                // could not fetch page.
-                if(!tmp2_page)
-                    return false;
-                // TODO: Fix Dead lock
-                //tmp2_page->mutex_.lock();
-                auto *tmp2 = reinterpret_cast<BTreeInternalPage *>(tmp2_page->data_);
-
-                // TODO: Fix Dead lock.
-                //tmp2_page->mutex_.lock();
-                cache_manager_->unpinPage(tmp2->GetPageId(fid_), true);
             } else if (inserted_on_new == 1) {
                 new_page->Insert(current_key, current_internal_value);
-
-                auto *tmp2_page = cache_manager_->fetchPage(current_internal_value);
-                // could not fetch page.
-                if(!tmp2_page)
-                    return false;
-                // TODO: Fix Dead lock.
-                //tmp2_page->mutex_.lock();
-                auto *tmp2 = reinterpret_cast<BTreeInternalPage *>(tmp2_page->data_);
-
-                tmp2_page->mutex_.unlock();
-                cache_manager_->unpinPage(tmp2->GetPageId(fid_), true);
             }
 
             current_key = middle_key;
@@ -406,12 +353,6 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
 
                 // every root starts with only 1 key and 2 pointers.
                 new_root->insert_first_entry(cur->GetPageId(fid_), current_key, current_internal_value);
-                /*
-                new_root->set_num_of_slots(2);
-                new_root->SetValAt(0, cur->GetPageId(fid_));
-                new_root->SetKeyAt(1, current_key);
-                new_root->SetValAt(1, current_internal_value);
-                */
 
                 SetRootPageId(ctx, tmp_root_id);
                 new_root_raw->mutex_.unlock();
@@ -441,7 +382,6 @@ bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
 
 void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
     std::unique_lock locker(root_page_id_lock_);
-    //  std::cerr << "removing " << key << std::endl;
     if (root_page_id_ == INVALID_PAGE_ID) {
         return;
     }
@@ -503,7 +443,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
             // the current node.
             auto cur_size = cur->get_num_of_slots();
             auto cur_page_id = cur->GetPageId(fid_);
-            auto *parent = reinterpret_cast<BTreeInternalPage *>(custom_stk.back());
+            auto parent = reinterpret_cast<BTreeInternalPage *>(custom_stk.back());
             auto parent_page_id = parent->GetPageId(fid_);
             assert(parent_page_id == custom_stk.back()->GetPageId(fid_));
 
@@ -627,7 +567,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
             // may as well just fetch the parent right away.
             auto cur_page_id = cur->GetPageId(fid_);
             auto cur_size = cur->get_num_of_slots();
-            auto *parent = reinterpret_cast<BTreeInternalPage *>(custom_stk.back());
+            auto parent = reinterpret_cast<BTreeInternalPage *>(custom_stk.back());
 
             auto parent_size = parent->get_num_of_slots();
             bool done = false;
@@ -659,20 +599,6 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                     prev->insert_cell_at(prev_size, parent_key);
                     prev->SetValAt(prev_size, cur->ValueAt(0, fid_));
                     prev_size++;
-
-                    for (int i = 0; i < cur->get_num_of_slots(); i++) {
-                        auto child_page = cache_manager_->fetchPage(cur->ValueAt(i, fid_));
-                        lock_cnt++;
-                        // TODO: Fix Dead Lock.
-                        // child_page->mutex_.lock();
-                        auto *child = reinterpret_cast<BTreePage *>(child_page->data_);
-                        auto tmp_child_page_id = child->GetPageId(fid_);
-
-                        lock_cnt--;
-                        child_page->mutex_.unlock();
-                        cache_manager_->unpinPage(tmp_child_page_id, true);
-                    }
-
                     prev->increase_size(cur_size - 1);
                     for (int i = 1; i < cur_size; i++) {
                         prev->insert_cell_at(prev_size + (i - 1), cur->KeyAt(i));
@@ -705,19 +631,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                     cur->increase_size(1);
                     cur->insert_cell_at(cur_size, parent_key);
                     cur->SetValAt(cur_size, next->ValueAt(0, fid_));
-                    for (int i = 0; i < next->get_num_of_slots(); i++) {
-                        auto *child_page = cache_manager_->fetchPage(next->ValueAt(i, fid_));
-                        lock_cnt++;
-                        // TODO: Fix Dead Lock.
-                        //child_page->mutex_.lock();
-                        auto *child = reinterpret_cast<BTreePage *>(child_page->data_);
-                        auto tmp_child_page_id = child->GetPageId(fid_);
-                        lock_cnt--;
-                        child_page->mutex_.unlock();
-                        cache_manager_->unpinPage(tmp_child_page_id, true);
-                    }
                     cur_size++;
-
                     cur->increase_size((next_size - 1));
                     for (int i = 1; i < next_size; i++) {
                         cur->insert_cell_at(cur_size + (i - 1), next->KeyAt(i));
