@@ -8,15 +8,20 @@ AlgebraOperation::AlgebraOperation(AlgebraOperationType type, int query_idx):
 
 ScanOperation::ScanOperation(Arena* arena, int query_idx, String& table_name, String& table_rename):
     AlgebraOperation(SCAN, query_idx),
-    table_name_(table_name, arena), table_rename_(table_rename, arena)
+    table_name_(table_name, arena), table_rename_(table_rename, arena),
+    filters_(arena), index_filters_(arena)
 {}
 void ScanOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";
     std::cout << "Scan operation, name: " << table_name_ << " rename: " << table_rename_;
-    std::cout << " type: " << (scan_type_ == SEQ_SCAN ? "SEQ_SCAN " : "INDEX_SCAN ");
-    if(filter_)
-        std::cout << "filter: " << filter_->token_.val_;
+    std::cout << " type: " << (scan_type_ == SEQ_SCAN ? "SEQ_SCAN \n" : "INDEX_SCAN \n");
+    if(filters_.size()){
+        for(int j = 0; j < filters_.size(); ++j){
+            std::cout << "Scan filter number (" << (int)(j+1) << "): " << filters_[j]->token_.val_;
+            std::cout << "\n";
+        }
+    }
     std::cout << "\n";
 }
 

@@ -50,7 +50,6 @@ int DiskManager::deallocatePage(PageID page_id) {
         return 1;
     }
 
-    // freelist_ptr_ value on the disk will be updated by the destructor.(fault handling might change this).
     // TODO: clean this up
     cached_files_[file_name].freelist_ptr_ = page_num;
     {

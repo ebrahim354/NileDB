@@ -34,8 +34,8 @@ class LRUKReplacer {
         size_t replacer_size_;
         size_t k_;
         std::mutex latch_;
-        // assume that it can grow to infinity for now but it's not true. max = 2^32 - 1
-        size_t current_timestamp_{0};
+        // assume that it can grow to infinity for now but it's not true. max = 2^64 - 1
+        u64 current_timestamp_{0};
         // we are using two maps pointing at each other because we need a lookup_ with the frame_id (lookup_),
         // and we need frames to be sorted naturally inside the frames_ map and the frames_.begin() is the next
         // frame to be evicted. We can get rid of the visit_count_ table later but it's fine for now ( for example
@@ -55,7 +55,7 @@ class LRUKReplacer {
         // visit_count handles number of visited (can't put it on the map because we need to sort all visits that
         // are less than k and take smallest one).
         std::unordered_map<size_t, size_t> visit_count_;
-        std::map<size_t, std::array<size_t, 3>> lookup_;
+        std::unordered_map<size_t, std::array<size_t, 3>> lookup_;
         std::map<std::array<size_t, 3>, size_t> frames_;
 };
 

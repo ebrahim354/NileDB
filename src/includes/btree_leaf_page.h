@@ -29,7 +29,7 @@ class BTreeLeafPage : public BTreePage {
         //void SetValAt(int index, RecordID v);
         //bool GetValue(IndexKey k, Vector<RecordID> *result);
         int GetPos(IndexKey k);
-        void Draw();
+        int get_pos_upper_bound(IndexKey k);
 
         //bool Insert(IndexKey key, RecordID v);
         bool Insert(Arena* arena, IndexKey input_k, i32 nvals, bool is_unique);

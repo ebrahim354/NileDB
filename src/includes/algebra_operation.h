@@ -53,7 +53,8 @@ struct ScanOperation: AlgebraOperation {
     String table_rename_ = {};
     String index_name_   = {};
     ScanType scan_type_  = SEQ_SCAN;
-    ASTNode* filter_   = nullptr;
+    Vector<ASTNode*> filters_ = {};
+    Vector<ASTNode*> index_filters_ = {};
 };
 
 struct UnionOperation: AlgebraOperation {

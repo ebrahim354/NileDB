@@ -71,6 +71,26 @@ PageID BTreeInternalPage::NextPage(IndexKey key, FileID fid){
     return ValueAt(cur, fid);
 }
 
+PageID BTreeInternalPage::next_page_upper_bound(IndexKey key, FileID fid){
+    int size = get_num_of_slots();
+    int mid;
+    int low = 1;
+    int high = size;
+    while (low < high) {
+        mid = low + (high - low) / 2;
+
+        if (KeyAt(mid) <= key) {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+    while(low < size && KeyAt(low) <= key) low++;
+
+    assert(low-1 < size);
+    return ValueAt(low-1, fid);
+}
+
 
 int BTreeInternalPage::InsertionPosition(IndexKey k) {
     int size = get_num_of_slots();
@@ -115,7 +135,6 @@ int BTreeInternalPage::NextPageOffset(IndexKey k) {
         cur--;
     }
     if(cur + 1 >= get_num_of_slots()) {
-        std::cout << "last pos\n";
         return -1;
     }
     return cur + 1;

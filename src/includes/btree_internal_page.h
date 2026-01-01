@@ -26,6 +26,7 @@ class BTreeInternalPage : public BTreePage {
         void remove_entry_at(int pos);
         void SetValAt(int index, const PageID &v);
         PageID NextPage(IndexKey key, FileID fid);
+        PageID next_page_upper_bound(IndexKey key, FileID fid);
         PageID ValueAt(int index, FileID fid);
         int InsertionPosition(IndexKey k);
 

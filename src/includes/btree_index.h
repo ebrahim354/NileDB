@@ -35,11 +35,12 @@ class BTreeIndex {
         bool Insert(QueryCTX* ctx, const IndexKey &key);
         void Remove(QueryCTX* ctx, const IndexKey &key);
         IndexIterator begin();
-        // for range queries
-        IndexIterator begin(const IndexKey &key);
         IndexIterator end();
+        // for range queries
+        IndexIterator lower_bound(const IndexKey &key);
+        IndexIterator upper_bound(const IndexKey &key);
         void See();
-        void ToString(BTreePage* page);
+        void ToString(BTreePage* page, std::ofstream& out);
         FileID get_fid();
 
     private:

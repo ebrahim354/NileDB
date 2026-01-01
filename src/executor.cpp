@@ -545,47 +545,48 @@ SeqScanExecutor::SeqScanExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* 
     table_(table)
 {
     assert(plan_node != nullptr && plan_node->type_ == SCAN);
-    //type_ = SEQUENTIAL_SCAN_EXECUTOR;
-    //ctx_ = ctx; 
-    //plan_node_ = plan_node;
-    //output_schema_ = table;
-    //table_ = table;
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
     output_.setNewSchema(output_schema_);
+    filters_ = &(((ScanOperation*)plan_node)->filters_);
 }
 
 void SeqScanExecutor::init() {
     error_status_ = 0;
     finished_ = 0;
-    //output_.resize(output_schema_->numOfCols());
-    //it_ = table_->getTable()->begin();
     it_ = table_->begin();
     it_.init();
     ctx_->table_handles_.push_back(&it_);
 }
 
 Tuple SeqScanExecutor::next() {
-    // no more records.
-    if(!it_.advance()) {
-        finished_ = 1;
-        return {};
-    };
-    /*
-    Record r = it_.getCurRecordCpy(&ctx_->temp_arena_);
-    RecordID rid = it_.getCurRecordID();
-    int err = table_->translateToTuple(r, output_, rid);
-    */
-    int err = it_.getCurTupleCpy(ctx_->temp_arena_, &output_);
-    if(err) {
-        error_status_ = 1;
-        return {};
+    ArenaTemp scratch = ctx_->temp_arena_.start_temp_arena();
+    while(true){
+        ctx_->temp_arena_.clear_temp_arena(scratch);
+        // no more records.
+        if(!it_.advance()) {
+            finished_ = 1;
+            return {};
+        };
+        int err = it_.getCurTupleCpy(ctx_->temp_arena_, &output_);
+        if(err) {
+            error_status_ = 1;
+            return {};
+        }
+        if(!filters_) return output_;
+        bool record_got_filtered = false;
+        for(int i = 0; i < filters_->size(); ++i){
+            Value exp = evaluate_expression(ctx_, (*filters_)[i], output_, true, true).getBoolVal();
+            if(exp.isNull() || exp == false){
+                record_got_filtered = true;
+                break;
+            }
+        }
+        if(!record_got_filtered) return output_;
     }
-    return output_;
 }
 
-// TODO: change BTreeIndex type to be a generic ( just Index ) that might be a btree or hash index.
 IndexScanExecutor::IndexScanExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table, IndexHeader index):
     Executor(arena, ctx, plan_node, table, nullptr, INDEX_SCAN_EXECUTOR),
     table_(table), index_header_(arena)
@@ -601,78 +602,88 @@ IndexScanExecutor::IndexScanExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperati
     assert(query_idx_ < ctx->queries_call_stack_.size());
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
 
-    //table_ = table;
-    //index_header_ = index;
-    filter_ = ((ScanOperation*)plan_node)->filter_;
+    filters_       = &((ScanOperation*)plan_node)->filters_;
+    index_filters_ = &((ScanOperation*)plan_node)->index_filters_;
+    table_fid_ = table_->getTable()->get_fid();
 }
 
 void IndexScanExecutor::assign_iterators() {
-    ASTNode* ptr = filter_;
-    CategoryType cat = ptr->category_;
-    switch(cat) {
-        case EQUALITY:
-        case COMPARISON:{
-                            ASTNode* left  = nullptr; 
-                            ASTNode* right = nullptr; 
-                            if(cat == EQUALITY){
-                                left  = ((EqualityNode*)ptr)->cur_;
-                                right = ((EqualityNode*)ptr)->next_;
-                            } else if(cat == COMPARISON) {
-                                left  = ((ComparisonNode*)ptr)->cur_;
-                                right = ((ComparisonNode*)ptr)->next_;
-                            }
-                            Value val;
-                            Vector<String> key;
-                            accessed_fields(left , key);
-                            int size_before = key.size();
-                            bool key_on_left = (size_before != 0);
-                            accessed_fields(right, key);
-                            assert(key.size() == 1);
+    Vector<Value> key_vals;
+    int num_of_compares = 0;
+    TokenType first_col_op      = TokenType::EQ;
+    bool      first_key_on_left = false;
+    for(int i = 0; i < index_filters_->size(); ++i) {
+        ASTNode* ptr = (*index_filters_)[i];
+        CategoryType cat = ptr->category_;
+        while(ptr){
+            cat = ptr->category_;
+            if(cat == EXPRESSION) {
+                ptr = ((ExpressionNode*)ptr)->cur_;
+                continue;
+            } else if(cat == AND)   {
+                auto and_node = ((AndNode*)ptr);
+                if(and_node->next_ == nullptr) {
+                    ptr = and_node->cur_;
+                    continue;
+                }
 
-                            if(key_on_left)
-                                val = evaluate_expression(ctx_, right, output_);
-                            else
-                                val = evaluate_expression(ctx_, left, output_);
-                            Vector<Value> key_vals = {val};
-                            IndexKey search_key = temp_index_key_from_values(&ctx_->temp_arena_, key_vals);
-                            search_key.sort_order_ = 
-                                create_sort_order_bitmap(&ctx_->temp_arena_, index_header_.fields_numbers_);
-                            if(cat == EQUALITY){
-                                start_it_ = index_header_.index_->begin(search_key);
-                                end_it_ = index_header_.index_->begin(search_key);
-                                while(end_it_.getCurKey() == search_key){
-                                    int advanced = end_it_.advance();
-                                    if(!advanced) break;
+            }
+            break;
+        }
+
+        if(i == 0) first_col_op = ptr->token_.type_;
+        if(cat == COMPARISON && i != 0) break;
+        switch(cat) {
+            case EQUALITY:
+            case COMPARISON:{
+
+                                ASTNode* left  = nullptr; 
+                                ASTNode* right = nullptr; 
+                                if(cat == EQUALITY){
+                                    left  = ((EqualityNode*)ptr)->cur_;
+                                    right = ((EqualityNode*)ptr)->next_;
+                                } else if(cat == COMPARISON) {
+                                    left  = ((ComparisonNode*)ptr)->cur_;
+                                    right = ((ComparisonNode*)ptr)->next_;
                                 }
-                            } else if(cat == COMPARISON){
-                                TokenType op = ptr->token_.type_;
-                                // if both true they cancel each other to false using xor.
-                                if(!key_on_left^index_header_.fields_numbers_[0].desc_){
-                                    if(op == TokenType::LT) op = TokenType::GT;
-                                    else if(op == TokenType::GT) op = TokenType::LT;
-                                    else if(op == TokenType::LTE) op = TokenType::GTE;
-                                    else if(op == TokenType::GTE) op = TokenType::LTE;
-                                    else assert(0);
-                                }
-                                if(op == TokenType::LT || op == TokenType::LTE) {
-                                    start_it_ = index_header_.index_->begin();
-                                    end_it_ = index_header_.index_->begin(search_key);
-                                } else if(op == TokenType::GT || op == TokenType::GTE){
-                                    start_it_ = index_header_.index_->begin(search_key);
-                                    end_it_.assign_to_null_page(); 
-                                } else {
-                                    assert(0 && "COMPARISON HAS INVALID OPERATOR");
-                                }
-                                if(op == TokenType::LTE && end_it_.getCurKey() == search_key  ) end_it_.advance();
-                                if(op == TokenType::GT  && start_it_.getCurKey() == search_key)  start_it_.advance();
+                                Value val;
+                                Vector<String> key;
+                                accessed_fields(left , key);
+                                int size_before = key.size();
+                                bool key_on_left = (size_before != 0);
+                                if(i == 0) first_key_on_left = key_on_left;
+                                accessed_fields(right, key);
+                                assert(key.size() == 1);
+
+                                if(key_on_left)
+                                    val = evaluate_expression(ctx_, right, output_);
+                                else
+                                    val = evaluate_expression(ctx_, left, output_);
+                                key_vals.push_back(val);
+                                break;
                             }
-                            break;
-                        }
-        default:
-                        assert(0 && "NOT SUPPORTED INDEX SCAN CONDITION!");
+            default:
+                            assert(0 && "NOT SUPPORTED INDEX SCAN CONDITION!");
+        }
     }
+
+    search_key_ = temp_index_key_from_values(&ctx_->temp_arena_, key_vals);
+    search_key_.sort_order_ = create_sort_order_bitmap(&ctx_->temp_arena_, index_header_.fields_numbers_);
+    auto op = first_col_op;
+    if(!first_key_on_left){
+        if      (op == TokenType::GT)  op = TokenType::LT;
+        else if (op == TokenType::LT)  op = TokenType::GT;
+        else if (op == TokenType::LTE) op = TokenType::GTE;
+        else if (op == TokenType::GTE) op = TokenType::LTE;
+    }
+    if (op == TokenType::LT || op == TokenType::LTE)
+        start_it_ = index_header_.index_->begin();
+    else if (op == TokenType::GT)
+        start_it_ = index_header_.index_->upper_bound(search_key_);
+    else
+        start_it_ = index_header_.index_->lower_bound(search_key_);
+
     ctx_->index_handles_.push_back(&start_it_);
-    ctx_->index_handles_.push_back(&end_it_);
 }
 
 void IndexScanExecutor::init() {
@@ -680,31 +691,47 @@ void IndexScanExecutor::init() {
     finished_ = 0;
 
     start_it_.clear();
-    end_it_.clear();
     assign_iterators();
 }
 
 Tuple IndexScanExecutor::next() {
-    // no more records.
-    if(start_it_ == end_it_) {
-        finished_ = 1;
-        return {};
-    };
-    FileID fid = table_->getTable()->get_fid();
-    Record r = start_it_.getCurRecordCpy(&ctx_->temp_arena_, fid);
-    if(r.isInvalidRecord()){
-        std::cout << "Could not translate record\n";
-        error_status_ = 1;
-        return {};
+    // check if the key holds index key conditions if false => finish execution.
+    // then check for the rest of the filters if false => try next tuple.
+    while(!start_it_.isNull()){
+        Record r = start_it_.getCurRecordCpy(&ctx_->temp_arena_, table_fid_);
+        if(r.isInvalidRecord()){
+            std::cout << "Could not translate record\n";
+            error_status_ = 1;
+            return {};
+        }
+        RecordID rid = start_it_.getCurRecordID(table_fid_);
+        int err = table_->translateToTuple(r, output_, rid);
+        if(err) {
+            error_status_ = 1;
+            return {};
+        }
+        start_it_.advance();
+        for(int i = 0; i < index_filters_->size(); ++i) {
+            Value exp = evaluate_expression(ctx_, (*index_filters_)[i], output_, true, true).getBoolVal();
+            if(exp.isNull() || exp == false) {
+                finished_ = true; 
+                return {};
+            }
+        }
+        bool got_filtered = false;
+        // check regular filters
+        for(int i = 0; i < filters_->size(); ++i) {
+            Value exp = evaluate_expression(ctx_, (*filters_)[i], output_, true, true).getBoolVal();
+            if(exp.isNull() || exp == false) {
+                got_filtered = true;
+                break;
+            }
+        }
+        if(got_filtered) continue;
+        return output_;
     }
-    RecordID rid = start_it_.getCurRecordID(fid);
-    int err = table_->translateToTuple(r, output_, rid);
-    if(err) {
-        error_status_ = 1;
-        return {};
-    }
-    start_it_.advance();
-    return output_;
+    finished_ = true;
+    return {};
 }
 
 DeletionExecutor::DeletionExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, Executor* child, TableSchema* table, Vector<IndexHeader> indexes):
@@ -1036,7 +1063,6 @@ Tuple InsertionExecutor::next() {
             break;
         }
         bool success = indexes_[i].index_->Insert(ctx_, k);
-        //indexes_[i].index_->See();
         if(!success){
             std::cout << "Could Not insert into index\n";
             error_status_ = 1;

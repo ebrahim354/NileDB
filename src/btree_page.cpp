@@ -27,7 +27,8 @@ uint32_t BTreePage::get_used_space() {
 }
 
 bool BTreePage::can_merge_with_me(BTreePage* other) {
-    return (get_free_space_size() > other->get_used_space());
+    return ((get_free_space_size() > other->get_used_space()) ||
+        (other->get_num_of_slots() == 0) || (get_num_of_slots() == 0));
 }
 
 bool BTreePage::TooShort(bool is_root_page) {
@@ -35,7 +36,7 @@ bool BTreePage::TooShort(bool is_root_page) {
     if (is_root_page) {
         return get_num_of_slots() <= 1;
     }
-    return get_free_space_size() > get_used_space(); 
+    return (get_free_space_size() > get_used_space() || get_num_of_slots() == 0) ;
 }
 
 bool BTreePage::TooShortBefore(bool is_root_page) {
@@ -43,7 +44,7 @@ bool BTreePage::TooShortBefore(bool is_root_page) {
     if (is_root_page) {
         return get_num_of_slots() <= 1;
     }
-    return get_free_space_size() > (get_used_space()); 
+    return (get_free_space_size() > get_used_space() || get_num_of_slots() == 0);
 }
 
 

@@ -161,11 +161,11 @@ struct SeqScanExecutor : public Executor {
     void init();
     Tuple next();
 
-    TableSchema* table_ = nullptr;
+    TableSchema* table_        = nullptr;
+    Vector<ASTNode*>* filters_ = nullptr;
     TableIterator it_;
 };
 
-// TODO: change BTreeIndex type to be a generic ( just Index ) that might be a btree or hash index.
 struct IndexScanExecutor : public Executor {
 
     IndexScanExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* table, IndexHeader index);
@@ -175,9 +175,11 @@ struct IndexScanExecutor : public Executor {
 
     IndexHeader index_header_ = {};
     TableSchema* table_ = nullptr;
-    ASTNode* filter_ = nullptr;
+    FileID table_fid_ = INVALID_FID;
+    Vector<ASTNode*>* index_filters_ = nullptr;
+    Vector<ASTNode*>* filters_ = nullptr;
     IndexIterator start_it_{};
-    IndexIterator end_it_{};
+    IndexKey search_key_;
 };
 
 struct InsertionExecutor : public Executor {

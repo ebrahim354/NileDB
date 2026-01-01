@@ -131,9 +131,9 @@ struct IndexKey {
         return rid;
     }
 
-    void print() {
+    void print(std::ofstream& out) {
         if(!data_){
-            std::cout << '-';
+            out << '-';
             return;
         }
         u64 header_size              = 0;
@@ -147,46 +147,46 @@ struct IndexKey {
             switch(header_val) {
                 case (u8)SerialType::NIL:
                     {
-                        std::cout << "NIL";
+                        out << "NIL";
                         header++;
                         break;
                     }
                 case (u8)SerialType::BOOL_TRUE:
                     {
-                        std::cout << "TRUE";
+                        out << "TRUE";
                         header++;
                         break;
                     }
                 case (u8)SerialType::BOOL_FALSE:
                     {
-                        std::cout << "FALSE";
+                        out << "FALSE";
                         header++;
                         break;
                     }
                 case (u8)SerialType::INT:
                     {
-                        std::cout << *(i32*) payload_ptr ;
+                        out << *(i32*) payload_ptr ;
                         header++;
                         payload_ptr     += 4;
                         break;
                     }
                 case (u8)SerialType::FLOAT:
                     {
-                        std::cout << *(f32*) payload_ptr ;
+                        out << *(f32*) payload_ptr ;
                         header++;
                         payload_ptr     += 4;
                         break;
                     }
                 case (u8)SerialType::LONG:
                     {
-                        std::cout << *(i64*) payload_ptr ;
+                        out << *(i64*) payload_ptr ;
                         header++;
                         payload_ptr     += 8;
                         break;
                     }
                 case (u8)SerialType::DOUBLE:
                     {
-                        std::cout << *(f64*) payload_ptr;
+                        out << *(f64*) payload_ptr;
                         header++;
                         payload_ptr     += 8;
                         break;
@@ -194,7 +194,7 @@ struct IndexKey {
                 case (u8)SerialType::TEXT:
                     {
                         u8 bytes_read = varint_decode(nullptr, &header_val);
-                        std::cout << std::string((char*)payload_ptr, header_val - (u8)SerialType::TEXT);
+                        out << std::string((char*)payload_ptr, header_val - (u8)SerialType::TEXT);
                         header          += bytes_read;
                         payload_ptr     += header_val     - (u8)SerialType::TEXT;
                         break;
@@ -202,7 +202,7 @@ struct IndexKey {
                 default:
                     assert(0 && "TYPE NOT SUPPORTED!");
             }
-            if(header_size) std::cout << "|";
+            if(header_size) out << ",";
         }
     }
 

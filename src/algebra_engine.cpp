@@ -196,6 +196,7 @@ class AlgebraEngine {
                 return nullptr;
             AlgebraOperation* child = optimize(ctx, data); 
             AlgebraOperation* del = New(DeletionOperation, ctx.arena_, child, data->idx_);
+            del->print(0);
             return del;
         }
 
@@ -204,6 +205,7 @@ class AlgebraEngine {
                 return nullptr;
             AlgebraOperation* child = optimize(ctx, data); 
             AlgebraOperation* update = New(UpdateOperation, ctx.arena_, child, data->idx_);
+            update->print(0);
             return update;
         }
 
@@ -377,9 +379,9 @@ class AlgebraEngine {
             }
             return false;
         }
-
-         bool match_index(ScanOperation* cur_scan, ASTNode* ex) {
-            String tname = cur_scan->table_name_;
+        // return: if ret < 0  => didn't find a match.
+        //         if ret >= 0 => the offset of the field within the IndexKey.
+        int match_index_to_filter(IndexHeader& index, TableSchema* table, ASTNode* ex) {
             while(ex){
                 CategoryType cat = ex->category_;
                 switch(cat) {
@@ -388,52 +390,95 @@ class AlgebraEngine {
                                     }
                                     continue;
                     case AND:{
-                                auto ptr = ((AndNode*)ex);
-                                if(ptr->next_ == nullptr) {
-                                    ex = ptr->cur_;
-                                    continue;
-                                }
-                                return false;
+                                 auto ptr = ((AndNode*)ex);
+                                 if(ptr->next_ == nullptr) {
+                                     ex = ptr->cur_;
+                                     continue;
+                                 }
+                                 return -1;
                              }
                     case EQUALITY:
                     case COMPARISON:{
-                                      ASTNode* left  = nullptr; 
-                                      ASTNode* right = nullptr; 
-                                      if(cat == EQUALITY){
-                                          left  = ((EqualityNode*)ex)->cur_;
-                                          right = ((EqualityNode*)ex)->next_;
-                                      } else if(COMPARISON){
-                                          left  = ((ComparisonNode*)ex)->cur_;
-                                          right = ((ComparisonNode*)ex)->next_;
-                                      }
-                                      if(left->category_ != FIELD && left->category_ != SCOPED_FIELD
-                                              && right->category_ != FIELD && right->category_ != SCOPED_FIELD)
-                                          return false;
-                                      Vector<String> key;
-                                      accessed_fields(left , key);
-                                      accessed_fields(right, key);
-                                      if(key.size() != 1) return false;
-                                      Vector<IndexHeader> indexes = catalog_->getIndexesOfTable(tname);
-                                      assert(catalog_->getTableSchema(tname));
-                                      int key_idx = catalog_->getTableSchema(tname)->colExist(key[0]);
-                                      assert(key_idx != -1);
-                                      for(int i = 0; i < indexes.size(); ++i) {
-                                          // TODO: support multi-field keys.
-                                          if(indexes[i].fields_numbers_[0].idx_ == key_idx) {
-                                              cur_scan->scan_type_ = INDEX_SCAN;
-                                              std::cout << "------ " << indexes[i].index_name_ << "\n";
-                                              cur_scan->index_name_ = indexes[i].index_name_;
-                                              cur_scan->filter_ = ex;
-                                              return true;
-                                          }
-                                      }
-                                      return false;
-                                  }
+                                        ASTNode* left  = nullptr; 
+                                        ASTNode* right = nullptr; 
+                                        if(cat == EQUALITY){
+                                            left  = ((EqualityNode*)ex)->cur_;
+                                            right = ((EqualityNode*)ex)->next_;
+                                        } else if(COMPARISON){
+                                            left  = ((ComparisonNode*)ex)->cur_;
+                                            right = ((ComparisonNode*)ex)->next_;
+                                        }
+                                        if(left->category_ != FIELD && left->category_ != SCOPED_FIELD
+                                                && right->category_ != FIELD && right->category_ != SCOPED_FIELD)
+                                            return -1;
+                                        Vector<String> key;
+                                        accessed_fields(left , key);
+                                        accessed_fields(right, key);
+                                        if(key.size() != 1) return -1;
+                                        int key_idx = table->colExist(key[0]);
+                                        assert(key_idx != -1);
+
+                                        for(int i = 0; i < index.fields_numbers_.size(); ++i) {
+                                            if(index.fields_numbers_[i].idx_ == key_idx) {
+                                                return i;
+                                            }
+                                        }
+                                        return -1;
+                                    }
                     default:
-                        return false;
+                                    return -1;
                 }
             }
-            return false;
+            return -1;
+        }
+
+        bool match_index(ScanOperation* cur_scan) {
+            if(cur_scan->filters_.size() == 0) return false;
+            String tname = cur_scan->table_name_;
+            TableSchema* tschema = catalog_->getTableSchema(tname);
+            assert(tschema);
+            Vector<IndexHeader> table_indexes = catalog_->getIndexesOfTable(tname);
+            if(table_indexes.size() == 0) return false;
+            std::pair<int, std::vector<int>> best_index = {-1, {}};
+            for(int i = 0 ; i < table_indexes.size(); ++i) {
+                std::vector<int> matched_filters(table_indexes[i].fields_numbers_.size(), -1);
+                int max_offset = -1;
+                for(int j = 0; j < cur_scan->filters_.size(); ++j) {
+                    int filter_offset = match_index_to_filter(table_indexes[i], tschema, cur_scan->filters_[j]);
+                    if(filter_offset >= 0)
+                        matched_filters[filter_offset] = j;
+                }
+
+                for(int j = 0; j < matched_filters.size(); ++j){
+                    if(matched_filters[j] == -1) break;
+                    max_offset = j;
+                }
+                if(max_offset >= 0 && max_offset >= best_index.second.size()) {
+                    best_index = {i, {}};
+                    for(int i = 0; i <= max_offset; ++i)
+                        best_index.second.push_back(matched_filters[i]);
+                }
+            }
+            // didn't match any indexes.
+            if(best_index.first == -1) return false;
+            assert(best_index.second.size() > 0);
+            cur_scan->scan_type_ = INDEX_SCAN;
+            cur_scan->index_name_ = table_indexes[best_index.first].index_name_;
+            for(int i = 0; i < best_index.second.size(); ++i){
+                int cur_filter_idx = best_index.second[i];
+                cur_scan->index_filters_.push_back(cur_scan->filters_[cur_filter_idx]);
+                cur_scan->filters_[cur_filter_idx] = nullptr;
+            }
+            // clear the normal filters vector.
+            int starting_size = cur_scan->filters_.size();
+            for(int i = 0; i < cur_scan->filters_.size(); ++i){
+                if(cur_scan->filters_[i] == nullptr){
+                    cur_scan->filters_.erase(cur_scan->filters_.begin() + i);
+                    i--;
+                }
+            }
+            assert(starting_size == cur_scan->filters_.size() + cur_scan->index_filters_.size());
+            return true;
         }
 
         // should only be used with 'select', 'delete' and 'update' statements.
@@ -490,24 +535,23 @@ class AlgebraEngine {
             }
 
             // handle filters with 1 table access.
-            for(int i = 0; i < splitted_where.size(); ++i){ 
+            for(int i = 0; i < splitted_where.size(); ++i) { 
                 if(tables_per_filter[i].first.size() != 1) continue;
                 String cur_table = tables_per_filter[i].first[0];
                 ExpressionNode* cur_filter = tables_per_filter[i].second;
-                AlgebraOperation* scan = table_scanner[cur_table];
-                // if this filter matched an index we don't need to create a filter operator.
-                // don't use index scan for the first table in case of 'delete' or 'update' statements.
-                if((data->type_ != SELECT_DATA 
-                            && cur_table != data->table_names_[0]) 
-                    || data->type_ == SELECT_DATA){
-                    if(scan->type_ == SCAN && ((ScanOperation*)scan)->scan_type_ == SEQ_SCAN &&
-                            match_index((ScanOperation*)scan, cur_filter)) continue;
-                }
-                FilterOperation* tmp = New(FilterOperation, ctx.arena_, query_idx,
-                        table_scanner[cur_table],
-                        cur_filter);
-                //data->fields_, data->field_names_);
-                table_scanner[cur_table] = tmp;
+                assert(table_scanner[cur_table]->type_ == SCAN);
+                ((ScanOperation*)table_scanner[cur_table])->filters_.push_back(cur_filter);
+            }
+            // check if sequential scans can be switched into index scans based on their predicates.
+            for(auto& scanner: table_scanner) {
+                ScanOperation* scan = (ScanOperation*)(scanner.second);
+                // no filters => no index scan.
+                if(scan->filters_.size() == 0) continue;
+                // if this is a delete/update operation 
+                // => no index scan for the table to be deleted/updated from.
+                if(data->type_ != SELECT_DATA && scan->table_name_ == data->table_names_[0]) continue;
+                // check for a suitable index.
+                match_index(scan);
             }
 
             AlgebraOperation* result = nullptr;

@@ -130,7 +130,7 @@ BTreeInternalPage* BTreeIndex::create_internal_page(Page** new_page_raw){
 bool BTreeIndex::Insert(QueryCTX* ctx, const IndexKey &key) {
     std::unique_lock locker(root_page_id_lock_);
     if((key.size_ + 16) * 3 > BTreePage::get_max_key_size()){
-      std::cout << "Key can't fit in one page\n";
+        std::cout << "Key can't fit in one page\n";
       return false;
     }
     if(!fid_to_fname.count(fid_))  return false;
@@ -467,7 +467,7 @@ void BTreeIndex::Remove(QueryCTX* ctx, const IndexKey &key) {
                 //prev_page->mutex_.lock();
                 auto *prev = reinterpret_cast<BTreeLeafPage *>(prev_page->data_);
                 auto prev_size = prev->get_num_of_slots();
-                if (cur->can_merge_with_me(prev)) {
+                if (prev->can_merge_with_me(cur)) {
                     done = true;
                     // merge into prev and delete cur, update the parent(remove the key-value) then break.
                     prev->increase_size(cur_size);
@@ -698,13 +698,11 @@ IndexIterator BTreeIndex::begin() {
 }
 
 // for range queries
-IndexIterator BTreeIndex::begin(const IndexKey &key) {
-    See();
+IndexIterator BTreeIndex::lower_bound(const IndexKey &key) {
     if (isEmpty()) {
         return IndexIterator(nullptr, INVALID_PAGE_ID, 0);
     }
     std::shared_lock locker(root_page_id_lock_);
-    std::cerr << "YO BEGIN key CALL\n";
     auto *root_page = cache_manager_->fetchPage(root_page_id_);
     //root_page->RLatch();
     auto *root = reinterpret_cast<BTreePage *>(root_page->data_);
@@ -729,8 +727,9 @@ IndexIterator BTreeIndex::begin(const IndexKey &key) {
     auto *tmp = reinterpret_cast<BTreeLeafPage *>(root);
     int pos = tmp->GetPos(key);
     if(pos >= tmp->get_num_of_slots()) {
+        auto npid = tmp->GetNextPageId(fid_);
         cache_manager_->unpinPage(root->GetPageId(fid_), false);
-        return IndexIterator(nullptr, INVALID_PAGE_ID, -1);
+        return IndexIterator(cache_manager_, npid, 0);
     }
     auto it = IndexIterator(cache_manager_, root->GetPageId(fid_), pos);
     cache_manager_->unpinPage(root->GetPageId(fid_), false);
@@ -738,6 +737,46 @@ IndexIterator BTreeIndex::begin(const IndexKey &key) {
     return it;
 }
 
+
+IndexIterator BTreeIndex::upper_bound(const IndexKey &key) {
+    if (isEmpty()) {
+        return IndexIterator(nullptr, INVALID_PAGE_ID, 0);
+    }
+    std::shared_lock locker(root_page_id_lock_);
+    auto *root_page = cache_manager_->fetchPage(root_page_id_);
+    //root_page->RLatch();
+    auto *root = reinterpret_cast<BTreePage *>(root_page->data_);
+    while (!root->IsLeafPage()) {
+        auto *cur = reinterpret_cast<BTreeInternalPage *>(root);
+        auto next_page_id = cur->next_page_upper_bound(key, fid_);
+
+        auto *next_page = cache_manager_->fetchPage(next_page_id);
+        //next_page->RLatch();
+        auto *next = reinterpret_cast<BTreePage *>(next_page->data_);
+
+        //root_page->RUnlatch();
+        cache_manager_->unpinPage(cur->GetPageId(fid_), false);
+
+        if (cur->GetPageId(fid_) == root_page_id_) {
+            locker.unlock();
+        }
+
+        root = next;
+        root_page = next_page;
+    }
+    auto *tmp = reinterpret_cast<BTreeLeafPage *>(root);
+    int pos = tmp->get_pos_upper_bound(key);
+    if(pos >= tmp->get_num_of_slots()) {
+        auto npid = tmp->GetNextPageId(fid_);
+        cache_manager_->unpinPage(root->GetPageId(fid_), false);
+        return IndexIterator(cache_manager_, npid, 0);
+        //return IndexIterator(nullptr, INVALID_PAGE_ID, -1);
+    }
+    auto it = IndexIterator(cache_manager_, root->GetPageId(fid_), pos);
+    cache_manager_->unpinPage(root->GetPageId(fid_), false);
+    //root_page->RUnlatch();
+    return it;
+}
 
 IndexIterator BTreeIndex::end() {
     if (isEmpty()) {
@@ -771,36 +810,87 @@ IndexIterator BTreeIndex::end() {
 }
 
 void BTreeIndex::See(){
+    std::ofstream out("btree_vis.dot");
     auto *root = reinterpret_cast<BTreePage *>(cache_manager_->fetchPage(root_page_id_)->data_);
-    ToString(root);
+    ToString(root, out);
 }
 
-void BTreeIndex::ToString(BTreePage* page){
+void BTreeIndex::ToString(BTreePage* page, std::ofstream& out){
+    if(!page) return;
+    std::string leaf_prefix("LEAF_");
+    std::string internal_prefix("INT_");
+
     if (page->IsLeafPage()) {
         auto *leaf = reinterpret_cast<BTreeLeafPage *>(page);
-        std::cout << "Leaf Page: " << leaf->GetPageId(fid_).page_num_
-            << " next: " << leaf->GetNextPageId(fid_).page_num_ << std::endl;
+        // Print node name
+        out << leaf_prefix << leaf->GetPageId(fid_).page_num_;
+        // Print node properties
+        out << "[shape=plain color=green ";
+        // Print data of the node
+        out << "label=<<TABLE BORDER=\"0\" CELLBORDER=\"1\" CELLSPACING=\"0\" CELLPADDING=\"4\">\n";
+        // Print data
+        out << "<TR><TD COLSPAN=\"" << leaf->get_num_of_slots() << "\">P=" << leaf->GetPageId(fid_).page_num_ << "</TD></TR>\n";
+        out << "<TR><TD COLSPAN=\"" << leaf->get_num_of_slots() << "\">"
+            << "free=" << leaf->get_free_space_size() << ",used=" << leaf->get_used_space() << "</TD></TR>\n";
+        out << "<TR>";
         for (int i = 0; i < leaf->get_num_of_slots(); i++) {
-            leaf->KeyAt(i).print();
-            std::cout << ",";
+            out << "<TD>";
+            leaf->KeyAt(i).print(out);
+            out << "</TD>\n";
         }
-        std::cout << std::endl;
-        std::cout << std::endl;
+        out << "</TR>";
+        // Print table end
+        out << "</TABLE>>];\n";
+        // Print Leaf node link if there is a next page
+        if (leaf->GetNextPageId(fid_) != INVALID_PAGE_ID) {
+            out << leaf_prefix << leaf->GetPageId(fid_).page_num_ << " -> " << leaf_prefix << leaf->GetNextPageId(fid_).page_num_ << ";\n";
+            out << "{rank=same " << leaf_prefix << leaf->GetPageId(fid_).page_num_ << " " << leaf_prefix << leaf->GetNextPageId(fid_).page_num_ << "};\n";
+        }
     } else {
-        auto *internal = reinterpret_cast<BTreeInternalPage *>(page);
-        std::cout << "Internal Page: " << internal->GetPageId(fid_).page_num_ 
-            << std::endl;
-        for (int i = 0; i < internal->get_num_of_slots(); i++) {
-            internal->KeyAt(i).print();
-            std::cout << ": " << internal->ValueAt(i, fid_).page_num_ << ",";
+        auto *inner = reinterpret_cast<BTreeInternalPage *>(page);
+        // Print node name
+        out << internal_prefix << inner->GetPageId(fid_).page_num_;
+        // Print node properties
+        out << "[shape=plain color=pink ";
+        // Print data of the node
+        out << "label=<<TABLE BORDER=\"0\" CELLBORDER=\"1\" CELLSPACING=\"0\" CELLPADDING=\"4\">\n";
+        // Print data
+        out << "<TR><TD COLSPAN=\"" << inner->get_num_of_slots() << "\">P=" << inner->GetPageId(fid_).page_num_ << "</TD></TR>\n";
+        out << "<TR><TD COLSPAN=\"" << inner->get_num_of_slots() << "\">"
+            << "free=" << inner->get_free_space_size() << ",used=" << inner->get_used_space() << ",size=" << inner->get_num_of_slots()
+            << "</TD></TR>\n";
+        out << "<TR>";
+        for (int i = 0; i < inner->get_num_of_slots(); i++) {
+            out << "<TD PORT=\"p" << inner->ValueAt(i, fid_).page_num_ << "\">";
+            if (i > 0) {
+                inner->KeyAt(i).print(out);
+            } else {
+                out << " ";
+            }
+            out << "</TD>\n";
         }
-        std::cout << std::endl;
-        std::cout << std::endl;
-        for (int i = 0; i < internal->get_num_of_slots(); i++) {
-            ToString(reinterpret_cast<BTreePage *>(cache_manager_->fetchPage(internal->ValueAt(i, fid_))->data_));
+        out << "</TR>";
+        // Print table end
+        out << "</TABLE>>];\n";
+        for (int i = 0; i < inner->get_num_of_slots(); i++) {
+            auto child_page = reinterpret_cast<BTreePage *>(cache_manager_->fetchPage(inner->ValueAt(i, fid_))->data_);
+            ToString(child_page, out);
+            if(!child_page->IsLeafPage()){
+            out << internal_prefix << inner->GetPageId(fid_).page_num_ << ":p" << child_page->GetPageId(fid_).page_num_ << " -> " << internal_prefix << child_page->GetPageId(fid_).page_num_ << ";\n";
+            } else {
+            out << internal_prefix << inner->GetPageId(fid_).page_num_ << ":p" << child_page->GetPageId(fid_).page_num_ << " -> " << leaf_prefix << child_page->GetPageId(fid_).page_num_ << ";\n";
+            }
+            if (i > 0) {
+                auto sibling_page = reinterpret_cast<BTreePage *>(cache_manager_->fetchPage(inner->ValueAt(i - 1, fid_))->data_);
+                if (!sibling_page->IsLeafPage() && !child_page->IsLeafPage()) {
+                    out << "{rank=same " << internal_prefix << sibling_page->GetPageId(fid_).page_num_ << " " << internal_prefix << child_page->GetPageId(fid_).page_num_ << "};\n";
+                }
+                cache_manager_->unpinPage(sibling_page->GetPageId(fid_), false);
+            }
         }
     }
     cache_manager_->unpinPage(page->GetPageId(fid_), false);
+    out.flush();
 }
 
 bool BTreeIndex::isEmpty() {

@@ -229,6 +229,7 @@ bool CacheManager::deletePage(PageID page_id) {
     }
     resetPage(page_id, frame);
     int err = disk_manager_->deallocatePage(page_id);
+    assert(err == 0);
     return !err;
 }
 

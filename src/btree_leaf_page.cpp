@@ -143,6 +143,24 @@ int BTreeLeafPage::GetPos(IndexKey k) {
     return low;
 }
 
+int BTreeLeafPage::get_pos_upper_bound(IndexKey k) {
+    int size = get_num_of_slots();
+    int mid;
+    int low = 0;
+    int high = size;
+    while (low < high) {
+        mid = low + (high - low) / 2;
+
+        if (KeyAt(mid) <= k){
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+    assert(low <= size);
+    return low;
+}
+
 bool BTreeLeafPage::Insert(Arena* arena, IndexKey input_k, i32 nvals, bool is_unique) {
     int size = get_num_of_slots();
     int entry_sz = LEAF_SLOT_ENTRY_SIZE_;
@@ -226,11 +244,6 @@ bool BTreeLeafPage::Remove(IndexKey k) {
             (size-(cur+1))*entry_sz);
     increase_size(-1);
     return true;
-}
-
-void BTreeLeafPage::Draw() {
-    // TODO: provide drawing support for varius type.
-    std::cout << "---leaf_page---";
 }
 
 
