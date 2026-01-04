@@ -42,6 +42,8 @@
 #define INDEX_META_TABLE "NDB_INDEX_META"
 
 
+
+
 class Catalog {
     public:
 

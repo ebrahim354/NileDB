@@ -8,7 +8,7 @@ struct ExpressionNode;
 struct AggregateFuncNode;
 struct QueryData;
 struct ASTNode;
-void accessed_fields(ASTNode* expression ,Vector<String>& fields, bool only_one);
+void accessed_fields(ASTNode* expression, Vector<ASTNode*>& fields, bool only_one);
 
 // The grammer rules are defined as structures, each struct is following the name convention: CategoryNameNode,
 // for example: the constant category the struct is named ConstantNode.

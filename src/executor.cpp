@@ -261,18 +261,18 @@ void HashJoinExecutor::init() {
     right_child_fields_.clear();
     left_child_fields_.clear();
     // find out which attributes to use as keys for the hash table.
-    Vector<String> fields;
+    Vector<ASTNode*> fields;
     accessed_fields(filter_, fields);
 
     for(int i = 0; i < fields.size(); ++i) {
-        String lf = fields[i];
+        String lf = fields[i]->token_.val_;
         int idx = left_child_->output_schema_->colExist(lf);
         // TODO: fix the case of same field names and different tables for example: t1.a = t2.a
         if(idx != -1) {
             left_child_fields_.push_back(idx);
             continue;
         }
-        String rf = fields[i];
+        String rf = fields[i]->token_.val_;
         idx = right_child_->output_schema_->colExist(rf);
 
         if(idx != -1) {
@@ -647,7 +647,7 @@ void IndexScanExecutor::assign_iterators() {
                                     right = ((ComparisonNode*)ptr)->next_;
                                 }
                                 Value val;
-                                Vector<String> key;
+                                Vector<ASTNode*> key;
                                 accessed_fields(left , key);
                                 int size_before = key.size();
                                 bool key_on_left = (size_before != 0);

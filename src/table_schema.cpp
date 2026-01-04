@@ -34,8 +34,10 @@ int TableSchema::numOfCols() {
 // TODO: change columns to be a set instead of doing this.
 int TableSchema::colExist(String& col_name) {
     String field = col_name;
+    /*
     if(!tmp_schema_)
         field = split_scoped_field(col_name).second;
+        */
 
     for(size_t i = 0; i < columns_.size(); ++i){
         if(columns_[i].getName() == field)

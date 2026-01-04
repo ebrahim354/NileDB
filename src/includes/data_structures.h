@@ -27,7 +27,6 @@ struct String8 {
     }
 };
 
-
 #define str_lit(s) (String8) { .str_ = (u8*)(s), .size_ = sizeof(s) - 1 }
 
 // source: 

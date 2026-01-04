@@ -6,23 +6,6 @@
 #include <string>
 #include <vector>
 
-std::pair<String, String> split_scoped_field(String& field) {
-    String table = "";
-    String col = "";
-    bool parsing_table = true;
-    for(int i = 0; i < field.size(); ++i){
-        if(field[i] == '.') {
-            parsing_table = false;
-            continue;
-        }
-        if(parsing_table) table += field[i];
-        else col += field[i];
-    }
-    if(parsing_table) // this field is not scoped.
-        return {col, table};
-    else 
-        return {table, col};
-}
 
 String str_toupper(String s){
     int diff = 'A' - 'a';
@@ -64,6 +47,29 @@ bool areDigits(String& nums, int* floating_sign = nullptr){
         }
     }
     return (are_digits && nums.size() > 0);
+}
+
+// TODO: write a better implementation for these functions.
+i64 str_to_i64(String8 s) {
+    char str[64];
+    if (s.size_ > 63)
+    {
+        s.size_ = 63;
+    }
+    memcpy(str, s.str_, s.size_);
+    str[s.size_] = 0;
+    return strtoll(str, NULL, 10);
+}
+
+float str_to_f64(String8 s) {
+    char str[64];
+    if (s.size_ > 63)
+    {
+        s.size_ = 63;
+    }
+    memcpy(str, s.str_, s.size_);
+    str[s.size_] = 0;
+    return atof(str);
 }
 
 long long str_to_ll(String& s) {

@@ -1,5 +1,6 @@
 #pragma once
 #include "ast_nodes.cpp"
+#include "expression.h"
 
 JoinType token_type_to_join_type (TokenType t) {
     switch(t){
@@ -17,9 +18,9 @@ JoinType token_type_to_join_type (TokenType t) {
 
 bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* catalog) {
     if(!query || !catalog) assert(0 && "invalid input");
-    Vector<String> fields;
+    Vector<ASTNode*> fields;
     for(int i = 0; i < query->fields_.size(); ++i){
-        accessed_fields(query->fields_[i],fields, true);
+        accessed_fields(query->fields_[i], fields, true);
     }
     for(int i = 0; i < query->aggregates_.size(); ++i){
         accessed_fields(query->aggregates_[i], fields, true);
@@ -35,7 +36,7 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
         String cur_field   = table_field.second;
         if(table.size()) {  // the field is scoped.
             for(int k = 0; k < query->table_names_.size(); ++k){
-                if(table != query->table_names_[k] && k == query->table_names_[k].size() - 1)
+                if(table != query->table_names_[k] && k == query->table_names_.size() - 1)
                     return true;
                 if(table != query->table_names_[k]) 
                     continue;
@@ -47,7 +48,6 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
             if(!schema->isValidCol(cur_field)){
                 return true; // the table does not contain this column => corelated.
             }
-
         } else { // the field is not scoped.
             Vector<String> possible_tables = catalog->getTablesByField(cur_field);
             bool table_matched = false;

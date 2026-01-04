@@ -368,7 +368,7 @@ class AlgebraEngine {
                     case EQUALITY:{
                                       ASTNode* left  = ((EqualityNode*)ex)->cur_;
                                       ASTNode* right = ((EqualityNode*)ex)->next_;
-                                      Vector<String> left_fields, right_fields;
+                                      Vector<ASTNode*> left_fields, right_fields;
                                       accessed_fields(left , left_fields);
                                       accessed_fields(right, right_fields);
                                       if(left_fields.size() == 1 && right_fields.size() == 1) return true;
@@ -411,11 +411,11 @@ class AlgebraEngine {
                                         if(left->category_ != FIELD && left->category_ != SCOPED_FIELD
                                                 && right->category_ != FIELD && right->category_ != SCOPED_FIELD)
                                             return -1;
-                                        Vector<String> key;
+                                        Vector<ASTNode*> key;
                                         accessed_fields(left , key);
                                         accessed_fields(right, key);
                                         if(key.size() != 1) return -1;
-                                        int key_idx = table->colExist(key[0]);
+                                        int key_idx = table->colExist(key[0]->token_.val_);
                                         assert(key_idx != -1);
 
                                         for(int i = 0; i < index.fields_numbers_.size(); ++i) {

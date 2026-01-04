@@ -22,6 +22,8 @@
 
 #define MAX_U16 ((u16)(0xFFFF))
 #define MAX_U32 ((u32)(0xFFFFFFFF))
+#define MAX_I32 ((u32)(0x7FFFFFFF))
+#define MAX_F32 ((f32)(0x1.fffffep+127))
 #define MAX_I8 127
 #define MAX_U8 0xFF
 #define MAX_8B_VARINT ((uint64_t)(((uint64_t)1<<56) - 1))

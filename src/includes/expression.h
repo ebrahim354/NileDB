@@ -10,6 +10,16 @@
 Value evaluate(QueryCTX* ctx, const Tuple& cur_tuple, ASTNode* item);
 Value evaluate_subquery(QueryCTX* ctx, const Tuple& cur_tuple, ASTNode* item);
 
+std::pair<String, String> split_scoped_field(ASTNode* field) {
+    if(field->category_ == SCOPED_FIELD) {
+        return {(((ScopedFieldNode*)field)->table_->token_.val_), ((ScopedFieldNode*)field)->token_.val_};
+    } else if(field->category_ == FIELD) {
+        return {(field)->token_.val_, ""};
+    }
+    assert(0);
+    return {};
+}
+
 
 Value abs_func(Vector<Value> vals){
     if(vals.size() != 1){
@@ -686,7 +696,7 @@ void accessed_tables(ASTNode* expression ,Vector<String>& tables, Catalog* catal
     }
 }
 
-void accessed_fields(ASTNode* expression ,Vector<String>& fields, bool only_one = true) {
+void accessed_fields(ASTNode* expression ,Vector<ASTNode*>& fields, bool only_one = true) {
     if(!expression) return;
     switch(expression->category_){
         case EXPRESSION  : 
@@ -863,14 +873,14 @@ void accessed_fields(ASTNode* expression ,Vector<String>& fields, bool only_one 
         case SCOPED_FIELD:{
                               String table = reinterpret_cast<ScopedFieldNode*>(expression)->table_->token_.val_;
                               String field = reinterpret_cast<ScopedFieldNode*>(expression)->token_.val_;
-                              fields.push_back(table+"."+field);
+                              fields.push_back(expression);
                               return;
                           }
         case FIELD:{
                        String field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
                        String prefix = AGG_FUNC_IDENTIFIER_PREFIX; // skip aggregate functions.
                        if(field.rfind(prefix, 0) == 0) return;
-                       fields.push_back(field);
+                       fields.push_back(expression);
                        return;
                    }
         case AGG_FUNC:{
