@@ -3,17 +3,16 @@
 #include "arena.cpp"
 
 QueryCTX::QueryCTX () {}
-/* 
- * use it for debug only
- *
-QUERY::QueryCTX (QueryCTX& rhs){
-    std::cout << "copy" << std::endl;
-}
-*/
 
-void QueryCTX::init(String& query) {
-    query_ = query;
-    int query_string_size = query_.size();
+void QueryCTX::init(String8 query) {
+    init((char*)query.str_, query.size_);
+}
+
+void QueryCTX::init(const char* query, u64 query_size) {
+    //query_ = std::string(query, query_size);
+    query_.str_ = (u8*)query;
+    query_.size_ = query_size;
+    int query_string_size = query_size;
     int avg_num_of_tokens = query_string_size / AVG_TOKEN_SIZE;
     tokens_.reserve(avg_num_of_tokens);
     arena_.init();

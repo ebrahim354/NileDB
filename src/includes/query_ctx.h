@@ -14,11 +14,6 @@
 // each query has its own context that is passed around the system.
 struct QueryCTX {
     QueryCTX ();
-    /* use it for debug only
-    QueryCTX (QueryCTX& rhs){
-        std::cout << "copy" << std::endl;
-    }*/
-
     // Delete copy constructor
     QueryCTX(const QueryCTX&) = delete; 
 
@@ -31,7 +26,8 @@ struct QueryCTX {
     // Delete move assignment operator
     QueryCTX& operator=(QueryCTX&&) = delete;
 
-    void init(String& query);
+    void init(String8 query);
+    void init(const char* query, u64 query_size);
     inline bool matchTokenType(TokenType type);
     inline bool matchAnyTokenType(Vector<TokenType> types);
     inline bool matchMultiTokenType(Vector<TokenType> types);
@@ -43,7 +39,7 @@ struct QueryCTX {
 
     void clean();
 
-    String query_;
+    String8 query_;
     Vector<Token> tokens_;
     Vector<QueryData*> queries_call_stack_ = {};
     Vector<QueryData*> set_operations_ = {};

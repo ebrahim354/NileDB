@@ -24,7 +24,7 @@ u64 align_forward_u64(u64 ptr, u64 align) {
     if (modulo != 0) {
         // If 'p' address is not aligned, push the address to the
         // next value which is aligned
-        p += a - modulo;
+        p += (a - modulo);
     }
     return p;
 }
@@ -64,9 +64,16 @@ void Arena::destroy() {
     u64 commit_pos_  = 0;
 }
 
-void* Arena::alloc(size_t size) {
+void Arena::realign() {
+    u64 aligned_pos = align_forward_u64(alloc_pos_, DEFAULT_ALIGNMENT);
+    u64 padding = aligned_pos - alloc_pos_; 
+    alloc(padding, 0);
+}
+
+void* Arena::alloc(size_t size, u64 alignment) {
     void* memory = nullptr;
-    size = align_forward_u64(size, DEFAULT_ALIGNMENT);
+    if(size == 0) return memory;
+    size = align_forward_u64(size, alignment);
 
     if(alloc_pos_ + size > commit_pos_) {
         u64 commit_size = size;

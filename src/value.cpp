@@ -67,6 +67,12 @@ Value::Value(Arena* arena, const String& str){
     type_ = VARCHAR;
 }
 
+Value::Value(String8 str){
+    size_ = str.size_; 
+    content_ = (uintptr_t)str.str_;
+    type_ = VARCHAR;
+}
+
 Value Value::get_copy(Arena* arena) { 
     if(type_ != VARCHAR) return *this; // copy by value if we don't have a var length type.
     char* tmp = (char*)arena->alloc(size_);
@@ -696,6 +702,39 @@ inline bool Value::isInvalid() const {
 inline bool Value::isNull() const {
     return (type_ == NULL_TYPE);
 }
+
+// does not copy the string, Only get's a view over it,
+// and in case the string is a large string (stored in an overflow page)
+// the arena is used to allocate memory for it, and the user is responsible for it's lifetime.
+String8 Value::getStringView(Arena* arena) {
+    assert(type_ == OVERFLOW_ITERATOR || type_ == VARCHAR);
+    if(type_ == VARCHAR) {
+        return {
+            .str_ = (u8*) content_,
+            .size_= size_,
+        };
+    } else if(type_ == OVERFLOW_ITERATOR){
+        OverflowIterator* it_ = (OverflowIterator*) content_;
+        u16 bytes_read = 0;
+        const char* ptr = nullptr;
+        u64 total_size = 0;
+        ptr = it_->get_data_cpy_and_advance(arena, &bytes_read);
+        total_size += bytes_read;
+        if(!ptr) return {};
+        while(it_->get_data_cpy_and_advance(arena, &bytes_read)) {
+            assert(bytes_read > 0);
+            total_size += bytes_read;
+        }
+        arena->realign();
+        return {
+            .str_ = (u8*)ptr,
+            .size_ = total_size,
+        };
+    }
+    assert(0 && "type is not a text type");
+    return {};
+}
+
 String Value::getStringVal() const {
     if(!content_) return "";
     if(type_ == OVERFLOW_ITERATOR) return getLargeStringVal();
@@ -704,7 +743,6 @@ String Value::getStringVal() const {
     for(int i = 0; i < size_; ++i, ptr++)
         str += *ptr;
     return str;
-    //return String((char*)content_, size_);  
 }
 
 String Value::getLargeStringVal() const {

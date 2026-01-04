@@ -69,17 +69,6 @@ bool areDigits(String& nums, int* floating_sign = nullptr){
 long long str_to_ll(String& s) {
     return strtoll(s.c_str(), NULL, 10);
 }
-/*
-long long str_to_ll(String& s){
-    return strtoll(s.c_str(), NULL, 10);
-    int start = 0;
-    if(s.size() > 0 && s[0] == '-') start = 1;
-    if(!areDigits(s)) return 0;
-    for(int i = start; i < s.size(); i++) 
-        if (s[i] > '9' || s[i] < '0') 
-            return 0;
-    return (s[0] == '-' ? -stoi(s) : stoi(s));
-}*/
 
 float str_to_float(String& s) {
     return strtof(s.c_str(), NULL);
@@ -87,19 +76,6 @@ float str_to_float(String& s) {
 double str_to_double(String& s) {
     return strtod(s.c_str(), NULL);
 }
-/*
-float str_to_float(String& s){
-    int start = 0;
-    if(s.size() > 0 && s[0] == '-') start = 1;
-    int floating_sign_idx = -1;
-    if(!areDigits(s, &floating_sign_idx)) return 0;
-    for(int i = start; i < s.size(); ++i) {
-        if(s[i] == '.' && floating_sign_idx == i) continue;
-        if (s[i] > '9' || s[i] < '0') 
-            return 0;
-    }
-    return (s[0] == '-' ? -(stof(s)) : stof(s));
-}*/
 
 String removeExt(String n, int s){
 	while(s--){
@@ -140,11 +116,6 @@ String doubleToStr(double d){
     String temp =  (String)std::to_string(d);
     while(temp[temp.size() - 1] == '0') temp.pop_back();
     return temp;
-    /*
-    std::ostringstream ss;
-    ss << d;
-    String s(ss.str());
-    return s;*/
 }
 
 String floatToStr(float f){
@@ -153,12 +124,6 @@ String floatToStr(float f){
     String temp =  (String)std::to_string(f);
     while(temp[temp.size() - 1] == '0') temp.pop_back();
     return temp;
-    /*
-    std::ostringstream ss;
-    ss << std::fixed;
-    ss << f;
-    String s(ss.str());
-    return s;*/
 }
 
 #endif // UTILS_H

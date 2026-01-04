@@ -8,22 +8,20 @@ int main() {
     NileDB *ndb = new NileDB();
     bool prompt_is_running = true;
     bool show_results = true;
-    String outer_query = "";
+    bool inside_quotes = false;
+    String query = "";
+    query.reserve(4096);
     while(prompt_is_running){
+        query.clear();
         ndb->flush(); // TODO: remove this.
-        if(!outer_query.size())
-            std::cout << "> ";
-        String tmp = "";
-        std::getline(std::cin, tmp);
-        if(tmp.size() < 0) continue;
-        if(tmp[tmp.size()-1] != ';') {
-            outer_query += tmp;
-            continue;
-        } 
-        String query = outer_query;
-        tmp.pop_back();
-        query += tmp;
-        outer_query = "";
+        std::cout << "> ";
+        int cur_char = 0;
+        while((cur_char = getchar()) != EOF){
+            if(cur_char == ';') break;
+            if(cur_char > 0xFF) assert(0 && "TODO: SUPPORT ASCII\n");
+            if(cur_char == '\'') inside_quotes = !inside_quotes;
+            query += (unsigned char) cur_char;
+        }
         Executor* result = nullptr; 
         if(query == "quit") break;
         if(query[0] == '\\'){
@@ -31,15 +29,15 @@ int main() {
                 show_results = !show_results;
                 continue;
             }
-            std::cout << (ndb->CMD(query) ? "SUCCESS" : "FAIL") << std::endl;
-        } else{
+            std::cout << (ndb->CMD(query.c_str()) ? "SUCCESS" : "FAIL") << std::endl;
+        } else {
             // linux only timers.
             struct timespec start, finish;
             double elapsed;
             clock_gettime(CLOCK_MONOTONIC, &start);
 
             QueryCTX query_ctx;
-            query_ctx.init(query);
+            query_ctx.init(query.c_str(), query.size());
             bool status = ndb->SQL(query_ctx, &result);
             if(!status){
                 std::cout << "FAIL" << std::endl;

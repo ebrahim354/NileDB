@@ -51,6 +51,7 @@ class Value {
         Value(char* content, Type t, u32 size);
         Value(char* str, u32 size);
         Value(Arena* arena, const String& str);
+        Value(String8 str);
         Value(bool val);
         Value(int val);
         Value(i64 val);
@@ -62,6 +63,12 @@ class Value {
 
         inline bool isInvalid() const;
         inline bool isNull() const;
+
+        // does not copy the string, Only get's a view over it,
+        // and in case the string is a large string (stored in an overflow page)
+        // the arena is used to allocate memory for it, and the user is responsible for it's lifetime.
+        String8 getStringView(Arena* arena);
+
         String getStringVal() const;
         String getLargeStringVal() const;
         bool getBoolVal() const;

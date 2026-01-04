@@ -26,12 +26,13 @@ OverflowIterator::OverflowIterator(CacheManager *cm, PageID page_id):
     assert(cache_manager_ != nullptr && cur_page_id_ != INVALID_PAGE_ID);
 }
 
+// the user should re-align the arena after exhausting the iterator.
 const char* OverflowIterator::get_data_cpy_and_advance(Arena* arena, u16* size) {
     if(cur_page_id_ == INVALID_PAGE_ID || cur_page_id_.page_num_ == 0) return nullptr;
     auto cur_page = (OverflowPage*)cache_manager_->fetchPage(cur_page_id_);
     assert(cur_page);
     *size = cur_page->getContentSize();
-    const char* output = (char*)arena->alloc(*size);
+    const char* output = (char*)arena->alloc(*size, 0);
     memcpy((void*)output, cur_page->getContentPtr(), *size);
     cur_page_id_.page_num_ = cur_page->getNextPageNumber();
     assert(cache_manager_->unpinPage(cur_page->page_id_, false));

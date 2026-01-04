@@ -71,6 +71,8 @@ void Catalog::init(CacheManager *cm) {
     Parser parser(nullptr);
     // loading TableSchema of each table into memory.
     TableIterator it = meta_table_schema_->begin();
+    // meta table's records live in memory for the entire lifetime of the catalog,
+    // there for we don't use a temporary memory.
     it.init();
     while(it.advance()){
         Tuple t;
@@ -78,7 +80,7 @@ void Catalog::init(CacheManager *cm) {
         if(err) break;
         // extract the data of this row.
         String  table_name = t.get_val_at(0).getStringVal();
-        String  query      = t.get_val_at(1).getStringVal();
+        String8  query      = t.get_val_at(1).getStringView(&arena_);
         FileID  fid        = t.get_val_at(2).getIntVal();
         // "temporary" query ctx.
         QueryCTX pctx;
@@ -127,10 +129,10 @@ void Catalog::init(CacheManager *cm) {
     } else {
         // create a pseudo context and destroy it after.
         QueryCTX pctx;
-        String index_query = 
-            "CREATE TABLE " 
+        String8 index_query = 
+            str_lit("CREATE TABLE " 
             INDEX_META_TABLE
-            "(index_name TEXT, table_name TEXT, fid INTEGER, is_unique BOOLEAN)";
+            "(index_name TEXT, table_name TEXT, fid INTEGER, is_unique BOOLEAN)");
         pctx.init(index_query);
         Vector<Column> index_meta_columns;
         index_meta_columns.emplace_back(&arena_, "index_name"    , VARCHAR, 0 );
@@ -140,10 +142,12 @@ void Catalog::init(CacheManager *cm) {
         TableSchema* ret = createTable(&pctx, INDEX_META_TABLE, index_meta_columns); 
         assert(ret != nullptr);
 
-        String index_keys_query = 
-            "CREATE TABLE "
-            INDEX_KEYS_TABLE 
-            "(index_name TEXT, field_number_in_table INTEGER, field_number_in_index INTEGER, is_desc_order BOOLEAN)";
+        String8 index_keys_query = 
+            str_lit(
+                "CREATE TABLE "
+                INDEX_KEYS_TABLE 
+                "(index_name TEXT, field_number_in_table INTEGER, field_number_in_index INTEGER, is_desc_order BOOLEAN)"
+            );
         pctx.query_ = index_keys_query;
 
         Vector<Column> index_keys_columns;
@@ -180,7 +184,8 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const String &table_name, Vecto
     Tuple t(&ctx->arena_);
     t.setNewSchema(meta_table_schema_);
     t.put_val_at(0, Value(&ctx->arena_, table_name));
-    t.put_val_at(1, Value(&ctx->arena_, ctx->query_));
+    //t.put_val_at(1, Value(&ctx->arena_, ctx->query_));
+    t.put_val_at(1, Value(ctx->query_));
     t.put_val_at(2, Value(nfid));
 
     RecordID rid = RecordID();

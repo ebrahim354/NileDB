@@ -52,7 +52,13 @@ struct Arena : public std::pmr::memory_resource {
 
     void destroy();
 
-    void* alloc(size_t size);
+    // sometimes calling alloc with alignment = 0
+    // (for example appending strings into the arena to concatenate them)
+    // could mess with the total alignment of the arena alloc_pos_
+    // so this methods makes sure it's realigned correctly
+    void realign();
+
+    void* alloc(size_t size, u64 alignment = DEFAULT_ALIGNMENT);
 
     void dealloc(u64 size);
 

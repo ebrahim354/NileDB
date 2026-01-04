@@ -1,7 +1,8 @@
 #ifndef TOKENIZER_H
 #define TOKENIZER_H
 
-#include <map>
+#include <unordered_map>
+#include "data_structures.h"
 #include <vector>
 
 enum class TokenType {
@@ -101,7 +102,7 @@ enum class TokenType {
 struct Token {
     String val_;
     TokenType type_ = TokenType::INVALID_TOKEN;
-    Token(TokenType type = TokenType::INVALID_TOKEN, String val = "");
+    Token(TokenType type = TokenType::INVALID_TOKEN, String val = {});
 };
 
 class Tokenizer {
@@ -109,28 +110,30 @@ class Tokenizer {
         Tokenizer();
         ~Tokenizer(){}
 
-        bool isKeyword(String& t);
-        bool isDataType(String& t);
-        bool isSymbol(String& t);
-        bool isAggFunc(String& func);
-        bool isMathOp(String& op);
-        bool isCompareOP(String& op);
-        bool isEqOP(String& op);
-        bool isStrConst(String& t);
-        bool isNumberConst (String& t);
+        bool isKeyword(String8 t);
+        bool isDataType(String8 t);
+        bool isSymbol(String8 t);
+        bool isAggFunc(String8 func);
+        bool isMathOp(String8 op);
+        bool isCompareOP(String8 op);
+        bool isEqOP(String8 op);
+        bool isStrConst(String8 t);
+        bool isNumberConst (String8 t);
         bool isWhitespace(char ch);
 
         bool isDataType(TokenType type);
         bool isAggFunc(TokenType func);
 
-        TokenType getTokenType(String& t);
+        TokenType getTokenType(String8 t);
 
-        void tokenize(String& input, Vector<Token>& output);
+        void flush_token(String8 cur_token, Vector<Token>& output);
+        i32 advance_string_literal(String8 input, u64 starting_offset, u64* str_sz);
+        i32 tokenize(String8 input, Vector<Token>& output);
 
     private:
-        std::map<String, TokenType> keywords_;
-        std::map<String, TokenType> symbols_;
-        std::map<String, TokenType> data_types_;
+        std::unordered_map<String8, TokenType, String_ihash, String_ieq> keywords_;
+        std::unordered_map<String8, TokenType, String_ihash, String_ieq> data_types_;
+        std::unordered_map<String8, TokenType, String_ihash, String_eq> symbols_;
 };
 
 #endif // TOKENIZER_H

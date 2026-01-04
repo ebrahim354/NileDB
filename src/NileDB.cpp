@@ -1,4 +1,6 @@
 #pragma once
+#include "data_structures.h"
+
 #include "cache_manager.cpp"
 #include "catalog.cpp"
 #include "disk_manager.cpp"
@@ -44,15 +46,15 @@ class NileDB {
             bool res =  query_processor_->handleQuery(query_ctx, execution_root);
             return res;
         }
-        bool CMD(String command){
-            if(command == "\\t"){
+        bool CMD(const char* command){
+            if(strcmp(command, "\\t") == 0){
                 Vector<String> tables = catalog_.getTableNames();
                 for(int i = 0; i < tables.size(); ++i){
                     std::cout << tables[i] << std::endl;
                     catalog_.getTableSchema(tables[i])->printSchema();
                 }
                 return true;
-            } else if(command == "\\cache"){
+            } else if(strcmp(command, "\\cache") == 0){
                 cache_manager_->show();
                 return true;
             }

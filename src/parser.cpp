@@ -111,8 +111,9 @@ Value Parser::constVal(QueryCTX& ctx){
 
 void Parser::parse(QueryCTX& ctx){
     if((bool)ctx.error_status_) return; 
-    tokenizer_.tokenize(ctx.query_, ctx.tokens_);
-
+    int err = tokenizer_.tokenize(ctx.query_, ctx.tokens_);
+    assert(!err && "Tokenizer error");
+    
     if(ctx.tokens_.size() == 0)
         return;
 
