@@ -464,7 +464,7 @@ Vector<ExpressionNode*> split_by_and(QueryCTX* ctx, ExpressionNode* expression) 
 }
 
 
-void accessed_tables(ASTNode* expression ,Vector<String>& tables, Catalog* catalog, bool only_one = true) {
+void accessed_tables(ASTNode* expression ,Vector<String8>& tables, Catalog* catalog, bool only_one = true) {
     if(!expression) return;
     switch(expression->category_){
         case EXPRESSION  : 
@@ -640,12 +640,12 @@ void accessed_tables(ASTNode* expression ,Vector<String>& tables, Catalog* catal
                       } 
         case SCOPED_FIELD:{
                               String8 table = reinterpret_cast<ScopedFieldNode*>(expression)->table_->token_.val_;
-                              tables.push_back(to_string(table));
+                              tables.push_back(table);
                               return;
                           }
         case FIELD:{
                        String8 field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
-                       Vector<String> valid_tables = catalog->getTablesByField(to_string(field));
+                       Vector<String8> valid_tables = catalog->get_tables_by_field((field));
                        for(int i = 0; i < valid_tables.size(); ++i){
                            int n = tables.size();
                            bool exists = false;

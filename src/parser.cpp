@@ -519,12 +519,10 @@ ASTNode* Parser::field(QueryCTX& ctx){
     ASTNode* ret = nullptr;
     if(ctx.matchTokenType(TokenType::IDENTIFIER)) {
         auto token = ctx.getCurrentToken(); ++ctx;
-        Vector<String> possible_tables = catalog_->get_tables_by_field(token.val_);
+        Vector<String8> possible_tables = catalog_->get_tables_by_field(token.val_);
         if(possible_tables.size() == 1) {
             ASTNode* t = nullptr;
-            String8 s = str_alloc(&ctx.arena_, possible_tables[0].size());
-            memcpy(s.str_, possible_tables[0].c_str(), s.size_);
-            ALLOCATE_INIT(ctx.arena_, t, ASTNode, TABLE, Token(TokenType::IDENTIFIER, s));
+            ALLOCATE_INIT(ctx.arena_, t, ASTNode, TABLE, Token(TokenType::IDENTIFIER, possible_tables[0]));
             ALLOCATE_INIT(ctx.arena_, ret, ScopedFieldNode, token, t);
             return ret;
         }

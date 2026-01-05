@@ -48,11 +48,11 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
                 return true; // the table does not contain this column => corelated.
             }
         } else { // the field is not scoped.
-            Vector<String> possible_tables = catalog->get_tables_by_field(fields[i]->token_.val_);
+            Vector<String8> possible_tables = catalog->get_tables_by_field(fields[i]->token_.val_);
             bool table_matched = false;
             for(int j = 0; j < possible_tables.size(); ++j){
                 for(int k = 0; k < query->table_names_.size(); ++k){
-                    if(possible_tables[j] == to_string(query->table_names_[j])) {
+                    if(possible_tables[j] == query->table_names_[j]) {
                         table_matched = true;
                         break;
                     }

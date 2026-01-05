@@ -60,7 +60,7 @@ class Catalog {
 
         Vector<String> getTableNames();
         Vector<String> getTablesByField(String field);
-        Vector<String> get_tables_by_field(String8 field);
+        Vector<String8> get_tables_by_field(String8 field);
         bool isValidTable(const String& table_name);
         //TODO: change unnecessary indirection.
         Vector<IndexHeader> get_indexes_of_table(String8 t);

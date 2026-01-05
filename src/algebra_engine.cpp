@@ -11,12 +11,12 @@ class AlgebraEngine {
         {}
         ~AlgebraEngine(){}
 
-        Vector<int> find_filters_that_access_table(String table, 
-                Vector<std::pair<Vector<String>, ExpressionNode*>> tables_per_filter) {
+        Vector<int> find_filters_that_access_table(String8 table, 
+                Vector<std::pair<Vector<String8>, ExpressionNode*>> tables_per_filter) {
             Vector<int> ans;
             for(int i = 0; i < tables_per_filter.size(); ++i){
                 for(int j = 0; j < tables_per_filter[i].first.size(); ++j){
-                    String cur = tables_per_filter[i].first[j];
+                    String8 cur = tables_per_filter[i].first[j];
                     if(cur == table) {
                         ans.push_back(i);
                         continue;
@@ -32,10 +32,10 @@ class AlgebraEngine {
         // this will insure that filters are as close to the leafs as possible.
         // this implementation is cluncky but works.
         // TODO: clean up this implementation. 
-        void group_close_tables(Vector<std::pair<Vector<String>, ExpressionNode*>>& tables_per_filter) {
-            std::queue<String> q;
+        void group_close_tables(Vector<std::pair<Vector<String8>, ExpressionNode*>>& tables_per_filter) {
+            std::queue<String8> q;
             std::set<int> visited_filter;
-            std::set<String> visited_table;
+            std::set<String8> visited_table;
             Vector<int> sorted_order;
             for(int f = 0; f < tables_per_filter.size(); ++f){
                 if(tables_per_filter[f].first.size() == 0) { // no accessed_tables comes first.
@@ -46,7 +46,7 @@ class AlgebraEngine {
                 visited_table.insert(q.front());
                 while(!q.empty()) {
                     int n = q.size();
-                    String frnt = q.front(); q.pop();
+                    String8 frnt = q.front(); q.pop();
                     for(int i = 0; i < n; ++i){
                         Vector<int> ans = find_filters_that_access_table(frnt, tables_per_filter);
                         for(int k = 0; k < ans.size(); ++k){
@@ -54,7 +54,7 @@ class AlgebraEngine {
                             visited_filter.insert(ans[k]);
                             sorted_order.push_back(ans[k]);
                             for(int j = 0; j < tables_per_filter[ans[k]].first.size(); ++j){
-                                String cur = tables_per_filter[ans[k]].first[j];
+                                String8 cur = tables_per_filter[ans[k]].first[j];
                                 if(visited_table.count(cur)) continue;
                                 visited_table.insert(cur);
                                 q.push(cur);
@@ -64,7 +64,7 @@ class AlgebraEngine {
                     }
                 }
             }
-            Vector<std::pair<Vector<String>, ExpressionNode*>> tables_per_filter_sorted;
+            Vector<std::pair<Vector<String8>, ExpressionNode*>> tables_per_filter_sorted;
             for(int i = 0; i < sorted_order.size(); ++i){
                 int idx = sorted_order[i];
                 tables_per_filter_sorted.push_back(tables_per_filter[idx]);
@@ -491,16 +491,16 @@ class AlgebraEngine {
                 splitted_where = split_by_and(&ctx, data->where_);
             }
             // collect data about which tables did we access for each splitted predicate from the previous step.
-            Vector<std::pair<Vector<String>, ExpressionNode*>> tables_per_filter;
+            Vector<std::pair<Vector<String8>, ExpressionNode*>> tables_per_filter;
             for(int i = 0; i < splitted_where.size(); ++i){
-                Vector<String> table_access;
-                std::unordered_map<String, bool> f;
+                Vector<String8> table_access;
+                std::unordered_map<String8, bool, String_hash, String_eq> f;
                 accessed_tables(splitted_where[i], table_access, catalog_);
-                Vector<String> ta;
+                Vector<String8> ta;
                 for(auto &s: table_access){
                     bool used_in_query = false;
                     for(int j = 0; j < data->table_names_.size(); ++j){
-                        if(to_string(data->table_names_[j]) == s) {
+                        if(data->table_names_[j] == s) {
                             used_in_query = true;
                             break;
                         }
@@ -515,8 +515,8 @@ class AlgebraEngine {
 
             // sort predicates by the least accessed number of tables.
             sort(tables_per_filter.begin(), tables_per_filter.end(),
-                    [](std::pair<Vector<String>, ExpressionNode*> lhs,
-                        std::pair<Vector<String>, ExpressionNode*> rhs) {
+                    [](std::pair<Vector<String8>, ExpressionNode*> lhs,
+                        std::pair<Vector<String8>, ExpressionNode*> rhs) {
                     return lhs.first.size() < rhs.first.size();
                     });
 
@@ -529,18 +529,18 @@ class AlgebraEngine {
             // with predicates being as low as possible.
             //
             // initialize 1 scanner for each accessed table.
-            std::unordered_map<String, AlgebraOperation*> table_scanner;
+            std::unordered_map<String8, AlgebraOperation*, String_hash, String_eq> table_scanner;
             for(int i = 0; i < data->tables_.size(); ++i){
                 String8 t = data->tables_[i];
                 String8 tn = data->table_names_[i];
                 AlgebraOperation* scan = New(ScanOperation, ctx.arena_, query_idx, t, tn);
-                table_scanner[to_string(tn)] = scan;
+                table_scanner[tn] = scan;
             }
 
             // handle filters with 1 table access.
             for(int i = 0; i < splitted_where.size(); ++i) { 
                 if(tables_per_filter[i].first.size() != 1) continue;
-                String cur_table = tables_per_filter[i].first[0];
+                String8 cur_table = tables_per_filter[i].first[0];
                 ExpressionNode* cur_filter = tables_per_filter[i].second;
                 assert(table_scanner[cur_table]->type_ == SCAN);
                 ((ScanOperation*)table_scanner[cur_table])->filters_.push_back(cur_filter);
@@ -566,8 +566,8 @@ class AlgebraEngine {
                     data->table_names_.size() > join_data.lhs_idx_ && 
                     data->table_names_.size() > join_data.rhs_idx_
                 );
-                String lhs_name = to_string(data->table_names_[join_data.lhs_idx_]);
-                String rhs_name = to_string(data->table_names_[join_data.rhs_idx_]);
+                String8 lhs_name = data->table_names_[join_data.lhs_idx_];
+                String8 rhs_name = data->table_names_[join_data.rhs_idx_];
                 assert(table_scanner.count(lhs_name) && table_scanner.count(rhs_name));
                 // parse the condition to decide the join algorithm.
                 JoinAlgorithm join_algorithm = NESTED_LOOP_JOIN;
@@ -590,7 +590,7 @@ class AlgebraEngine {
                 if(tables_per_filter[i].first.size() < 2) continue;
                 // loop over all tables that was accessed with in filter number 'i'
                 for(int j = 0; j < tables_per_filter[i].first.size(); ++j) {
-                    String t = tables_per_filter[i].first[j];
+                    String8 t = tables_per_filter[i].first[j];
                     if(result == nullptr) {
                         result = table_scanner[t];
                     } else if(table_scanner.count(t)){
@@ -611,8 +611,7 @@ class AlgebraEngine {
 
 
             // remaining table outside of filters.
-            for(String8 ti : data->table_names_) {
-                String t = to_string(ti);
+            for(String8 t : data->table_names_) {
                 if(!table_scanner.count(t)) continue;
                 if(result == nullptr){
                     result = table_scanner[t];

@@ -310,11 +310,14 @@ Vector<String> Catalog::getTablesByField(String field) {
     return output;
 }
 
-Vector<String> Catalog::get_tables_by_field(String8 field) {
-    Vector<String> output;
+Vector<String8> Catalog::get_tables_by_field(String8 field) {
+    Vector<String8> output;
     for(auto& t : tables_){
-        if(t.second->is_valid_col(field))
-            output.push_back(t.first);
+        if(t.second->is_valid_col(field)){
+            String8 tmp = str_alloc(&arena_, t.first.size());
+            memcpy(tmp.str_, t.first.c_str(), tmp.size_);
+            output.push_back(tmp);
+        }
     }
     return output;
 }

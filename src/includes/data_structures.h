@@ -18,6 +18,13 @@ struct String8 {
         return memcmp(str_, other.str_, size_) == 0;
     }
 
+    const bool operator<(const String8& other) const {
+        u64 min_sz = size_;
+        if(other.size_ < size_) min_sz = other.size_;
+        int res = strncmp((char*)str_, (char*)other.str_, min_sz);
+        return res < 0;
+    }
+
     const u8& operator[](u64 idx) const {
         assert(idx < size_);
         return str_[idx];
