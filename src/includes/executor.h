@@ -34,8 +34,6 @@ enum ExecutorType {
     INTERSECT_EXECUTOR,
 };
 
-String exec_type_to_string(ExecutorType t);
-
 struct Executor {
 
     Executor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* output_schema,

@@ -7,41 +7,6 @@
 
 struct QueryCTX;
 
-String exec_type_to_string(ExecutorType t) {
-    switch(t){
-        case SEQUENTIAL_SCAN_EXECUTOR:
-            return "SEQUENTIAL SCAN";
-        case INDEX_SCAN_EXECUTOR:
-            return "SEQUENTIAL SCAN";
-        case INSERTION_EXECUTOR:
-            return "INSERTION";
-        case FILTER_EXECUTOR:
-            return "FILTER";
-        case AGGREGATION_EXECUTOR: 
-            return "AGGREGATION";
-        case PROJECTION_EXECUTOR: 
-            return "PROJECTION";
-        case SORT_EXECUTOR:
-            return "SORT";
-        case DISTINCT_EXECUTOR:
-            return "DISTINCT";
-        case PRODUCT_EXECUTOR: 
-            return "PRODUCT";
-        case HASH_JOIN_EXECUTOR: 
-            return "HASH JOIN";
-        case NESTED_LOOP_JOIN_EXECUTOR: 
-            return "NESTED LOOP JOIN";
-        case UNION_EXECUTOR:
-            return "UNION";
-        case EXCEPT_EXECUTOR:
-            return "EXCEPT";
-        case INTERSECT_EXECUTOR:
-            return "INTERSECT";
-        default:
-            return "INVALID EXECUTOR";
-    }
-}
-
 Executor::Executor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, TableSchema* output_schema,
         Executor* child_executor,
         ExecutorType type):
@@ -83,7 +48,7 @@ NestedLoopJoinExecutor::NestedLoopJoinExecutor(Arena* arena, QueryCTX* ctx, Alge
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
-    output_schema_ = New(TableSchema, ctx_->arena_, "TMP_JOIN_TABLE", nullptr, lhs_columns, true);
+    output_schema_ = New(TableSchema, ctx_->arena_, str_lit("TMP_JOIN_TABLE"), nullptr, lhs_columns, true);
     output_.setNewSchema(output_schema_);
     left_output_.setNewSchema(lhs->output_schema_);
 }
@@ -167,7 +132,7 @@ ProductExecutor::ProductExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* 
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
-    output_schema_ = New(TableSchema, ctx_->arena_, "TMP_PRODUCT_TABLE", nullptr, lhs_columns, true);
+    output_schema_ = New(TableSchema, ctx_->arena_, str_lit("TMP_PRODUCT_TABLE"), nullptr, lhs_columns, true);
     output_.setNewSchema(output_schema_);
 }
 
@@ -239,7 +204,7 @@ HashJoinExecutor::HashJoinExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation
     for(int i = 0; i < rhs_columns.size(); i++)
         lhs_columns.push_back(rhs_columns[i]);
 
-    output_schema_ = New(TableSchema, ctx_->arena_, "TMP_JOIN_TABLE", nullptr, lhs_columns, true);
+    output_schema_ = New(TableSchema, ctx_->arena_, str_lit("TMP_JOIN_TABLE"), nullptr, lhs_columns, true);
     output_.setNewSchema(output_schema_);
 }
 
@@ -265,13 +230,13 @@ void HashJoinExecutor::init() {
     accessed_fields(filter_, fields);
 
     for(int i = 0; i < fields.size(); ++i) {
-        int idx = left_child_->output_schema_->colExist(fields[i]->token_.val_);
+        int idx = left_child_->output_schema_->col_exist(fields[i]->token_.val_);
         // TODO: fix the case of same field names and different tables for example: t1.a = t2.a
         if(idx != -1) {
             left_child_fields_.push_back(idx);
             continue;
         }
-        idx = right_child_->output_schema_->colExist(fields[i]->token_.val_);
+        idx = right_child_->output_schema_->col_exist(fields[i]->token_.val_);
 
         if(idx != -1) {
             right_child_fields_.push_back(idx);
@@ -749,7 +714,7 @@ DeletionExecutor::DeletionExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation
     parent_query_idx_ = ctx->queries_call_stack_[query_idx_]->parent_idx_;
     //table_ = table;
     //indexes_ = indexes;
-    output_schema_ = New(TableSchema, ctx_->arena_, "del_tmp_schema", nullptr, {Column("Affected", INT, 0)}, true);
+    output_schema_ = New(TableSchema, ctx_->arena_, str_lit("del_tmp_schema"), nullptr, {Column(str_lit("Affected"), INT, 0)}, true);
     output_.setNewSchema(output_schema_);
 }
 
@@ -840,7 +805,7 @@ UpdateExecutor::UpdateExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* pl
     //table_ = table;
     //indexes_ = indexes;
 
-    output_schema_ = New(TableSchema, ctx_->arena_, "update_tmp_schema", nullptr, {Column("Affected", INT, 0)}, true);
+    output_schema_ = New(TableSchema, ctx_->arena_, str_lit("update_tmp_schema"), nullptr, {Column(str_lit("Affected"), INT, 0)}, true);
     output_.setNewSchema(output_schema_);
 }
 
@@ -857,7 +822,7 @@ void UpdateExecutor::init() {
     assert(statement_->values_.size() == statement_->fields_.size());
 
     for(auto& field_name : statement_->fields_){
-        int idx = table_->colExist(field_name);
+        int idx = table_->col_exist(field_name);
         if(!table_->is_valid_col(field_name) || idx < 0) {
             error_status_ = 1;
             return;
@@ -909,7 +874,7 @@ Tuple UpdateExecutor::next() {
         Tuple new_tuple = old_tuple;
 
         for(int i = 0; i < statement_->values_.size(); ++i){
-            int idx = table_->colExist(statement_->fields_[i]); 
+            int idx = table_->col_exist(statement_->fields_[i]); 
             Value evaluated_val = evaluate_expression(ctx_, statement_->values_[i], values);
             new_tuple.put_val_at(idx, evaluated_val);
         }
@@ -988,15 +953,10 @@ void InsertionExecutor::init() {
     statement_ = reinterpret_cast<InsertStatementData*>(ctx_->queries_call_stack_[query_idx_]);
     // fields
     if(!statement_->fields_.size() || statement_->fields_.size() < table_->getCols().size()){
-        //statement_->fields_ = table_->getCols();
-        auto cols = table_->getCols();
-        for(int i = 0; i < cols.size(); ++i){
-            auto str = str_alloc(&ctx_->arena_, cols[i].size());
-            memcpy(str.str_, cols[i].c_str(), str.size_);
-        }
+        statement_->fields_ = table_->getCols();
     } else {
         for(auto& field_name : statement_->fields_){
-            int idx = table_->colExist(field_name);
+            int idx = table_->col_exist(field_name);
             if(!table_->is_valid_col(field_name) || idx < 0) {
                 error_status_ = 1;
                 return;
@@ -1038,14 +998,14 @@ Tuple InsertionExecutor::next() {
             return {};
         }
         for(int i = 0; i < values.size(); ++i){
-            int idx = table_->colExist(statement_->fields_[i]); 
+            int idx = table_->col_exist(statement_->fields_[i]); 
             output_.put_val_at(idx, values.get_val_at(i));
         }
 
     } else {
         for(int i = 0; i < statement_->values_.size(); ++i){
             ExpressionNode* val_exp = statement_->values_[i];
-            int idx = table_->colExist(statement_->fields_[i]); 
+            int idx = table_->col_exist(statement_->fields_[i]); 
             output_.put_val_at(idx, evaluate_expression(ctx_, val_exp, output_));
         }
     }
@@ -1110,13 +1070,15 @@ AggregationExecutor::AggregationExecutor(Arena* arena, QueryCTX* ctx, AlgebraOpe
     for(int i = 0; i < aggregates_->size(); i++){
         String col_name = "agg_tmp_schema.";
         col_name += AGG_FUNC_IDENTIFIER_PREFIX;
-        //col_name += intToStr(op->aggregates_[i]->parent_id_);
         col_name += intToStr(i+1);
-        new_cols.push_back(Column(col_name, INT, offset_ptr));
+        String8 str;
+        str = str_alloc(&ctx_->arena_, col_name.size());
+        memcpy(str.str_, col_name.c_str(), str.size_);
+        new_cols.push_back(Column(str, INT, offset_ptr));
         offset_ptr += getSizeFromType(INT);
     }
 
-    output_schema_ = New(TableSchema, ctx_->arena_, "agg_tmp_schema", nullptr, new_cols, true);
+    output_schema_ = New(TableSchema, ctx_->arena_, str_lit("agg_tmp_schema"), nullptr, new_cols, true);
     output_.setNewSchema(output_schema_, Value(0));
 }
 
@@ -1328,11 +1290,11 @@ ProjectionExecutor::ProjectionExecutor(Arena* arena, QueryCTX* ctx, AlgebraOpera
                 new_cols.push_back(col);
             continue;
         }
-        String col_name = "?column?";
+        String8 col_name = str_lit("?column?");
         new_cols.push_back(Column(col_name, INVALID, 0));
     }
 
-    output_schema_ = New(TableSchema, ctx_->arena_, "tmp_projection_schema", nullptr, new_cols, true);
+    output_schema_ = New(TableSchema, ctx_->arena_, str_lit("tmp_projection_schema"), nullptr, new_cols, true);
     output_.setNewSchema(output_schema_, Value(0));
 }
 
@@ -1542,7 +1504,7 @@ FilterExecutor::FilterExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* pl
         output_schema_ = child_executor_->output_schema_;
     } else {
         output_schema_ = New(TableSchema, ctx_->arena_,
-                "TMP_FILTER_SCHEMA", nullptr, {Column("?column?", INVALID, 0)}, true);
+                str_lit("TMP_FILTER_SCHEMA"), nullptr, {Column(str_lit("?column?"), INVALID, 0)}, true);
     }
     query_idx_ = plan_node->query_idx_;
     assert(query_idx_ < ctx->queries_call_stack_.size());

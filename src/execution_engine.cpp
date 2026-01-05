@@ -55,10 +55,14 @@ class ExecutionEngine {
             Vector<IndexField> primary_key_cols;
             uint8_t offset_ptr = 0;
             for(size_t i = 0; i < col_names.size(); ++i){
-                columns.push_back(Column(col_names[i], col_types[i], offset_ptr, col_constraints[i]));
+                String8 tmp_str = str_alloc(&ctx.arena_, col_names[i].size());
+                memcpy(tmp_str.str_, col_names[i].c_str(), col_names[i].size());
+
+                columns.push_back(Column(tmp_str, col_types[i], offset_ptr, col_constraints[i]));
                 bool is_primary_key = col_constraints[i]&CONSTRAINT_PRIMARY_KEY;
-                if(is_primary_key) 
-                    primary_key_cols.push_back({col_names[i], false}); // primary key can only be asc.
+                if(is_primary_key) {
+                    primary_key_cols.push_back({tmp_str, false}); // primary key can only be asc.
+                }
                 offset_ptr += getSizeFromType(col_types[i]);
             }
             TableSchema* sch = catalog_->createTable(&ctx, table_name, columns);
@@ -188,14 +192,16 @@ class ExecutionEngine {
                     {
                         ScanOperation* op = reinterpret_cast<ScanOperation*>(logical_plan);
                         TableSchema* schema = catalog_->get_table_schema(op->table_name_);
-                        String tname =  to_string(op->table_name_);
-                        if(op->table_rename_.size_ != 0) tname = to_string(op->table_rename_);
+                        String8 tname =  op->table_name_;
+                        if(op->table_rename_.size_ != 0) tname = op->table_rename_;
                         Vector<Column> columns = schema->getColumns();
                         // create a new schema and rename columns to table.col_name
                         for(int i = 0; i < columns.size(); i++){
-                            String col_name = tname; 
-                            col_name += ".";
-                            col_name += columns[i].getName();
+                            String8 col_name = str_alloc(&ctx.arena_, tname.size_ + 1 + columns[i].getName().size_);
+                            memcpy(col_name.str_, tname.str_, tname.size_);
+                            memcpy(col_name.str_ + tname.size_, ".", 1);
+                            memcpy(col_name.str_ + tname.size_+1, columns[i].getName().str_, columns[i].getName().size_);
+
                             columns[i].setName(col_name);
                         }
 

@@ -65,7 +65,7 @@ u8 varint_decode(u8* bytes, u64* output) {
 
 
 struct IndexField {
-    String name_;
+    String8 name_;
     bool desc_ = false;
 };
 

@@ -53,6 +53,15 @@ String8 str_alloc(Arena* arena, u64 size) {
     return s;
 }
 
+String8 str_copy(Arena* arena, String8 other) {
+    String8 s = {};
+    s.str_ = (u8*)arena->alloc(other.size_);
+    s.size_ = other.size_;
+    memcpy(s.str_, other.str_, other.size_);
+    return s;
+}
+
+
 
 
 #define str_lit(s) (String8) { .str_ = (u8*)(s), .size_ = sizeof(s) - 1 }

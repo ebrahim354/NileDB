@@ -61,10 +61,10 @@ void Catalog::init(CacheManager *cm) {
 
     Vector<Column> meta_data_columns;
     meta_data_columns.reserve(5);
-    meta_data_columns.emplace_back(&arena_, "table_name"      , VARCHAR, 0);
-    meta_data_columns.emplace_back(&arena_, "query"           , VARCHAR, 4); // query used to create the table.
-    meta_data_columns.emplace_back(&arena_, "fid"             , INT    , 8);
-    meta_table_schema_ =  New(TableSchema, arena_, META_DATA_TABLE, meta_data_table, meta_data_columns);
+    meta_data_columns.emplace_back(&arena_, str_lit("table_name")      , VARCHAR, 0);
+    meta_data_columns.emplace_back(&arena_, str_lit("query")           , VARCHAR, 4); // query used to create the table.
+    meta_data_columns.emplace_back(&arena_, str_lit("fid")             , INT    , 8);
+    meta_table_schema_ =  New(TableSchema, arena_, str_lit(META_DATA_TABLE), meta_data_table, meta_data_columns);
     tables_[META_DATA_TABLE] = meta_table_schema_;
 
     // temporary parser.
@@ -101,7 +101,7 @@ void Catalog::init(CacheManager *cm) {
                 std::cout << "[ERROR] Invalid type\n";
                 assert(0);
             }
-            cols.emplace_back(&arena_, to_string((*fields)[i].field_name_), type, col_offset, (*fields)[i].constraints_);
+            cols.emplace_back(&arena_, str_copy(&arena_, (*fields)[i].field_name_), type, col_offset, (*fields)[i].constraints_);
             col_offset += getSizeFromType(type);
         }
 
@@ -115,7 +115,7 @@ void Catalog::init(CacheManager *cm) {
         fid_to_fname[fid+1] = fsm;
         Table* table = nullptr; 
         ALLOCATE_INIT(arena_, table, Table, cm, fid);
-        TableSchema* schema = New(TableSchema, arena_, to_string(table_name), table, cols);
+        TableSchema* schema = New(TableSchema, arena_, table_name, table, cols);
         tables_.insert({to_string(table_name), schema});
 
         // clean the temporary query ctx.
@@ -137,10 +137,10 @@ void Catalog::init(CacheManager *cm) {
             "(index_name TEXT, table_name TEXT, fid INTEGER, is_unique BOOLEAN)");
         pctx.init(index_query);
         Vector<Column> index_meta_columns;
-        index_meta_columns.emplace_back(&arena_, "index_name"    , VARCHAR, 0 );
-        index_meta_columns.emplace_back(&arena_, "table_name"    , VARCHAR, 4 );
-        index_meta_columns.emplace_back(&arena_, "fid"           , INT    , 8 );
-        index_meta_columns.emplace_back(&arena_, "is_unique"     , BOOLEAN, 12);
+        index_meta_columns.emplace_back(&arena_, str_lit("index_name")    , VARCHAR, 0 );
+        index_meta_columns.emplace_back(&arena_, str_lit("table_name")    , VARCHAR, 4 );
+        index_meta_columns.emplace_back(&arena_, str_lit("fid")           , INT    , 8 );
+        index_meta_columns.emplace_back(&arena_, str_lit("is_unique")     , BOOLEAN, 12);
         TableSchema* ret = createTable(&pctx, INDEX_META_TABLE, index_meta_columns); 
         assert(ret != nullptr);
 
@@ -153,10 +153,10 @@ void Catalog::init(CacheManager *cm) {
         pctx.query_ = index_keys_query;
 
         Vector<Column> index_keys_columns;
-        index_keys_columns.emplace_back(&arena_, "index_name"            , VARCHAR   , 0);
-        index_keys_columns.emplace_back(&arena_, "field_number_in_table" , INT       , 4);
-        index_keys_columns.emplace_back(&arena_, "field_number_in_index" , INT       , 8);
-        index_keys_columns.emplace_back(&arena_, "is_desc_order"         , BOOLEAN   , 12);
+        index_keys_columns.emplace_back(&arena_, str_lit("index_name")            , VARCHAR   , 0);
+        index_keys_columns.emplace_back(&arena_, str_lit("field_number_in_table") , INT       , 4);
+        index_keys_columns.emplace_back(&arena_, str_lit("field_number_in_index") , INT       , 8);
+        index_keys_columns.emplace_back(&arena_, str_lit("is_desc_order")         , BOOLEAN   , 12);
         ret = createTable(&pctx, INDEX_KEYS_TABLE, index_keys_columns); 
         assert(ret != nullptr);
         pctx.clean();
@@ -180,7 +180,11 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const String &table_name, Vecto
     // initialize the table
     Table* table = nullptr;
     ALLOCATE_INIT(arena_, table, Table, cache_manager_, nfid);
-    TableSchema* schema = New(TableSchema, arena_, table_name, table, columns);
+
+    String8 tmp_table_name = str_alloc(&arena_, table_name.size());
+    memcpy(tmp_table_name.str_, table_name.c_str(), tmp_table_name.size_);
+
+    TableSchema* schema = New(TableSchema, arena_, tmp_table_name, table, columns);
     tables_.insert({table_name, schema});
     // persist the table schema in the meta data table.
     Tuple t(&ctx->arena_);
@@ -203,7 +207,7 @@ bool Catalog::createIndex(QueryCTX* ctx, const String &table_name, const String&
     TableSchema* table = tables_[table_name];
     Vector<NumberedIndexField> cols;
     for(int i = 0; i < fields.size(); ++i){
-        int col = table->colExist(fields[i].name_);
+        int col = table->col_exist(fields[i].name_);
         if(col == -1) return 1;
         cols.push_back({col, fields[i].desc_});
     }
@@ -297,15 +301,6 @@ Vector<String> Catalog::getTableNames() {
     Vector<String> output;
     for(auto& t : tables_){
         output.push_back(t.first);
-    }
-    return output;
-}
-
-Vector<String> Catalog::getTablesByField(String field) {
-    Vector<String> output;
-    for(auto& t : tables_){
-        if(t.second->isValidCol(field))
-            output.push_back(t.first);
     }
     return output;
 }

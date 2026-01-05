@@ -16,32 +16,23 @@ struct Tuple;
 
 class TableSchema {
     public:
-        TableSchema(Arena* arena, String name, Table* table, const Vector<Column>& columns, bool tmp_schema = false);
+        TableSchema(Arena* arena, String8 name, Table* table, const Vector<Column>& columns, bool tmp_schema = false);
         void destroy();
 
-        String getTableName();
+        String8 getTableName();
         int numOfCols();
-        int colExist(String& col_name);
-        int colExist(String8 col_name);
-        bool checkValidValues(Vector<String>& fields, Vector<Value>& vals);
-        bool checkValidValue(String& field, Value& val);
-        int getColIdx(String& field, Value& val);
+        int col_exist(String8 col_name);
 
         Column getCol(int idx);
         u32 getSize();
 
-        bool isValidCol(String& col_name);
         bool is_valid_col(String8 col_name);
-        String typeToString(Type t);
-        void printSchema(std::stringstream& ss);
-        void printSchema();
-        Vector<String> getCols();
+        Vector<String8> getCols();
         Vector<Column> getColumns();
-        void printTableHeader();
         // get a pointer to a spicific value inside of a record using the schema. 
         // Type conversion is done by the user of the function.
         // return nullptr in case of an error or the value is equal to null (handle cases separately later).
-        char* getValue(String col_name ,Record& r, uint16_t* size);
+        char* getValue(String8 col_name, Record& r, uint16_t* size);
         // translate a given record using the schema to a vector of Value type.
         // return 1 in case of an error.
         // values is the output.
@@ -63,7 +54,7 @@ class TableSchema {
         Table* getTable();
     private:
         bool tmp_schema_ = false;
-        String table_name_;
+        String8 table_name_;
         Table* table_;
         Vector<Column> columns_;
         u32 size_;

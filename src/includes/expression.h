@@ -923,7 +923,7 @@ Value evaluate_field(QueryCTX* ctx, const Tuple& tuple, ASTNode* item) {
         int num_of_matches = 0;
         auto columns = cur_tuple->schema_->getColumns();
         for(size_t i = 0; i < columns.size(); ++i){
-            Vector<String> splittedStr = strSplit(columns[i].getName(), '.');
+            Vector<String> splittedStr = strSplit(to_string(columns[i].getName()), '.');
             if(splittedStr.size() != 2) {
                 std::cout << "[ERROR] Invalid schema " << std::endl;
                 ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: make a better error_status_.
@@ -965,6 +965,8 @@ Value evaluate_scoped_field(QueryCTX* ctx, const Tuple& cur, ASTNode* item) {
     String field = to_string(item->token_.val_);
     String table = to_string(reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_);
     String col = table;col += "."; col+= field;
+    String8 tmp_str = str_alloc(&ctx->arena_, col.size());
+    memcpy(tmp_str.str_, col.c_str(), tmp_str.size_);
 
     int idx = -1;
     int query_input_idx = ctx->query_inputs.size() - 1;
@@ -974,7 +976,7 @@ Value evaluate_scoped_field(QueryCTX* ctx, const Tuple& cur, ASTNode* item) {
             cur_tuple = &ctx->query_inputs[query_input_idx--];
             continue;
         }
-        idx = cur_tuple->schema_->colExist(col);
+        idx = cur_tuple->schema_->col_exist(tmp_str);
 
         if((idx < 0 || idx >= cur_tuple->size()) 
                 && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()){

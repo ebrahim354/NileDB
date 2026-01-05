@@ -416,7 +416,7 @@ class AlgebraEngine {
                                         accessed_fields(left , key);
                                         accessed_fields(right, key);
                                         if(key.size() != 1) return -1;
-                                        int key_idx = table->colExist(key[0]->token_.val_);
+                                        int key_idx = table->col_exist(key[0]->token_.val_);
                                         assert(key_idx != -1);
 
                                         for(int i = 0; i < index.fields_numbers_.size(); ++i) {

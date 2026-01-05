@@ -51,7 +51,7 @@ class NileDB {
                 Vector<String> tables = catalog_.getTableNames();
                 for(int i = 0; i < tables.size(); ++i){
                     std::cout << tables[i] << std::endl;
-                    catalog_.getTableSchema(tables[i])->printSchema();
+                    //catalog_.getTableSchema(tables[i])->printSchema();
                 }
                 return true;
             } else if(strcmp(command, "\\cache") == 0){

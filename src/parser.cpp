@@ -1257,7 +1257,7 @@ void Parser::createIndexStatement(QueryCTX& ctx, int parent_idx){
         }
         Token token = ctx.getCurrentToken(); ++ctx;
         IndexField f = {
-          .name_ = to_string(token.val_),
+          .name_ = token.val_,
           .desc_ = false // ascending order is the default.
         };
         statement->fields_.push_back(f);

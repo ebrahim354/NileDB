@@ -25,42 +25,44 @@ Type tokenTypeToColType(TokenType t){
     }
 }
 
-Column::Column(Arena* arena, String name, Type type, u8 col_offset, ConstraintType constraints):
-    name_(name, arena), 
+Column::Column(Arena* arena, String8 name, Type type, u8 col_offset, ConstraintType constraints):
+    name_(name), 
     type_(type), 
     col_offset_(col_offset),
     constraints_(constraints),
     size_(getSizeFromType(type)){
     }
 
-Column::Column(String name, Type type, u8 col_offset, ConstraintType constraints): 
+Column::Column(String8 name, Type type, u8 col_offset, ConstraintType constraints): 
     name_(name), 
     type_(type), 
     col_offset_(col_offset),
     constraints_(constraints),
-    size_(getSizeFromType(type)){}
-    Column::~Column(){
-    }
+    size_(getSizeFromType(type))
+{}
+
+Column::~Column()
+{}
     // the reson for this is that we don't want anyone to change the column meta data after initializing it.
     // if you want to modify the column you have to delete it and start a new one, this is better to avoid errors
     // in the future, for example: when we start adding ALTER TABLE command.
-inline void                    Column::setName(String& name) { name_ = name  ; }
-inline String                  Column::getName()        { return name_            ; }
-inline Type                    Column::getType()        { return type_            ; }
-inline u8                      Column::getSize() const  { return size_            ; }
-inline u16                     Column::getOffset()      { return col_offset_      ; }
-inline ConstraintType          Column::getConstraints() { return constraints_     ; }
-inline bool                    Column::isVarLength()    { return type_ == VARCHAR ; }
-inline bool Column::isNullable() { 
+void                    Column::setName(String8 name) { name_ = name  ; }
+String8                  Column::getName()        { return name_            ; }
+Type                    Column::getType()        { return type_            ; }
+u8                      Column::getSize() const  { return size_            ; }
+u16                     Column::getOffset()      { return col_offset_      ; }
+ConstraintType          Column::getConstraints() { return constraints_     ; }
+bool                    Column::isVarLength()    { return type_ == VARCHAR ; }
+bool Column::isNullable() { 
     return !(constraints_&CONSTRAINT_NOT_NULL);
 }
-inline bool Column::isPrimaryKey() { 
+bool Column::isPrimaryKey() { 
     return (constraints_&CONSTRAINT_PRIMARY_KEY);
 }
-inline bool Column::isForeignKey() { 
+bool Column::isForeignKey() { 
     return (constraints_&CONSTRAINT_FOREIGN_KEY);
 }
-inline bool Column::isUnique() { 
+bool Column::isUnique() { 
     return (constraints_&CONSTRAINT_UNIQUE);
 }
 
@@ -75,8 +77,13 @@ uint8_t getSizeFromType(Type t){
             return 4; 
         case DOUBLE:
         case BIGINT:
+        case OVERFLOW_ITERATOR:
             return 8;
+        case NULL_TYPE:
+        case INVALID:
+            return 0;
         default: 
-            return -1;
+            assert(0);
+            return 0;
     }
 }

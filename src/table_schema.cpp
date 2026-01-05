@@ -7,8 +7,8 @@
 
 #define MAX_RECORD_SiZE (PAGE_SIZE / 2)
 
-TableSchema::TableSchema(Arena* arena, String name, Table* table, const Vector<Column>& columns, bool tmp_schema):
-    table_name_(name, arena), table_(table), columns_(columns, arena), tmp_schema_(tmp_schema)
+TableSchema::TableSchema(Arena* arena, String8 name, Table* table, const Vector<Column>& columns, bool tmp_schema):
+    table_name_(name), table_(table), columns_(columns, arena), tmp_schema_(tmp_schema)
 {
     columns_.reserve(20);
     size_ = 0;
@@ -22,7 +22,7 @@ TableSchema::TableSchema(Arena* arena, String name, Table* table, const Vector<C
 }
 void TableSchema::destroy() {}
 
-String TableSchema::getTableName(){
+String8 TableSchema::getTableName(){
     return table_name_;
 }
 
@@ -32,16 +32,7 @@ int TableSchema::numOfCols() {
     return columns_.size();
 }
 
-int TableSchema::colExist(String8 col_name) {
-    for(size_t i = 0; i < columns_.size(); ++i){
-        if(columns_[i].getName() == to_string(col_name))
-            return i;
-    }
-    return -1;
-}
-
-// TODO: change columns to be a set instead of doing this.
-int TableSchema::colExist(String& col_name) {
+int TableSchema::col_exist(String8 col_name) {
     for(size_t i = 0; i < columns_.size(); ++i){
         if(columns_[i].getName() == col_name)
             return i;
@@ -49,89 +40,14 @@ int TableSchema::colExist(String& col_name) {
     return -1;
 }
 
-bool TableSchema::checkValidValues(Vector<String>& fields, Vector<Value>& vals) {
-    if(fields.size() != columns_.size() || fields.size() != vals.size()) return false;
-    for(size_t i = 0; i < fields.size(); ++i){
-        int col_idx = colExist(fields[i]);
-        if(col_idx == -1) return false;
-        if(columns_[col_idx].getName() != fields[i] || columns_[col_idx].getType() != vals[i].type_)
-            return false;
-    }
-    return true;
-}
-
-bool TableSchema::checkValidValue(String& field, Value& val) {
-    for(size_t i = 0; i < columns_.size(); ++i){
-        if(columns_[i].getName() == field && columns_[i].getType() != val.type_)
-            return true;
-    }
-    return false;
-}
-
-int TableSchema::getColIdx(String& field, Value& val){
-    for(size_t i = 0; i < columns_.size(); ++i){
-        if(columns_[i].getName() == field && columns_[i].getType() != val.type_){
-            return i;
-        }
-    }
-    return -1;
-
-}
-
 bool TableSchema::is_valid_col(String8 col_name){
-    for(auto c : columns_)
-        if(c.getName() == to_string(col_name)) return true;
-    return false;
-}
-
-bool TableSchema::isValidCol(String& col_name){
     for(auto c : columns_)
         if(c.getName() == col_name) return true;
     return false;
 }
 
-String TableSchema::typeToString(Type t){
-    if(t == BOOLEAN)        return "BOOLEAN";
-    else if(t == INT)       return "INT";
-    else if(t == BIGINT)    return "BIGINT";
-    else if(t == FLOAT)     return "FLOAT";
-    else if(t == DOUBLE)    return "DOUBLE";
-    else if(t == TIMESTAMP) return "TIMESTAMP";
-    else if(t == VARCHAR)   return "VARCHAR";
-    return "INVALID";
-}
-
-void TableSchema::printSchema(std::stringstream& ss){
-    ss << " number of columns : " <<  columns_.size() << std::endl;
-    for(int i = 0; i < columns_.size(); i++){
-        ss << "col num : " << i << std::endl;
-        ss << "name: " << columns_[i].getName() << " offset: " << columns_[i].getOffset() << std::endl;
-        ss << "type: " << typeToString(columns_[i].getType()) << std::endl;
-        ss << "constraints\n";
-        ss << "primary_key: " << columns_[i].isPrimaryKey() 
-            << " foreign_key: " << columns_[i].isForeignKey();
-        ss << " nullable: " << columns_[i].isNullable() << " unique: " 
-            << columns_[i].isUnique() << std::endl;
-        ss << "-----------------------------------------------------------------" << std::endl;
-    }
-}
-
-void TableSchema::printSchema(){
-    std::cout << " number of columns : " <<  columns_.size() << std::endl;
-    for(int i = 0; i < columns_.size(); i++){
-        std::cout << "col num : " << i << std::endl;
-        std::cout << "name: " << columns_[i].getName() << " offset: " << columns_[i].getOffset() << std::endl;
-        std::cout << "type: " << typeToString(columns_[i].getType()) << std::endl;
-        std::cout << "constraints\n";
-        std::cout << "primary_key: " << columns_[i].isPrimaryKey() 
-            << " foreign_key: " << columns_[i].isForeignKey();
-        std::cout << " nullable: " << columns_[i].isNullable() << " unique: " 
-            << columns_[i].isUnique() << std::endl;
-        std::cout << "-----------------------------------------------------------------" << std::endl;
-    }
-}
-Vector<String> TableSchema::getCols(){
-    Vector<String> cols;
+Vector<String8> TableSchema::getCols(){
+    Vector<String8> cols;
     for(size_t i = 0; i < columns_.size(); ++i){
         cols.push_back(columns_[i].getName());
     }
@@ -142,17 +58,10 @@ Vector<Column> TableSchema::getColumns(){
     return columns_;
 }
 
-void TableSchema::printTableHeader(){
-    for(size_t i = 0; i < columns_.size(); ++i){
-        std::cout << columns_[i].getName();
-        if(i != columns_.size() - 1) std::cout << " | ";
-    }
-    std::cout << "\n-----------------------------------------------------------------" << std::endl;
-}
 // get a pointer to a specific value inside of a record using the schema. 
 // Type conversion is done by the user of the function.
 // return nullptr in case of an error or the value is equal to null (handle cases separately later).
-char* TableSchema::getValue(String col_name ,Record& r, uint16_t* size){
+char* TableSchema::getValue(String8 col_name ,Record& r, uint16_t* size){
     Column* col = nullptr;
     for(size_t i = 0; i < columns_.size(); ++i) {
         if(columns_[i].getName() == col_name) {

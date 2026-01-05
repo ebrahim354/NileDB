@@ -59,7 +59,6 @@ class Catalog {
         IndexHeader get_index_header(String8 index);
 
         Vector<String> getTableNames();
-        Vector<String> getTablesByField(String field);
         Vector<String8> get_tables_by_field(String8 field);
         bool isValidTable(const String& table_name);
         //TODO: change unnecessary indirection.
