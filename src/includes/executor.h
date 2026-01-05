@@ -109,10 +109,10 @@ struct HashJoinExecutor : public Executor {
     // for example: the hash key is the field 'a' and this field is not unique and may have a duplicated value of 1,
     // in that case when a join happens we store it in the hash table as 1 -> {tuple 1, tuple 2, tuple 3}.
     // when we call next() on a a key such as the previous example we track the last tuple that has been returned.
-    String prev_key_ = "";
-    std::pmr::unordered_map<String, Vector<Tuple>> hashed_left_child_;
+    String8 prev_key_ = {};
+    std::pmr::unordered_map<String8, Vector<Tuple>, String_hash, String_eq> hashed_left_child_;
     // tracks left keys that didn't find a match and can be used for left and full outer joins.
-    std::pmr::set<String> non_visited_left_keys_; 
+    std::pmr::set<String8> non_visited_left_keys_; 
     ExpressionNode* filter_ = nullptr;
     JoinType join_type_ = INNER_JOIN;
     // the value of -1 means that we will use the first tuple.
@@ -137,7 +137,7 @@ struct ExceptExecutor : public Executor {
 
     Executor* left_child_ = nullptr;
     Executor* right_child_ = nullptr;
-    std::pmr::unordered_map<String, int> hashed_tuples_;
+    std::pmr::unordered_map<String8, int, String_hash, String_eq> hashed_tuples_;
 };
 
 struct IntersectExecutor : public Executor {
@@ -148,7 +148,7 @@ struct IntersectExecutor : public Executor {
 
     Executor* left_child_ = nullptr;
     Executor* right_child_ = nullptr;
-    std::pmr::unordered_map<String, int> hashed_tuples_;
+    std::pmr::unordered_map<String8, int, String_hash, String_eq> hashed_tuples_;
 };
 
 
@@ -224,7 +224,7 @@ struct AggregationExecutor : public Executor {
 
     Vector<AggregateFuncNode*> *aggregates_;
     Vector<ASTNode*> *group_by_;
-    std::pmr::unordered_map<String, std::pair<Tuple, int>> aggregated_values_;
+    std::pmr::unordered_map<String8, std::pair<Tuple, int>, String_hash, String_eq> aggregated_values_;
     // this hash table holds a set of values for each aggregate function 
     // if that function uses the distinct keyword inside the clause e.g: count(distinct a).
     // the mapping string is the hashed_key that is generated from the group by clause,
@@ -232,8 +232,8 @@ struct AggregationExecutor : public Executor {
     // first value is the index of the function inside of the aggregates_ array,
     // second value is the set of values that has been parameters to that function so far.
     // TODO: pick a better structure to implement this functionality
-    std::pmr::unordered_map<String, std::unordered_map<int, std::set<String>>> distinct_counters_; 
-    std::pmr::unordered_map<String, std::pair<Tuple, int>>::iterator it_;
+    std::pmr::unordered_map<String8, std::unordered_map<int, std::set<String8>>, String_hash, String_eq> distinct_counters_; 
+    std::pmr::unordered_map<String8, std::pair<Tuple, int>>::iterator it_;
 };
 
 struct ProjectionExecutor : public Executor {
@@ -263,7 +263,7 @@ struct DistinctExecutor : public Executor {
     void init();
     Tuple next();
 
-    std::pmr::unordered_map<String, int> hashed_tuples_;
+    std::pmr::unordered_map<String8, int, String_hash, String_eq> hashed_tuples_;
 };
 
 struct SubQueryExecutor : public Executor {

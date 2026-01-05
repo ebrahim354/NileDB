@@ -182,9 +182,7 @@ Tuple ProductExecutor::next() {
 HashJoinExecutor::HashJoinExecutor(Arena* arena, QueryCTX* ctx, AlgebraOperation* plan_node, Executor* lhs, Executor* rhs):
     Executor(arena, ctx, plan_node, nullptr, nullptr, HASH_JOIN_EXECUTOR),
     left_child_(lhs), right_child_(rhs), 
-    left_child_fields_(arena), right_child_fields_(arena),
-    prev_key_(arena),
-    hashed_left_child_(arena), non_visited_left_keys_(arena)
+    left_child_fields_(arena), right_child_fields_(arena)
 {
     assert(plan_node != nullptr && plan_node->type_ == JOIN);
     //type_ = HASH_JOIN_EXECUTOR;
@@ -219,7 +217,7 @@ void HashJoinExecutor::init() {
     right_child_->init();
     error_status_ = left_child_->error_status_ || right_child_->error_status_;
     finished_ = left_child_->finished_;
-    prev_key_ = "";
+    prev_key_ = {};
     duplicated_idx_ = -1;
     hashed_left_child_.clear();
     non_visited_left_keys_.clear();
@@ -261,7 +259,9 @@ void HashJoinExecutor::init() {
         if(left_output.is_empty()) continue;
         left_output = left_output.duplicate(&ctx_->arena_);
         // build the hash key and assume non-unique keys.
-        String key = left_output.build_hash_key(left_child_fields_);
+        String tmp_k = left_output.build_hash_key(left_child_fields_);
+        String8 key = str_alloc(&ctx_->temp_arena_, tmp_k.size());
+        memcpy(key.str_, tmp_k.c_str(), tmp_k.size());
         if(hashed_left_child_.count(key)) 
             hashed_left_child_[key].push_back(left_output);
         else {
@@ -301,7 +301,10 @@ Tuple HashJoinExecutor::next() {
                 break;
             }
             right_output = right_output.duplicate(&ctx_->arena_);
-            String key = right_output.build_hash_key(right_child_fields_);
+
+            String tmp_k = right_output.build_hash_key(right_child_fields_);
+            String8 key = str_alloc(&ctx_->arena_, tmp_k.size());
+
             if(!hashed_left_child_.count(key) && (join_type_ == RIGHT_JOIN || join_type_ == FULL_JOIN)){
                 int start = output_.size()-right_output.size();
                 output_.nullify(0, start);
@@ -337,7 +340,7 @@ Tuple HashJoinExecutor::next() {
         finished_ = true;
         return {};
     }
-    String key = *(non_visited_left_keys_.begin());
+    String8 key = *(non_visited_left_keys_.begin());
 
     int duplications = hashed_left_child_[key].size();
     if(duplicated_idx_ == -1)
@@ -436,7 +439,9 @@ void ExceptExecutor::init() {
         Tuple right_tuple = right_child_->next();
         error_status_ = error_status_ && right_child_->error_status_;
         String stringified_tuple = right_tuple.stringify();
-        hashed_tuples_[stringified_tuple] =  1;
+        String8 k = str_alloc(&ctx_->arena_, stringified_tuple.size());
+        memcpy(k.str_, stringified_tuple.c_str(), k.size_);
+        hashed_tuples_[k] =  1;
     } 
 }
 
@@ -446,7 +451,9 @@ Tuple ExceptExecutor::next() {
         Tuple left_tuple = left_child_->next();
         if(finished_ || error_status_ || left_tuple.is_empty()) return {};
         String stringified_tuple = left_tuple.stringify();
-        if(hashed_tuples_.count(stringified_tuple)) 
+        String8 k = str_alloc(&ctx_->arena_, stringified_tuple.size());
+        memcpy(k.str_, stringified_tuple.c_str(), k.size_);
+        if(hashed_tuples_.count(k)) 
             continue; // tuple exists on both relations => skip it.
         output_ = left_tuple;
         return output_;
@@ -486,7 +493,9 @@ void IntersectExecutor::init() {
         Tuple right_tuple = right_child_->next();
         error_status_ = error_status_ && right_child_->error_status_;
         String stringified_tuple = right_tuple.stringify();
-        hashed_tuples_[stringified_tuple] =  1;
+        String8 k = str_alloc(&ctx_->arena_, stringified_tuple.size());
+        memcpy(k.str_, stringified_tuple.c_str(), k.size_);
+        hashed_tuples_[k] =  1;
     } 
 }
 
@@ -496,7 +505,9 @@ Tuple IntersectExecutor::next() {
         Tuple left_tuple = left_child_->next();
         if(finished_ || error_status_ || left_tuple.is_empty()) return {};
         String stringified_tuple = left_tuple.stringify();
-        if(!hashed_tuples_.count(stringified_tuple)) 
+        String8 k = str_alloc(&ctx_->arena_, stringified_tuple.size());
+        memcpy(k.str_, stringified_tuple.c_str(), k.size_);
+        if(!hashed_tuples_.count(k)) 
             continue; // tuple does not exists on both relations => skip it.
         output_ = left_tuple;
         return output_;
@@ -1087,7 +1098,7 @@ void AggregationExecutor::init() {
     error_status_ = 0;
     //aggregated_values_.clear();
     for(int i = 0; i < aggregates_->size(); ++i) {
-        if((*aggregates_)[i]->distinct_) distinct_counters_["PREFIX_"][i] = std::set<String>();
+        if((*aggregates_)[i]->distinct_) distinct_counters_[str_lit("PREFIX_")][i] = std::set<String8>();
     }
 
 
@@ -1095,15 +1106,15 @@ void AggregationExecutor::init() {
         child_executor_->init();
     }
     int total_size = output_schema_->getCols().size();
-    aggregated_values_.insert({"PREFIX_", {
+    aggregated_values_.insert({str_lit("PREFIX_"), {
         Tuple(&ctx_->arena_), 0
     }});
-    aggregated_values_["PREFIX_"].first.setNewSchema(output_schema_);
+    aggregated_values_[str_lit("PREFIX_")].first.setNewSchema(output_schema_);
 
     int agg_base_idx = total_size - aggregates_->size();
     for(int i = 0;i < aggregates_->size(); ++i) {
         if((*aggregates_)[i]->type_ == COUNT)
-            aggregated_values_["PREFIX_"].first.put_val_at(i+agg_base_idx, Value(0)); // count can't be null.
+            aggregated_values_[str_lit("PREFIX_")].first.put_val_at(i+agg_base_idx, Value(0)); // count can't be null.
     }
 
     while(true){
@@ -1124,18 +1135,21 @@ void AggregationExecutor::init() {
         output_.put_tuple_at_start(&child_output);
 
         // build the search key for the hash table.
-        String hash_key = "PREFIX_"; // prefix to ensure we have at least one entry in the hash table.
+        String hash_key_ = "PREFIX_"; // prefix to ensure we have at least one entry in the hash table.
         for(int i = 0; i < group_by_->size(); i++){
             Value cur = evaluate_expression(ctx_, (*group_by_)[i], output_);
-            hash_key += cur.toString();
+            hash_key_ += cur.toString();
         }
+
+        String8 hash_key = str_alloc(&ctx_->arena_, hash_key_.size());
+        memcpy(hash_key.str_, hash_key_.c_str(), hash_key_.size());
 
         // if the hash key exists we need to load it first.
         if(aggregated_values_.count(hash_key)){
             output_ = aggregated_values_[hash_key].first;
-        } else if(hash_key != "PREFIX_"){
+        } else if(hash_key != str_lit("PREFIX_")){
             for(int i = 0; i < aggregates_->size(); ++i) {
-                if((*aggregates_)[i]->distinct_) distinct_counters_[hash_key][i] = std::set<String>();
+                if((*aggregates_)[i]->distinct_) distinct_counters_[hash_key][i] = std::set<String8>();
             }
 
             //int total_size = output_schema_->getCols().size() + 1;
@@ -1169,9 +1183,14 @@ void AggregationExecutor::init() {
             ExpressionNode* exp = (*aggregates_)[i]->exp_;
             if(exp){
                 Value val = evaluate_expression(ctx_, exp, output_);
+                String str_val = val.toString();
+
+                String8 v = str_alloc(&ctx_->arena_, str_val.size());
+                memcpy(v.str_, str_val.c_str(), str_val.size());
+
                 if((*aggregates_)[i]->distinct_){
-                    if(distinct_counters_[hash_key][i].count(val.toString())) continue;
-                    distinct_counters_[hash_key][i].insert(val.toString());
+                    if(distinct_counters_[hash_key][i].count(v)) continue;
+                    distinct_counters_[hash_key][i].insert(v);
                 }
             }
             int idx = base_size+i;
@@ -1229,7 +1248,7 @@ void AggregationExecutor::init() {
         aggregated_values_[hash_key].first = output_;
         if(!child_executor_) break;
     }
-    if(aggregated_values_.size() > 1) aggregated_values_.erase("PREFIX_");
+    if(aggregated_values_.size() > 1) aggregated_values_.erase(str_lit("PREFIX_"));
     it_ = aggregated_values_.begin();
 }
 
@@ -1434,8 +1453,11 @@ Tuple DistinctExecutor::next() {
         error_status_ = child_executor_->error_status_;
         finished_ = child_executor_->finished_;
         String stringified_tuple = t.stringify();
-        if(hashed_tuples_.count(stringified_tuple)) continue; // duplicated tuple => skip it.
-        hashed_tuples_[stringified_tuple] =  1;
+        String8 key = str_alloc(&ctx_->temp_arena_, stringified_tuple.size());
+        memcpy(key.str_, stringified_tuple.c_str(), stringified_tuple.size());
+
+        if(hashed_tuples_.count(key)) continue; // duplicated tuple => skip it.
+        hashed_tuples_[key] =  1;
         output_ = t;
         return output_;
     }
