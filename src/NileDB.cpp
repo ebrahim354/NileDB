@@ -47,24 +47,11 @@ class NileDB {
             return res;
         }
         bool CMD(const char* command){
-            if(strcmp(command, "\\t") == 0){
-                Vector<String> tables = catalog_.getTableNames();
-                for(int i = 0; i < tables.size(); ++i){
-                    std::cout << tables[i] << std::endl;
-                    //catalog_.getTableSchema(tables[i])->printSchema();
-                }
-                return true;
-            } else if(strcmp(command, "\\cache") == 0){
+            if(strcmp(command, "\\cache") == 0){
                 cache_manager_->show();
                 return true;
             }
             return false;
-        }
-        bool isValidTable(String table_name) {
-            return catalog_.isValidTable(table_name);
-        }
-        TableSchema* getTableSchema(String table_name){
-            return catalog_.getTableSchema(table_name);
         }
 };
 

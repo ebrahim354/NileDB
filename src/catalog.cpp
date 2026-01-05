@@ -65,7 +65,7 @@ void Catalog::init(CacheManager *cm) {
     meta_data_columns.emplace_back(&arena_, str_lit("query")           , VARCHAR, 4); // query used to create the table.
     meta_data_columns.emplace_back(&arena_, str_lit("fid")             , INT    , 8);
     meta_table_schema_ =  New(TableSchema, arena_, str_lit(META_DATA_TABLE), meta_data_table, meta_data_columns);
-    tables_[META_DATA_TABLE] = meta_table_schema_;
+    tables_[str_lit(META_DATA_TABLE)] = meta_table_schema_;
 
     // temporary parser.
     Parser parser(nullptr);
@@ -116,7 +116,7 @@ void Catalog::init(CacheManager *cm) {
         Table* table = nullptr; 
         ALLOCATE_INIT(arena_, table, Table, cm, fid);
         TableSchema* schema = New(TableSchema, arena_, table_name, table, cols);
-        tables_.insert({to_string(table_name), schema});
+        tables_.insert({table_name, schema});
 
         // clean the temporary query ctx.
         pctx.clean();
@@ -125,8 +125,9 @@ void Catalog::init(CacheManager *cm) {
     // load indexes meta data:
     // indexes_meta_data (text index_name, text table_name, int fid, boolean is_unique).
     // indexs_keys       (text index_name, int field_number_in_table, int field_number_in_index).
-    assert(tables_.count(INDEX_META_TABLE) == tables_.count(INDEX_KEYS_TABLE)); // both should either exist or not.
-    if(tables_.count(INDEX_META_TABLE)){
+    // both should either exist or not.
+    assert(tables_.count(str_lit(INDEX_META_TABLE)) == tables_.count(str_lit(INDEX_KEYS_TABLE))); 
+    if(tables_.count(str_lit(INDEX_META_TABLE))){
         load_indexes();
     } else {
         // create a pseudo context and destroy it after.
@@ -141,7 +142,7 @@ void Catalog::init(CacheManager *cm) {
         index_meta_columns.emplace_back(&arena_, str_lit("table_name")    , VARCHAR, 4 );
         index_meta_columns.emplace_back(&arena_, str_lit("fid")           , INT    , 8 );
         index_meta_columns.emplace_back(&arena_, str_lit("is_unique")     , BOOLEAN, 12);
-        TableSchema* ret = createTable(&pctx, INDEX_META_TABLE, index_meta_columns); 
+        TableSchema* ret = create_table(&pctx, str_lit(INDEX_META_TABLE), index_meta_columns, false); 
         assert(ret != nullptr);
 
         String8 index_keys_query = 
@@ -157,7 +158,7 @@ void Catalog::init(CacheManager *cm) {
         index_keys_columns.emplace_back(&arena_, str_lit("field_number_in_table") , INT       , 4);
         index_keys_columns.emplace_back(&arena_, str_lit("field_number_in_index") , INT       , 8);
         index_keys_columns.emplace_back(&arena_, str_lit("is_desc_order")         , BOOLEAN   , 12);
-        ret = createTable(&pctx, INDEX_KEYS_TABLE, index_keys_columns); 
+        ret = create_table(&pctx, str_lit(INDEX_KEYS_TABLE), index_keys_columns, false); 
         assert(ret != nullptr);
         pctx.clean();
     }
@@ -167,13 +168,13 @@ void Catalog::destroy () {
     arena_.destroy();
 }
 
-TableSchema* Catalog::createTable(QueryCTX* ctx, const String &table_name, Vector<Column> &columns) {
+TableSchema* Catalog::create_table(QueryCTX* ctx, String8 table_name, Vector<Column> &columns, bool deep_copy) {
     FileID nfid = generate_max_fid();
     assert((fid_to_fname.count(nfid) == 0 && fid_to_fname.count(nfid+1) == 0) && "[FATAL] fid already exists!");
     if (tables_.count(table_name) || fid_to_fname.count(nfid))
         return nullptr;
-    String fname = table_name+".ndb";
-    String fsm = table_name+"_fsm.ndb";
+    String fname = to_string(table_name)+".ndb";
+    String fsm = to_string(table_name)+"_fsm.ndb";
     fid_to_fname[nfid] = fname;
     fid_to_fname[nfid+1] = fsm;
 
@@ -181,17 +182,21 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const String &table_name, Vecto
     Table* table = nullptr;
     ALLOCATE_INIT(arena_, table, Table, cache_manager_, nfid);
 
-    String8 tmp_table_name = str_alloc(&arena_, table_name.size());
-    memcpy(tmp_table_name.str_, table_name.c_str(), tmp_table_name.size_);
+    String8 query = ctx->query_;
 
-    TableSchema* schema = New(TableSchema, arena_, tmp_table_name, table, columns);
+    if(deep_copy) {
+        table_name = str_copy(&arena_, table_name);
+        query = str_copy(&arena_, ctx->query_);
+    }
+
+    TableSchema* schema = New(TableSchema, arena_, table_name, table, columns);
     tables_.insert({table_name, schema});
     // persist the table schema in the meta data table.
     Tuple t(&ctx->arena_);
     t.setNewSchema(meta_table_schema_);
-    t.put_val_at(0, Value(&ctx->arena_, table_name));
+    t.put_val_at(0, Value(table_name));
     //t.put_val_at(1, Value(&ctx->arena_, ctx->query_));
-    t.put_val_at(1, Value(ctx->query_));
+    t.put_val_at(1, Value(query));
     t.put_val_at(2, Value(nfid));
 
     RecordID rid = RecordID();
@@ -200,8 +205,8 @@ TableSchema* Catalog::createTable(QueryCTX* ctx, const String &table_name, Vecto
     return schema;
 }
 
-bool Catalog::createIndex(QueryCTX* ctx, const String &table_name, const String& index_name,
-        Vector<IndexField> &fields, bool is_unique) {
+bool Catalog::create_index(QueryCTX* ctx, String8 table_name, String8 index_name,
+        Vector<IndexField> &fields, bool is_unique, bool deep_copy) {
     if (!tables_.count(table_name) || indexes_.count(index_name))
         return 1;
     TableSchema* table = tables_[table_name];
@@ -212,23 +217,26 @@ bool Catalog::createIndex(QueryCTX* ctx, const String &table_name, const String&
         cols.push_back({col, fields[i].desc_});
     }
     // initialize the index
-    String index_fname = index_name+"_INDEX.ndb";
+    String index_fname = to_string(index_name)+"_INDEX.ndb";
     FileID nfid = generate_max_fid(); 
     assert(fid_to_fname.count(nfid) == 0); // TODO: replace assertion with error.
     fid_to_fname[nfid] = index_fname;
 
 
     // persist the index.
-    assert(tables_.count(INDEX_META_TABLE) && tables_.count(INDEX_KEYS_TABLE));
-    TableSchema* index_meta_data = tables_[INDEX_META_TABLE];
-    TableSchema* index_keys      = tables_[INDEX_KEYS_TABLE];
+    assert(tables_.count(str_lit(INDEX_META_TABLE)) && tables_.count(str_lit(INDEX_KEYS_TABLE)));
+    TableSchema* index_meta_data = tables_[str_lit(INDEX_META_TABLE)];
+    TableSchema* index_keys      = tables_[str_lit(INDEX_KEYS_TABLE)];
 
     BTreeIndex* index = nullptr; 
     ALLOCATE_INIT(arena_, index, 
             BTreeIndex, cache_manager_, nfid, cols.size(), is_unique);
-    String8 tmp_index_name = str_alloc(&arena_, index_name.size());
-    memcpy(tmp_index_name.str_, index_name.c_str(), tmp_index_name.size_);
-    IndexHeader header = IndexHeader(index, tmp_index_name, cols);
+
+    if(deep_copy){
+        index_name = str_copy(&arena_, index_name);
+    }
+
+    IndexHeader header = IndexHeader(index, index_name, cols);
     indexes_.insert({index_name, header});
 
     if(indexes_of_table_.count(table_name))
@@ -239,8 +247,8 @@ bool Catalog::createIndex(QueryCTX* ctx, const String &table_name, const String&
     // store index_meta_data.
     Tuple t(&ctx->arena_);
     t.setNewSchema(index_meta_data);
-    t.put_val_at(0, Value(&ctx->arena_, index_name));
-    t.put_val_at(1, Value(&ctx->arena_, table_name));
+    t.put_val_at(0, Value(index_name));
+    t.put_val_at(1, Value(table_name));
     t.put_val_at(2, Value(nfid));
     t.put_val_at(3, Value((bool) is_unique));
     RecordID rid = RecordID();
@@ -253,7 +261,7 @@ bool Catalog::createIndex(QueryCTX* ctx, const String &table_name, const String&
         NumberedIndexField c = cols[i];
         Tuple t(&ctx->arena_);
         t.setNewSchema(index_keys);
-        t.put_val_at(0, Value(&ctx->arena_, index_name));
+        t.put_val_at(0, Value(index_name));
         t.put_val_at(1, Value(c.idx_));
         t.put_val_at(2, Value(i));
         t.put_val_at(3, Value((bool)c.desc_));
@@ -280,62 +288,32 @@ bool Catalog::createIndex(QueryCTX* ctx, const String &table_name, const String&
     return false;
 }
 
-TableSchema* Catalog::getTableSchema(const String &table_name) {
+TableSchema* Catalog::get_table_schema(String8 table_name) {
     if (!tables_.count(table_name))
         return nullptr;
     return tables_[table_name];
 }
 
-TableSchema* Catalog::get_table_schema(String8 table_name) {
-    if (!tables_.count(to_string(table_name)))
-        return nullptr;
-    return tables_[to_string(table_name)];
-}
-
-bool Catalog::isValidTable(const String& table_name) {
+bool Catalog::is_valid_table(String8 table_name) {
     if (!tables_.count(table_name)) return false;
     return true;
-}
-
-Vector<String> Catalog::getTableNames() {
-    Vector<String> output;
-    for(auto& t : tables_){
-        output.push_back(t.first);
-    }
-    return output;
 }
 
 Vector<String8> Catalog::get_tables_by_field(String8 field) {
     Vector<String8> output;
     for(auto& t : tables_){
         if(t.second->is_valid_col(field)){
-            String8 tmp = str_alloc(&arena_, t.first.size());
-            memcpy(tmp.str_, t.first.c_str(), tmp.size_);
-            output.push_back(tmp);
+            output.push_back(t.first);
         }
     }
     return output;
 }
 
-//TODO: change unnecessary indirection.
-Vector<IndexHeader> Catalog::getIndexesOfTable(String& tname) {
+Vector<IndexHeader> Catalog::get_indexes_of_table(String8 tname) {
     Vector<IndexHeader> idxs;
     if(indexes_of_table_.count(tname)){
         for(int i = 0; i < indexes_of_table_[tname].size(); ++i){
-            String idx_name = indexes_of_table_[tname][i];
-            if(indexes_.count(idx_name))
-                idxs.push_back(indexes_[idx_name]);
-        }
-    }
-    return idxs;
-}
-
-Vector<IndexHeader> Catalog::get_indexes_of_table(String8 t) {
-    String tname = to_string(t);
-    Vector<IndexHeader> idxs;
-    if(indexes_of_table_.count(tname)){
-        for(int i = 0; i < indexes_of_table_[tname].size(); ++i){
-            String idx_name = indexes_of_table_[tname][i];
+            String8 idx_name = indexes_of_table_[tname][i];
             if(indexes_.count(idx_name))
                 idxs.push_back(indexes_[idx_name]);
         }
@@ -345,7 +323,7 @@ Vector<IndexHeader> Catalog::get_indexes_of_table(String8 t) {
 
 bool Catalog::load_indexes() {
     // indexes_meta_data (text index_name, text table_name, int fid, is_unique).
-    TableSchema* indexes_meta_schema = tables_[INDEX_META_TABLE];
+    TableSchema* indexes_meta_schema = tables_[str_lit(INDEX_META_TABLE)];
     //TableIterator it_meta = indexes_meta_schema->getTable()->begin();
     TableIterator it_meta = indexes_meta_schema->begin();
     bool success = true;
@@ -361,12 +339,12 @@ bool Catalog::load_indexes() {
         };
 
         String8 index_name = t.get_val_at(0).getStringView(&arena_);
-        String table_name = t.get_val_at(1).getStringVal();
-        FileID fid        = t.get_val_at(2).getIntVal();
-        bool is_unique    = t.get_val_at(3).getBoolVal();
+        String8 table_name  = t.get_val_at(1).getStringView(&arena_);
+        FileID fid         = t.get_val_at(2).getIntVal();
+        bool is_unique     = t.get_val_at(3).getBoolVal();
 
         // each index must exist only once on this table.
-        assert(indexes_.count(to_string(index_name)) == 0 && "Index accured multiple times on meta data!");
+        assert(indexes_.count(index_name) == 0 && "Index accured multiple times on meta data!");
 
         // set up file ids mappings.
         String index_fname = to_string(index_name)+"_INDEX.ndb";
@@ -377,12 +355,12 @@ bool Catalog::load_indexes() {
         BTreeIndex* index_ptr = nullptr; 
         ALLOCATE_INIT(arena_, index_ptr, 
                         BTreeIndex, cache_manager_, fid, 1, is_unique);
-        std::pair<String, IndexHeader> entry = {to_string(index_name), IndexHeader(index_ptr, index_name)};
+        std::pair<String8, IndexHeader> entry = {index_name, IndexHeader(index_ptr, index_name)};
         indexes_.insert(entry);
         if(indexes_of_table_.count(table_name))
-            indexes_of_table_[table_name].push_back(to_string(index_name));
+            indexes_of_table_[table_name].push_back(index_name);
         else 
-            indexes_of_table_[table_name] = {to_string(index_name)};
+            indexes_of_table_[table_name] = {index_name};
     }
     it_meta.destroy();
     if(!success) {
@@ -391,7 +369,7 @@ bool Catalog::load_indexes() {
 
     // indexs_keys      (text index_name, int field_number_in_table, int field_number_in_index).
     // this table holds the data for all key mappings of all indexes of the system.
-    TableSchema* index_keys_schema = tables_[INDEX_KEYS_TABLE];
+    TableSchema* index_keys_schema = tables_[str_lit(INDEX_KEYS_TABLE)];
     TableIterator it_keys = index_keys_schema->begin();
     it_keys.init();
 
@@ -405,7 +383,7 @@ bool Catalog::load_indexes() {
         };
 
         // we need field_number_in_index to know the order of the fields used to form keys.
-        String index_name            = t.get_val_at(0).getStringVal();
+        String8 index_name            = t.get_val_at(0).getStringView(&arena_);
         int field_number_in_table    = t.get_val_at(1).getIntVal();
         int field_number_in_index    = t.get_val_at(2).getIntVal();
         bool is_desc_order           = t.get_val_at(3).getBoolVal();
@@ -425,23 +403,14 @@ bool Catalog::load_indexes() {
     return success;
 }
 
-IndexHeader Catalog::get_index_header(String8 index) {
-    String iname = to_string(index);
+IndexHeader Catalog::get_index_header(String8 iname) {
     if(indexes_.count(iname)) return indexes_[iname];
-    std::cout << iname << std::endl;
-    assert(0 && "index should exist");
-    return {};
-}
-
-IndexHeader Catalog::getIndexHeader(String& iname) {
-    if(indexes_.count(iname)) return indexes_[iname];
-    std::cout << iname << std::endl;
     assert(0 && "index should exist");
     return {};
 }
 
 // ret => 0 on success.
-int Catalog::deleteIndex(QueryCTX* ctx, const String& index_name) {
+int Catalog::delete_index(QueryCTX* ctx, String8 index_name) {
     // TODO: check that the index is not attatched to fields with 'uinque' or 'primary key' constraints.
     if (!indexes_.count(index_name))
         return 1;
@@ -451,18 +420,17 @@ int Catalog::deleteIndex(QueryCTX* ctx, const String& index_name) {
     // gather data related to the index in the system.
     BTreeIndex* index = indexes_[index_name].index_; 
     FileID fid = index->get_fid();
-    String index_table_name = "";
+    String8 index_table_name = {};
 
     assert(fid_to_fname.count(fid));
 
     // clear persisted data of the index.
-    assert(tables_.count(INDEX_META_TABLE) && tables_.count(INDEX_KEYS_TABLE));
-    TableSchema* index_meta_data = tables_[INDEX_META_TABLE];
-    TableSchema* index_keys      = tables_[INDEX_KEYS_TABLE];
+    assert(tables_.count(str_lit(INDEX_META_TABLE)) && tables_.count(str_lit(INDEX_KEYS_TABLE)));
+    TableSchema* index_meta_data = tables_[str_lit(INDEX_META_TABLE)];
+    TableSchema* index_keys      = tables_[str_lit(INDEX_KEYS_TABLE)];
 
     // clear index_meta_data.
     // indexes_meta_data (text index_name, text table_name, int fid).
-    //TableIterator it_meta = index_meta_data->getTable()->begin();
     TableIterator it_meta = index_meta_data->begin();
     std::set<u64> halloween_preventer;
     it_meta.init();
@@ -471,22 +439,16 @@ int Catalog::deleteIndex(QueryCTX* ctx, const String& index_name) {
         ArenaTemp tmp = ctx->arena_.start_temp_arena();
 
         Tuple t;
-        //Record r = it_meta.getCurRecordCpy(&ctx->arena_);
-        //assert(!r.isInvalidRecord());
-        //Vector<Value> values;
-        //int err = index_meta_data->translateToValues(r, values);
         int err = it_meta.getCurTupleCpy(ctx->arena_, &t);
         assert(err == 0 && "Could not traverse the indexes meta table.");
 
-        //String cur_table_name = values[1].getStringVal();
-        //FileID index_fid      = values[2].getIntVal();
-        String cur_table_name = t.get_val_at(1).getStringVal();
+        String8 cur_table_name = t.get_val_at(1).getStringView(&ctx->arena_);
         FileID index_fid      = t.get_val_at(2).getIntVal();
         if(index_fid != fid) {
             ctx->arena_.clear_temp_arena(tmp);
             continue;
         }
-        if(index_table_name.size() == 0) 
+        if(index_table_name.size_ == 0) 
             index_table_name = cur_table_name;
 
         RecordID rid = it_meta.getCurRecordID();
@@ -502,22 +464,16 @@ int Catalog::deleteIndex(QueryCTX* ctx, const String& index_name) {
 
     // clear index_keys.
     // indexs_keys  (text index_name, int field_number_in_table, int field_number_in_index).
-    //TableIterator it_keys = index_keys->getTable()->begin();
     TableIterator it_keys = index_keys->begin();
     it_keys.init();
     while(it_keys.advance()){
         if(halloween_preventer.count(it_keys.getCurRecordID().get_hash())) continue;
         ArenaTemp tmp = ctx->arena_.start_temp_arena();
-
-        //Record r = it_keys.getCurRecordCpy(&ctx->arena_);
-        //assert(!r.isInvalidRecord());
-        //Vector<Value> values;
-        //int err = index_keys->translateToValues(r, values);
         Tuple t;
         int err = it_keys.getCurTupleCpy(ctx->arena_, &t);
         assert(err == 0 && "Could not traverse the indexe keys table.");
 
-        String cur_index_name = t.get_val_at(0).getStringVal();
+        String8 cur_index_name = t.get_val_at(0).getStringView(&ctx->arena_);
         if(cur_index_name != index_name) {
             ctx->arena_.clear_temp_arena(tmp);
             continue;
@@ -544,11 +500,11 @@ int Catalog::deleteIndex(QueryCTX* ctx, const String& index_name) {
             break;
         }
     }
-    if(!err) std::cout << "Dropped Index: " << index_name << "\n";
+    if(!err) std::cout << "Dropped Index: " << to_string(index_name) << "\n";
     return err;
 }
 
-int Catalog::deleteTable(QueryCTX* ctx, const String& table_name) {
+int Catalog::delete_table(QueryCTX* ctx, String8 table_name) {
     if (!tables_.count(table_name))
         return 1;
 
@@ -567,7 +523,7 @@ int Catalog::deleteTable(QueryCTX* ctx, const String& table_name) {
         // take a copy because deleting will affect the loop.
         auto indexes = indexes_of_table_[table_name];
         for(int i = 0; err == 0 && i < indexes.size(); ++i)
-            err = deleteIndex(ctx, indexes[i]);
+            err = delete_index(ctx, indexes[i]);
         if(err) return err;
         indexes_of_table_.erase(table_name);
     }
@@ -612,7 +568,7 @@ int Catalog::deleteTable(QueryCTX* ctx, const String& table_name) {
     fid_to_fname.erase(table_fid);
     fid_to_fname.erase(fsm_fid);
 
-    if(!err) std::cout << "Dropped Table: " << table_name << "\n";
+    if(!err) std::cout << "Dropped Table: " << to_string(table_name) << "\n";
     return err;
 }
 

@@ -35,13 +35,13 @@ class ExecutionEngine {
         // DDL handlers.
         bool create_table_handler(QueryCTX& ctx) {
             CreateTableStatementData* create_table = reinterpret_cast<CreateTableStatementData*>(ctx.queries_call_stack_[0]);
-            String table_name = to_string(create_table->table_name_);
+            String8 table_name = create_table->table_name_;
             Vector<FieldDef> fields = create_table->field_defs_;
-            std::deque<String> col_names;
+            std::deque<String8> col_names;
             std::deque<Type> col_types;
             std::deque<ConstraintType> col_constraints;
             for(int i = 0; i < fields.size(); ++i){
-                String name = to_string(fields[i].field_name_);
+                String8 name = fields[i].field_name_;
                 Type type = tokenTypeToColType(fields[i].type_);
                 if(type == INVALID) {
                     std::cout << "[ERROR] Invalid type\n";
@@ -55,22 +55,23 @@ class ExecutionEngine {
             Vector<IndexField> primary_key_cols;
             uint8_t offset_ptr = 0;
             for(size_t i = 0; i < col_names.size(); ++i){
-                String8 tmp_str = str_alloc(&ctx.arena_, col_names[i].size());
-                memcpy(tmp_str.str_, col_names[i].c_str(), col_names[i].size());
-
-                columns.push_back(Column(tmp_str, col_types[i], offset_ptr, col_constraints[i]));
+                columns.push_back(Column(col_names[i], col_types[i], offset_ptr, col_constraints[i]));
                 bool is_primary_key = col_constraints[i]&CONSTRAINT_PRIMARY_KEY;
                 if(is_primary_key) {
-                    primary_key_cols.push_back({tmp_str, false}); // primary key can only be asc.
+                    primary_key_cols.push_back({col_names[i], false}); // primary key can only be asc.
                 }
                 offset_ptr += getSizeFromType(col_types[i]);
             }
-            TableSchema* sch = catalog_->createTable(&ctx, table_name, columns);
+            TableSchema* sch = catalog_->create_table(&ctx, table_name, columns, true);
             if(sch == nullptr) return false;
             if(!primary_key_cols.empty()) {
                 std::cout << "create idx from create pkey\n";
                 bool is_unique_index = true;
-                int err = catalog_->createIndex(&ctx, table_name, table_name+"_pkey", primary_key_cols, is_unique_index);
+                String8 tmp_idx_name = str_alloc(&ctx.arena_, table_name.size_ + 5);
+                memcpy(tmp_idx_name.str_, table_name.str_, table_name.size_);
+                memcpy(tmp_idx_name.str_+table_name.size_, "_pkey", 5);
+
+                int err = catalog_->create_index(&ctx, table_name, tmp_idx_name, primary_key_cols, is_unique_index);
                 // TODO: use CTX error status instead of this.
                 if(err) return false;
             }
@@ -79,27 +80,27 @@ class ExecutionEngine {
 
         bool create_index_handler(QueryCTX& ctx) {
             CreateIndexStatementData* create_index = reinterpret_cast<CreateIndexStatementData*>(ctx.queries_call_stack_[0]);
-            String index_name = to_string(create_index->index_name_);
-            String table_name = to_string(create_index->table_name_);
+            String8 index_name = create_index->index_name_;
+            String8 table_name = create_index->table_name_;
             Vector<IndexField> fields = create_index->fields_;
             bool is_unique_index = create_index->is_unique_index_;
-            bool err = catalog_->createIndex(&ctx, table_name, index_name, fields, is_unique_index);
+            bool err = catalog_->create_index(&ctx, table_name, index_name, fields, is_unique_index);
             if(err) return false;
             return true;
         }
 
         bool drop_table_handler(QueryCTX& ctx) {
             auto drop_table = reinterpret_cast<DropTableStatementData*>(ctx.queries_call_stack_[0]);
-            String table_name = to_string(drop_table->table_name_);
-            bool err = catalog_->deleteTable(&ctx, table_name);
+            String8 table_name = drop_table->table_name_;
+            bool err = catalog_->delete_table(&ctx, table_name);
             if(err) return false;
             return true;
         }
 
         bool drop_index_handler(QueryCTX& ctx) {
             DropIndexStatementData* drop_index = reinterpret_cast<DropIndexStatementData*>(ctx.queries_call_stack_[0]);
-            String index_name = to_string(drop_index->index_name_);
-            bool err = catalog_->deleteIndex(&ctx, index_name);
+            String8 index_name = drop_index->index_name_;
+            bool err = catalog_->delete_index(&ctx, index_name);
             if(err) return false;
             return true;
         }

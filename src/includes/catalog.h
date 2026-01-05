@@ -48,33 +48,29 @@ class Catalog {
         void init(CacheManager *cm);
         void destroy ();
 
-        TableSchema* createTable(QueryCTX* ctx, const String &table_name, Vector<Column> &columns);
-        TableSchema* getTableSchema(const String &table_name);
+        TableSchema* create_table(QueryCTX* ctx, String8 table_name, Vector<Column> &columns, bool deep_copy = true);
         TableSchema* get_table_schema(String8 table_name);
 
-        bool createIndex(QueryCTX* ctx, const String &table_name,
-        const String& index_name, Vector<IndexField> &fields, bool is_unique);
+        bool create_index(QueryCTX* ctx, String8 table_name, String8 index_name,
+                Vector<IndexField> &fields, bool is_unique, bool deep_copy = true);
         bool load_indexes();
-        IndexHeader getIndexHeader(String& iname);
         IndexHeader get_index_header(String8 index);
 
-        Vector<String> getTableNames();
         Vector<String8> get_tables_by_field(String8 field);
-        bool isValidTable(const String& table_name);
+        bool is_valid_table(String8 table_name);
         //TODO: change unnecessary indirection.
         Vector<IndexHeader> get_indexes_of_table(String8 t);
-        Vector<IndexHeader> getIndexesOfTable(String& tname);
 
-        int deleteIndex(QueryCTX* ctx, const String& index_name);
-        int deleteTable(QueryCTX* ctx, const String& table_name);
+        int delete_index(QueryCTX* ctx, String8 index_name);
+        int delete_table(QueryCTX* ctx, String8 table_name);
 
         // TODO: implement alter index and alter table.
     private:
         CacheManager* cache_manager_;
         Arena arena_;
-        std::unordered_map<String, TableSchema*> tables_;
-        std::unordered_map<String, Vector<String>> indexes_of_table_;
-        std::unordered_map<String, IndexHeader> indexes_;
+        std::unordered_map<String8, TableSchema*, String_hash, String_eq> tables_;
+        std::unordered_map<String8, Vector<String8>, String_hash, String_eq> indexes_of_table_;
+        std::unordered_map<String8, IndexHeader, String_hash, String_eq> indexes_;
         FreeSpaceMap* free_space_map_;
         // hard coded data:
         TableSchema* meta_table_schema_;
