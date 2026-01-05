@@ -2,8 +2,10 @@
 #define DATA_STRUCTURES_H
 
 #include "defines.h"
+#include "arena.h"
 #include <assert.h>
 #include <string.h>
+#include <memory_resource>
 
 // string types and helpers.
 
@@ -27,7 +29,27 @@ struct String8 {
     }
 };
 
+const String8 NULL_STRING8 = {
+    .str_ = 0,
+    .size_ = 0,
+};
+
+
+std::pmr::string to_string(String8 str){
+    return std::pmr::string((char*)str.str_, str.size_);
+}
+
+String8 str_alloc(Arena* arena, u64 size) {
+    String8 s = {};
+    s.str_ = (u8*)arena->alloc(size);
+    s.size_ = size;
+    return s;
+}
+
+
+
 #define str_lit(s) (String8) { .str_ = (u8*)(s), .size_ = sizeof(s) - 1 }
+
 
 // source: 
 // https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function

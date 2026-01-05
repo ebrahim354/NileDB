@@ -10,16 +10,6 @@
 Value evaluate(QueryCTX* ctx, const Tuple& cur_tuple, ASTNode* item);
 Value evaluate_subquery(QueryCTX* ctx, const Tuple& cur_tuple, ASTNode* item);
 
-std::pair<String, String> split_scoped_field(ASTNode* field) {
-    if(field->category_ == SCOPED_FIELD) {
-        return {(((ScopedFieldNode*)field)->table_->token_.val_), ((ScopedFieldNode*)field)->token_.val_};
-    } else if(field->category_ == FIELD) {
-        return {(field)->token_.val_, ""};
-    }
-    assert(0);
-    return {};
-}
-
 
 Value abs_func(Vector<Value> vals){
     if(vals.size() != 1){
@@ -424,32 +414,18 @@ Value evaluate_expression(
                       } 
         case STRING_CONSTANT: 
                       {
-                          String val = "";
-                          for(int i = 1; i < expression->token_.val_.size() - 1; i++){
-                              val += expression->token_.val_[i];
-                          }
-                          char* str = (char*)ctx->arena_.alloc(val.size());
-                          memcpy(str, val.c_str(), val.size());
-                          return Value(str, val.size());
+                          return Value(expression->token_.val_);
                       }
         case FLOAT_CONSTANT:
                       {
-                          errno = 0;
-                          float val = str_to_float(expression->token_.val_);
-                          if(!errno) return Value(val);
-
-                          errno = 0;
-                          double dval = str_to_double(expression->token_.val_);
-                          assert(errno == 0);
-                          return Value(dval);
+                          double val  = str_to_f64(expression->token_.val_);
+                          if(val <= MAX_F32) return Value((float) val);
+                          return Value(val);
                       }
         case INTEGER_CONSTANT: 
                       {
-                          errno = 0;
-                          long long val = str_to_ll(expression->token_.val_);
-                          assert(errno == 0);
-                          if(val < INT_MAX && val > INT_MIN)
-                              return Value((int) val);
+                          i64 val = str_to_i64(expression->token_.val_);
+                          if(val <= MAX_I32) return Value((i32) val);
                           return Value((i64)val);
                       }
         case NULL_CONSTANT: 
@@ -665,13 +641,13 @@ void accessed_tables(ASTNode* expression ,Vector<String>& tables, Catalog* catal
                           return;
                       } 
         case SCOPED_FIELD:{
-                              String table = reinterpret_cast<ScopedFieldNode*>(expression)->table_->token_.val_;
-                              tables.push_back(table);
+                              String8 table = reinterpret_cast<ScopedFieldNode*>(expression)->table_->token_.val_;
+                              tables.push_back(to_string(table));
                               return;
                           }
         case FIELD:{
-                       String field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
-                       Vector<String> valid_tables = catalog->getTablesByField(field);
+                       String8 field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
+                       Vector<String> valid_tables = catalog->getTablesByField(to_string(field));
                        for(int i = 0; i < valid_tables.size(); ++i){
                            int n = tables.size();
                            bool exists = false;
@@ -871,15 +847,13 @@ void accessed_fields(ASTNode* expression ,Vector<ASTNode*>& fields, bool only_on
                           return;
                       } 
         case SCOPED_FIELD:{
-                              String table = reinterpret_cast<ScopedFieldNode*>(expression)->table_->token_.val_;
-                              String field = reinterpret_cast<ScopedFieldNode*>(expression)->token_.val_;
                               fields.push_back(expression);
                               return;
                           }
         case FIELD:{
-                       String field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
+                       String8 field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
                        String prefix = AGG_FUNC_IDENTIFIER_PREFIX; // skip aggregate functions.
-                       if(field.rfind(prefix, 0) == 0) return;
+                       if(to_string(field).rfind(prefix, 0) == 0) return;
                        fields.push_back(expression);
                        return;
                    }
@@ -935,7 +909,7 @@ Value evaluate_subquery(QueryCTX* ctx, const Tuple& cur_tuple, ASTNode* item) {
 
 Value evaluate_field(QueryCTX* ctx, const Tuple& tuple, ASTNode* item) {
 
-    String field = item->token_.val_;
+    String field = to_string(item->token_.val_);
     int idx = -1;
     int query_input_idx = ctx->query_inputs.size() - 1;
 
@@ -990,8 +964,8 @@ Value evaluate_field(QueryCTX* ctx, const Tuple& tuple, ASTNode* item) {
 
 Value evaluate_scoped_field(QueryCTX* ctx, const Tuple& cur, ASTNode* item) {
 
-    String field = item->token_.val_;
-    String table = reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_;
+    String field = to_string(item->token_.val_);
+    String table = to_string(reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_);
     String col = table;col += "."; col+= field;
 
     int idx = -1;

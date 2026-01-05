@@ -31,10 +31,9 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
         accessed_fields(query->group_by_[i], fields, true);
     }
     for(int i = 0; i < fields.size(); ++i){
-        auto table_field = split_scoped_field(fields[i]);
-        String table = table_field.first;
-        String cur_field   = table_field.second;
-        if(table.size()) {  // the field is scoped.
+        if(fields[i]->category_ == SCOPED_FIELD) {
+            String table = to_string(((ScopedFieldNode*)fields[i])->table_->token_.val_);
+            String cur_field   = to_string(fields[i]->token_.val_);
             for(int k = 0; k < query->table_names_.size(); ++k){
                 if(table != query->table_names_[k] && k == query->table_names_.size() - 1)
                     return true;
@@ -49,7 +48,7 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
                 return true; // the table does not contain this column => corelated.
             }
         } else { // the field is not scoped.
-            Vector<String> possible_tables = catalog->getTablesByField(cur_field);
+            Vector<String> possible_tables = catalog->getTablesByField(to_string(fields[i]->token_.val_));
             bool table_matched = false;
             for(int j = 0; j < possible_tables.size(); ++j){
                 if(std::find(query->table_names_.begin(), query->table_names_.end(), possible_tables[j]) 

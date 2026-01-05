@@ -3,7 +3,7 @@
 #include "tokenizer.h"
 #include <map>
 
-Token::Token(TokenType type, String val): type_(type), val_(val)
+Token::Token(TokenType type, String8 val): type_(type), val_(val)
 {}
 
 Tokenizer::Tokenizer() {
@@ -216,7 +216,7 @@ i32 Tokenizer::advance_string_literal(String8 input, u64 starting_offset, u64* s
 void Tokenizer::flush_token(String8 cur_token, Vector<Token>& output){
     if(cur_token.size_ != 0) {
         TokenType type = getTokenType(cur_token);
-        output.emplace_back(type, (type < TokenType::TOKENS_WITH_VAL ? String((char*)cur_token.str_, cur_token.size_): ""));
+        output.emplace_back(type, (type < TokenType::TOKENS_WITH_VAL ? cur_token: NULL_STRING8));
     }
 
 }
@@ -240,7 +240,7 @@ i32 Tokenizer::tokenize(String8 input, Vector<Token>& output) {
                 u64 str_sz = 0;
                 i32 err = advance_string_literal(input, pos, &str_sz);
                 if(err) return -1;
-                output.emplace_back(TokenType::STR_CONSTANT, String((char*)input.str_+pos-1, str_sz+2));
+                output.push_back({TokenType::STR_CONSTANT, {.str_ = input.str_+pos, .size_ = str_sz}});
                 pos+= str_sz;
                 pos++;
                 cur_token.size_ = 0;

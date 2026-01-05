@@ -22,6 +22,7 @@ class TableSchema {
         String getTableName();
         int numOfCols();
         int colExist(String& col_name);
+        int colExist(String8 col_name);
         bool checkValidValues(Vector<String>& fields, Vector<Value>& vals);
         bool checkValidValue(String& field, Value& val);
         int getColIdx(String& field, Value& val);

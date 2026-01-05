@@ -31,16 +31,19 @@ String TableSchema::getTableName(){
 int TableSchema::numOfCols() {
     return columns_.size();
 }
+
+int TableSchema::colExist(String8 col_name) {
+    for(size_t i = 0; i < columns_.size(); ++i){
+        if(columns_[i].getName() == to_string(col_name))
+            return i;
+    }
+    return -1;
+}
+
 // TODO: change columns to be a set instead of doing this.
 int TableSchema::colExist(String& col_name) {
-    String field = col_name;
-    /*
-    if(!tmp_schema_)
-        field = split_scoped_field(col_name).second;
-        */
-
     for(size_t i = 0; i < columns_.size(); ++i){
-        if(columns_[i].getName() == field)
+        if(columns_[i].getName() == col_name)
             return i;
     }
     return -1;

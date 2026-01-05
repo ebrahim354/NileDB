@@ -22,7 +22,7 @@ void accessed_fields(ASTNode* expression, Vector<ASTNode*>& fields, bool only_on
 // keyword without deleting nodes after we are done or in cases of an error, That is bad but we will replace heap
 // allocations with some sort of an arena allocator or just handle the leaks later.
 
-#define AGG_FUNC_IDENTIFIER_PREFIX "AGG_FUNC_NUM_";
+#define AGG_FUNC_IDENTIFIER_PREFIX "AGG_FUNC_NUM_"
 enum AggregateFuncType {
     NOT_DEFINED,
     COUNT,

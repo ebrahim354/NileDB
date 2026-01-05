@@ -50,7 +50,6 @@ struct QueryCTX {
     Vector<TableIterator*> table_handles_ = {};
     Vector<AlgebraOperation*> operators_call_stack_ = {};
     Vector<Executor*> executors_call_stack_ = {};
-    std::unordered_map<String8, TableID, String_hash, String_eq> table_aliases_ = {};
     Vector<Tuple> query_inputs = {};
     Arena arena_;  // this arena lasts for the entire duration of the query.
     Arena temp_arena_; // this arena gets cleaned up after every call to next().

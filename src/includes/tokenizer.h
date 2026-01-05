@@ -100,9 +100,9 @@ enum class TokenType {
 };
 
 struct Token {
-    String val_;
+    String8 val_;
     TokenType type_ = TokenType::INVALID_TOKEN;
-    Token(TokenType type = TokenType::INVALID_TOKEN, String val = {});
+    Token(TokenType type = TokenType::INVALID_TOKEN, String8 val = {});
 };
 
 class Tokenizer {

@@ -18,7 +18,7 @@ void ScanOperation::print(int prefix_space_cnt) {
     std::cout << " type: " << (scan_type_ == SEQ_SCAN ? "SEQ_SCAN \n" : "INDEX_SCAN \n");
     if(filters_.size()){
         for(int j = 0; j < filters_.size(); ++j){
-            std::cout << "Scan filter number (" << (int)(j+1) << "): " << filters_[j]->token_.val_;
+            std::cout << "Scan filter number (" << (int)(j+1) << ") "; 
             std::cout << "\n";
         }
     }

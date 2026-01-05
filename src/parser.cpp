@@ -76,25 +76,19 @@ Value Parser::constVal(QueryCTX& ctx){
     Token token = ctx.getCurrentToken();
     switch(token.type_){
         case TokenType::STR_CONSTANT:{
-            char* str = (char*)ctx.arena_.alloc(token.val_.size());
-            memcpy(str, token.val_.c_str(), token.val_.size());
-            return Value(str, (uint16_t)token.val_.size());
+            return Value(token.val_);
                                      }
         case TokenType::FLOATING_CONSTANT:
         {
-            errno = 0;
-            float val = str_to_float(token.val_);
-            if(!errno) return Value(val);
-            errno = 0;
-            double dval = str_to_float(token.val_);
-            assert(errno == 0);
-            return Value(dval);
+            f64 val = str_to_f64(token.val_);
+            if(val <= MAX_F32) return ((f32) val);
+            return Value(val);
         }
         case TokenType::NUMBER_CONSTANT:
         {
-            long long val = str_to_ll(token.val_);
-            if(val < LONG_MAX && val > LONG_MIN)
-                return Value((int) val);
+            i64 val = str_to_i64(token.val_);
+            if(val < MAX_I32)
+                return Value((i32) val);
             return Value((i64)val);
         }
         case TokenType::TRUE:
@@ -220,14 +214,14 @@ void Parser::selectList(QueryCTX& ctx, int query_idx){
                 ctx.error_status_ = Error::EXPECTED_IDENTIFIER;
                 return;
             } else {
-                query->field_names_.push_back(ctx.getCurrentToken().val_);
+                query->field_names_.push_back(to_string(ctx.getCurrentToken().val_));
                 ++ctx;
             }
         }
         // optional renaming of a field.
         if(!star && !rename && ctx.matchTokenType(TokenType::IDENTIFIER)){
             rename = true;
-            query->field_names_.push_back(ctx.getCurrentToken().val_);
+            query->field_names_.push_back(to_string(ctx.getCurrentToken().val_));
             ++ctx;
         }
 
@@ -258,7 +252,7 @@ void Parser::table_with_rename(QueryCTX& ctx, int query_idx) {
         return;
     }
 
-    query->tables_.push_back(ctx.getCurrentToken().val_);
+    query->tables_.push_back(to_string(ctx.getCurrentToken().val_));
     ++ctx;
 
     // optional AS keyword.
@@ -268,14 +262,14 @@ void Parser::table_with_rename(QueryCTX& ctx, int query_idx) {
         if(!ctx.matchTokenType(TokenType::IDENTIFIER)){
             return;
         }
-        query->table_names_.push_back(ctx.getCurrentToken().val_);
+        query->table_names_.push_back(to_string(ctx.getCurrentToken().val_));
         ++ctx;
         rename = true;
     }
 
     // optional renaming of a table.
     if(!rename && ctx.matchTokenType(TokenType::IDENTIFIER)){
-        query->table_names_.push_back(ctx.getCurrentToken().val_);
+        query->table_names_.push_back(to_string(ctx.getCurrentToken().val_));
         ++ctx;
         rename =  true;
     }
@@ -402,7 +396,7 @@ void Parser::fieldDefList(QueryCTX& ctx, int query_idx){
             return;
         }
         Token token = ctx.getCurrentToken(); ++ctx;
-        field_def.field_name_ = token.val_;
+        field_def.field_name_ = to_string(token.val_);
         if(!tokenizer_.isDataType(ctx.getCurrentToken().type_)) {
             ctx.error_status_ = Error::EXPECTED_DATA_TYPE;
             return;
@@ -459,7 +453,7 @@ void Parser::fieldList(QueryCTX& ctx, int query_idx){
             return;
         }
         Token token = ctx.getCurrentToken(); ++ctx;
-        query->fields_.push_back(token.val_);
+        query->fields_.push_back(to_string(token.val_));
         if(!ctx.matchTokenType(TokenType::COMMA)) 
             break;
         ++ctx;
@@ -491,9 +485,9 @@ ASTNode* Parser::constant(QueryCTX& ctx){
     //  
     // floats
     if(ctx.matchMultiTokenType({TokenType::NUMBER_CONSTANT, TokenType::DOT, TokenType::NUMBER_CONSTANT})) { 
-        String val = ctx.getCurrentToken().val_; ++ctx;
-        val += "."; ++ctx;
-        val += ctx.getCurrentToken().val_; ++ctx;
+        String8 val = ctx.getCurrentToken().val_; ++ctx;
+        val.size_++; ++ctx; // '.'
+        val.size_ += ctx.getCurrentToken().val_.size_; ++ctx;
         auto t = Token(TokenType::FLOATING_CONSTANT, val);
         ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FLOAT_CONSTANT, t);
       // strings
@@ -525,10 +519,12 @@ ASTNode* Parser::field(QueryCTX& ctx){
     ASTNode* ret = nullptr;
     if(ctx.matchTokenType(TokenType::IDENTIFIER)) {
         auto token = ctx.getCurrentToken(); ++ctx;
-        Vector<String> possible_tables = catalog_->getTablesByField(token.val_);
+        Vector<String> possible_tables = catalog_->getTablesByField(to_string(token.val_));
         if(possible_tables.size() == 1) {
             ASTNode* t = nullptr;
-            ALLOCATE_INIT(ctx.arena_, t, ASTNode, TABLE, Token(TokenType::IDENTIFIER, possible_tables[0]));
+            String8 s = str_alloc(&ctx.arena_, possible_tables[0].size());
+            memcpy(s.str_, possible_tables[0].c_str(), s.size_);
+            ALLOCATE_INIT(ctx.arena_, t, ASTNode, TABLE, Token(TokenType::IDENTIFIER, s));
             ALLOCATE_INIT(ctx.arena_, ret, ScopedFieldNode, token, t);
             return ret;
         }
@@ -684,7 +680,7 @@ ASTNode* Parser::scalar_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
     }
     if(!ctx.matchMultiTokenType({TokenType::IDENTIFIER, TokenType::LP})) 
         return nullptr;
-    String name = ctx.getCurrentToken().val_; 
+    String name = to_string(ctx.getCurrentToken().val_); 
     ctx+=2;
     Vector<ExpressionNode*> args = {};
     argumentList(ctx, expression_ctx->query_idx_, args);
@@ -741,10 +737,11 @@ ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
     if(!ctx.matchTokenType(TokenType::RP)) return nullptr;
     ++ctx;
     String tmp = AGG_FUNC_IDENTIFIER_PREFIX;
-    //tmp += intToStr(expression_ctx->id_);
     tmp += intToStr(query->aggregates_.size());
+    String8 s = str_alloc(&ctx.arena_, tmp.size());
+    memcpy(s.str_, tmp.c_str(), s.size_);
     ASTNode* ret = nullptr;
-    ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FIELD, Token(TokenType::IDENTIFIER, tmp));
+    ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FIELD, Token(TokenType::IDENTIFIER, s));
     return ret;
 }
 
@@ -1204,7 +1201,7 @@ void Parser::createTableStatement(QueryCTX& ctx, int parent_idx){
         ctx.error_status_ = Error::EXPECTED_IDENTIFIER; 
         return;
     }
-    statement->table_name_ = ctx.getCurrentToken().val_; ++ctx;
+    statement->table_name_ = to_string(ctx.getCurrentToken().val_); ++ctx;
     if(!ctx.matchTokenType(TokenType::LP)){
         ctx.error_status_ = Error::EXPECTED_LEFT_PARANTH; 
         return;
@@ -1243,13 +1240,13 @@ void Parser::createIndexStatement(QueryCTX& ctx, int parent_idx){
         ctx.error_status_ = Error::EXPECTED_IDENTIFIER; 
         return;
     }
-    statement->index_name_ = ctx.getCurrentToken().val_; ++ctx;
+    statement->index_name_ = to_string(ctx.getCurrentToken().val_); ++ctx;
     if(!ctx.matchMultiTokenType({TokenType::ON, TokenType::IDENTIFIER})){
         ctx.error_status_ = Error::EXPECTED_ON_TABLE_NAME; 
         return;
     }
     ++ctx;
-    statement->table_name_ = ctx.getCurrentToken().val_; ++ctx;
+    statement->table_name_ = to_string(ctx.getCurrentToken().val_); ++ctx;
     if(!ctx.matchTokenType(TokenType::LP)){
         ctx.error_status_ = Error::EXPECTED_LEFT_PARANTH; 
         return;
@@ -1262,7 +1259,7 @@ void Parser::createIndexStatement(QueryCTX& ctx, int parent_idx){
         }
         Token token = ctx.getCurrentToken(); ++ctx;
         IndexField f = {
-          .name_ = token.val_,
+          .name_ = to_string(token.val_),
           .desc_ = false // ascending order is the default.
         };
         statement->fields_.push_back(f);
@@ -1300,7 +1297,7 @@ void Parser::dropIndexStatement(QueryCTX& ctx, int parent_idx){
         ctx.error_status_ = Error::EXPECTED_IDENTIFIER; 
         return;
     }
-    statement->index_name_ = ctx.getCurrentToken().val_; ++ctx;
+    statement->index_name_ = to_string(ctx.getCurrentToken().val_); ++ctx;
     ctx.direct_execution_ = 1;
 }
 
@@ -1319,7 +1316,7 @@ void Parser::dropTableStatement(QueryCTX& ctx, int parent_idx){
         ctx.error_status_ = Error::EXPECTED_IDENTIFIER; 
         return;
     }
-    statement->table_name_ = ctx.getCurrentToken().val_; ++ctx;
+    statement->table_name_ = to_string(ctx.getCurrentToken().val_); ++ctx;
     ctx.direct_execution_ = 1;
 }
 
@@ -1338,7 +1335,7 @@ void Parser::insertStatement(QueryCTX& ctx, int parent_idx){
     ctx.error_status_ = Error::EXPECTED_IDENTIFIER; 
     return;
   }
-  statement->table_name_ = ctx.getCurrentToken().val_; ++ctx;
+  statement->table_name_ = to_string(ctx.getCurrentToken().val_); ++ctx;
 
   // field list is optional.
   if(ctx.matchTokenType(TokenType::LP)){
@@ -1451,7 +1448,7 @@ void Parser::updateStatement(QueryCTX& ctx, int parent_idx){
             ctx.error_status_ = Error::EXPECTED_IDENTIFIER; 
             return;
         }
-        statement->fields_.push_back(ctx.getCurrentToken().val_); ++ctx;
+        statement->fields_.push_back(to_string(ctx.getCurrentToken().val_)); ++ctx;
 
         if(!ctx.matchTokenType(TokenType::EQ)){
             ctx.error_status_ = Error::EXPECTED_IDENTIFIER; // TODO: better error.
