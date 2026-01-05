@@ -435,10 +435,10 @@ class AlgebraEngine {
 
         bool match_index(ScanOperation* cur_scan) {
             if(cur_scan->filters_.size() == 0) return false;
-            String tname = cur_scan->table_name_;
-            TableSchema* tschema = catalog_->getTableSchema(tname);
+            String8 tname = cur_scan->table_name_;
+            TableSchema* tschema = catalog_->get_table_schema(tname);
             assert(tschema);
-            Vector<IndexHeader> table_indexes = catalog_->getIndexesOfTable(tname);
+            Vector<IndexHeader> table_indexes = catalog_->get_indexes_of_table(tname);
             if(table_indexes.size() == 0) return false;
             std::pair<int, std::vector<int>> best_index = {-1, {}};
             for(int i = 0 ; i < table_indexes.size(); ++i) {
@@ -531,10 +531,10 @@ class AlgebraEngine {
             // initialize 1 scanner for each accessed table.
             std::unordered_map<String, AlgebraOperation*> table_scanner;
             for(int i = 0; i < data->tables_.size(); ++i){
-                String t = to_string(data->tables_[i]);
-                String tn = to_string(data->table_names_[i]);
+                String8 t = data->tables_[i];
+                String8 tn = data->table_names_[i];
                 AlgebraOperation* scan = New(ScanOperation, ctx.arena_, query_idx, t, tn);
-                table_scanner[tn] = scan;
+                table_scanner[to_string(tn)] = scan;
             }
 
             // handle filters with 1 table access.
@@ -552,7 +552,7 @@ class AlgebraEngine {
                 if(scan->filters_.size() == 0) continue;
                 // if this is a delete/update operation 
                 // => no index scan for the table to be deleted/updated from.
-                if(data->type_ != SELECT_DATA && scan->table_name_ == to_string(data->table_names_[0])) continue;
+                if(data->type_ != SELECT_DATA && scan->table_name_ == data->table_names_[0]) continue;
                 // check for a suitable index.
                 match_index(scan);
             }

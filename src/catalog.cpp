@@ -222,7 +222,9 @@ bool Catalog::createIndex(QueryCTX* ctx, const String &table_name, const String&
     BTreeIndex* index = nullptr; 
     ALLOCATE_INIT(arena_, index, 
             BTreeIndex, cache_manager_, nfid, cols.size(), is_unique);
-    IndexHeader header = IndexHeader(index, index_name, cols);
+    String8 tmp_index_name = str_alloc(&arena_, index_name.size());
+    memcpy(tmp_index_name.str_, index_name.c_str(), tmp_index_name.size_);
+    IndexHeader header = IndexHeader(index, tmp_index_name, cols);
     indexes_.insert({index_name, header});
 
     if(indexes_of_table_.count(table_name))
@@ -360,16 +362,16 @@ bool Catalog::load_indexes() {
             break;
         };
 
-        String index_name = t.get_val_at(0).getStringVal();
+        String8 index_name = t.get_val_at(0).getStringView(&arena_);
         String table_name = t.get_val_at(1).getStringVal();
         FileID fid        = t.get_val_at(2).getIntVal();
         bool is_unique    = t.get_val_at(3).getBoolVal();
 
         // each index must exist only once on this table.
-        assert(indexes_.count(index_name) == 0 && "Index accured multiple times on meta data!");
+        assert(indexes_.count(to_string(index_name)) == 0 && "Index accured multiple times on meta data!");
 
         // set up file ids mappings.
-        String index_fname = index_name+"_INDEX.ndb";
+        String index_fname = to_string(index_name)+"_INDEX.ndb";
         assert((fid_to_fname.count(fid) == 0) && "[FATAL] fid already exists!"); 
         fid_to_fname[fid] = index_fname;
 
@@ -377,12 +379,12 @@ bool Catalog::load_indexes() {
         BTreeIndex* index_ptr = nullptr; 
         ALLOCATE_INIT(arena_, index_ptr, 
                         BTreeIndex, cache_manager_, fid, 1, is_unique);
-        std::pair<String, IndexHeader> entry = {index_name, IndexHeader(index_ptr, index_name)};
+        std::pair<String, IndexHeader> entry = {to_string(index_name), IndexHeader(index_ptr, index_name)};
         indexes_.insert(entry);
         if(indexes_of_table_.count(table_name))
-            indexes_of_table_[table_name].push_back(index_name);
+            indexes_of_table_[table_name].push_back(to_string(index_name));
         else 
-            indexes_of_table_[table_name] = {index_name};
+            indexes_of_table_[table_name] = {to_string(index_name)};
     }
     it_meta.destroy();
     if(!success) {
@@ -423,6 +425,14 @@ bool Catalog::load_indexes() {
     }
     it_keys.destroy();
     return success;
+}
+
+IndexHeader Catalog::get_index_header(String8 index) {
+    String iname = to_string(index);
+    if(indexes_.count(iname)) return indexes_[iname];
+    std::cout << iname << std::endl;
+    assert(0 && "index should exist");
+    return {};
 }
 
 IndexHeader Catalog::getIndexHeader(String& iname) {

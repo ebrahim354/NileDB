@@ -5,7 +5,6 @@
 #include "ast_nodes.h"
 
 
-//void accessed_tables(ASTNode* expression ,Vector<String>& tables, Catalog* catalog, bool only_one);
 enum AlgebraOperationType {
     // single table operations.
     SCAN,
@@ -46,12 +45,12 @@ struct AlgebraOperation {
 };
 
 struct ScanOperation: AlgebraOperation {
-    ScanOperation(Arena* arena, int query_idx, String& table_name, String& table_rename);
+    ScanOperation(Arena* arena, int query_idx, String8 table_name, String8 table_rename);
     void print(int prefix_space_cnt);
 
-    String table_name_   = {};
-    String table_rename_ = {};
-    String index_name_   = {};
+    String8 table_name_   = {};
+    String8 table_rename_ = {};
+    String8 index_name_   = {};
     ScanType scan_type_  = SEQ_SCAN;
     Vector<ASTNode*> filters_ = {};
     Vector<ASTNode*> index_filters_ = {};

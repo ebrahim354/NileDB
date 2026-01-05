@@ -56,6 +56,7 @@ class Catalog {
         const String& index_name, Vector<IndexField> &fields, bool is_unique);
         bool load_indexes();
         IndexHeader getIndexHeader(String& iname);
+        IndexHeader get_index_header(String8 index);
 
         Vector<String> getTableNames();
         Vector<String> getTablesByField(String field);

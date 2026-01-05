@@ -77,14 +77,14 @@ struct NumberedIndexField {
 
 struct IndexHeader {
     IndexHeader(){};
-    IndexHeader(BTreeIndex* index, String index_name, Vector<NumberedIndexField> fields_numbers = {}):
+    IndexHeader(BTreeIndex* index, String8 index_name, Vector<NumberedIndexField> fields_numbers = {}):
         index_(index), index_name_(index_name), fields_numbers_(fields_numbers)
     {};
     IndexHeader(Arena* arena):
-        index_name_(arena), fields_numbers_(arena)
+        fields_numbers_(arena)
     {}
     BTreeIndex* index_;
-    String index_name_;
+    String8 index_name_;
     Vector<NumberedIndexField> fields_numbers_;
 };
 

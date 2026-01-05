@@ -187,9 +187,9 @@ class ExecutionEngine {
                 case SCAN: 
                     {
                         ScanOperation* op = reinterpret_cast<ScanOperation*>(logical_plan);
-                        TableSchema* schema = catalog_->getTableSchema(op->table_name_);
-                        String tname =  op->table_name_;
-                        if(op->table_rename_.size() != 0) tname = op->table_rename_;
+                        TableSchema* schema = catalog_->get_table_schema(op->table_name_);
+                        String tname =  to_string(op->table_name_);
+                        if(op->table_rename_.size_ != 0) tname = to_string(op->table_rename_);
                         Vector<Column> columns = schema->getColumns();
                         // create a new schema and rename columns to table.col_name
                         for(int i = 0; i < columns.size(); i++){
@@ -206,7 +206,7 @@ class ExecutionEngine {
                             scan = New(SeqScanExecutor, ctx.arena_, &ctx, op, new_output_schema);
                         } else {
                             scan = New(IndexScanExecutor, ctx.arena_, &ctx, op,
-                                    new_output_schema, catalog_->getIndexHeader(op->index_name_));
+                                    new_output_schema, catalog_->get_index_header(op->index_name_));
                         }
                         return scan;
                     } break;
