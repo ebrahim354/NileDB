@@ -396,7 +396,7 @@ void Parser::fieldDefList(QueryCTX& ctx, int query_idx){
             return;
         }
         Token token = ctx.getCurrentToken(); ++ctx;
-        field_def.field_name_ = to_string(token.val_);
+        field_def.field_name_ = token.val_;
         if(!tokenizer_.isDataType(ctx.getCurrentToken().type_)) {
             ctx.error_status_ = Error::EXPECTED_DATA_TYPE;
             return;
@@ -680,7 +680,7 @@ ASTNode* Parser::scalar_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
     }
     if(!ctx.matchMultiTokenType({TokenType::IDENTIFIER, TokenType::LP})) 
         return nullptr;
-    String name = to_string(ctx.getCurrentToken().val_); 
+    String8 name = ctx.getCurrentToken().val_;
     ctx+=2;
     Vector<ExpressionNode*> args = {};
     argumentList(ctx, expression_ctx->query_idx_, args);

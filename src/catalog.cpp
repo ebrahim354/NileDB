@@ -101,7 +101,7 @@ void Catalog::init(CacheManager *cm) {
                 std::cout << "[ERROR] Invalid type\n";
                 assert(0);
             }
-            cols.emplace_back(&arena_, (*fields)[i].field_name_, type, col_offset, (*fields)[i].constraints_);
+            cols.emplace_back(&arena_, to_string((*fields)[i].field_name_), type, col_offset, (*fields)[i].constraints_);
             col_offset += getSizeFromType(type);
         }
 

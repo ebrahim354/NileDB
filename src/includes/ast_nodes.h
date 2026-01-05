@@ -36,8 +36,6 @@ Type tokenTypeToDBType(TokenType tt);
 
 AggregateFuncType getAggFuncType(TokenType func);
 
-AggregateFuncType getAggFuncType(String& func);
-
 enum JoinType {
     INNER_JOIN = 0,
     LEFT_JOIN,
@@ -54,7 +52,7 @@ struct JoinedTablesData {
 
 // more data will be added
 struct FieldDef {
-    String field_name_;
+    String8 field_name_;
     TokenType type_; 
     ConstraintType constraints_;
 };
@@ -188,10 +186,10 @@ struct TypeCastNode : ASTNode {
 };
 
 struct ScalarFuncNode : ASTNode {
-    void init (Vector<ExpressionNode*> arguments, String name, int parent_id = 0);
+    void init (Vector<ExpressionNode*> arguments, String8 name, int parent_id = 0);
 
     Vector<ExpressionNode*> args_ = {};
-    String name_;
+    String8 name_;
     int parent_id_ = 0;
 };
 

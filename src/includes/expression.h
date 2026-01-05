@@ -44,9 +44,8 @@ Value coalesce_func(Vector<Value> vals){
 }
 
 //TODO: should be moved the the catalog class.
-std::unordered_map<String, std::function<Value(Vector<Value>)>> reserved_functions = 
-//{{"ABS", abs_func}, {"COALESCE", coalesce_func}, {"NULLIF", nullif_func}};
-{{"ABS", abs_func}, {"COALESCE", coalesce_func}};
+std::unordered_map<String8, std::function<Value(Vector<Value>)>, String_ihash, String_ieq> reserved_functions = 
+{{str_lit("ABS"), abs_func}, {str_lit("COALESCE"), coalesce_func}};
 
 
 Value evaluate_expression(
@@ -381,17 +380,16 @@ Value evaluate_expression(
         case SCALAR_FUNC: 
                       {
                           ScalarFuncNode* sfn = reinterpret_cast<ScalarFuncNode*>(expression);
-                          String name = str_toupper(sfn->name_);
-                          if(!reserved_functions.count(name)){
+                          if(!reserved_functions.count(sfn->name_)){
                               // TODO: this check should be in the query validation phase.
-                              std::cout << "[ERROR] undefined function call " << sfn->name_ << "\n";
+                              std::cout << "[ERROR] undefined function call" << "\n";
                               return Value();
                           }
                           Vector<Value> vals;
                           for(int i = 0; i < sfn->args_.size(); ++i){
                               vals.emplace_back(evaluate_expression(ctx, sfn->args_[i], cur_tuple, true, eval_sub_query));
                           }
-                          return reserved_functions[name](vals);
+                          return reserved_functions[sfn->name_](vals);
                       } 
         case TYPE_CAST: 
                       {

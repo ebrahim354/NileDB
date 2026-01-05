@@ -33,16 +33,6 @@ AggregateFuncType getAggFuncType(TokenType func){
     return NOT_DEFINED;
 }
 
-AggregateFuncType getAggFuncType(String& func){
-    if(func == "COUNT") return COUNT;
-    if(func == "SUM")   return SUM;
-    if(func == "MIN")   return MIN;
-    if(func == "MAX")   return MAX;
-    if(func == "AVG")   return AVG;
-    return NOT_DEFINED;
-}
-
-
 
 void ASTNode::init(CategoryType ct,Token val) {
     category_ = ct; 
@@ -97,7 +87,7 @@ void TypeCastNode::init(ExpressionNode* exp, Type new_type) {
     type_ = new_type;
 }
 
-void ScalarFuncNode::init(Vector<ExpressionNode*> arguments, String name, int parent_id) {
+void ScalarFuncNode::init(Vector<ExpressionNode*> arguments, String8 name, int parent_id) {
     category_ = SCALAR_FUNC;
     args_ = arguments;
     name_ = name;

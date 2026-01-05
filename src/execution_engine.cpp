@@ -41,7 +41,7 @@ class ExecutionEngine {
             std::deque<Type> col_types;
             std::deque<ConstraintType> col_constraints;
             for(int i = 0; i < fields.size(); ++i){
-                String name = fields[i].field_name_;
+                String name = to_string(fields[i].field_name_);
                 Type type = tokenTypeToColType(fields[i].type_);
                 if(type == INVALID) {
                     std::cout << "[ERROR] Invalid type\n";
