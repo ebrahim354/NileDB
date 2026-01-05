@@ -50,6 +50,7 @@ class Catalog {
 
         TableSchema* createTable(QueryCTX* ctx, const String &table_name, Vector<Column> &columns);
         TableSchema* getTableSchema(const String &table_name);
+        TableSchema* get_table_schema(String8 table_name);
 
         bool createIndex(QueryCTX* ctx, const String &table_name,
         const String& index_name, Vector<IndexField> &fields, bool is_unique);
@@ -58,8 +59,10 @@ class Catalog {
 
         Vector<String> getTableNames();
         Vector<String> getTablesByField(String field);
+        Vector<String> get_tables_by_field(String8 field);
         bool isValidTable(const String& table_name);
         //TODO: change unnecessary indirection.
+        Vector<IndexHeader> get_indexes_of_table(String8 t);
         Vector<IndexHeader> getIndexesOfTable(String& tname);
 
         int deleteIndex(QueryCTX* ctx, const String& index_name);

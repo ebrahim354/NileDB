@@ -78,6 +78,12 @@ int TableSchema::getColIdx(String& field, Value& val){
 
 }
 
+bool TableSchema::is_valid_col(String8 col_name){
+    for(auto c : columns_)
+        if(c.getName() == to_string(col_name)) return true;
+    return false;
+}
+
 bool TableSchema::isValidCol(String& col_name){
     for(auto c : columns_)
         if(c.getName() == col_name) return true;

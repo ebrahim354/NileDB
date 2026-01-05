@@ -31,8 +31,8 @@ struct QueryData {
     int idx_ = -1;          // every query must have an id starting from 0 even the top level query.
     int parent_idx_ = -1;   // -1 means this query is the top level query.
 
-    Vector<String> tables_      = {};
-    Vector<String> table_names_ = {};
+    Vector<String8> tables_      = {};
+    Vector<String8> table_names_ = {};
     Vector<JoinedTablesData> joined_tables_ = {};
     ExpressionNode* where_ = nullptr;
 
@@ -46,7 +46,7 @@ struct QueryData {
 struct SelectStatementData : QueryData {
     SelectStatementData(Arena* arena, int parent_idx);
 
-    Vector<String> field_names_ = {};
+    Vector<String8> field_names_ = {};
     Vector<ExpressionNode*> fields_ = {};
     Vector<AggregateFuncNode*> aggregates_;  
     Vector<int> order_by_list_ = {};
@@ -77,35 +77,35 @@ struct CreateTableStatementData : QueryData {
     CreateTableStatementData(Arena* arena, int parent_idx);
 
     Vector<FieldDef> field_defs_ = {};
-    String table_name_ = {};
+    String8 table_name_ = {};
 };
 
 struct CreateIndexStatementData : QueryData {
     CreateIndexStatementData(Arena* arena, int parent_idx);
 
     Vector<IndexField> fields_ = {};
-    String index_name_ = {};
-    String table_name_ = {};
+    String8 index_name_ = {};
+    String8 table_name_ = {};
     bool is_unique_index_ = false;
 };
 
 struct DropTableStatementData : QueryData {
     DropTableStatementData(Arena* arena, int parent_idx);
 
-    String table_name_ = {};
+    String8 table_name_ = {};
 };
 
 struct DropIndexStatementData : QueryData {
     DropIndexStatementData(Arena* arena, int parent_idx);
 
-    String index_name_ = {};
+    String8 index_name_ = {};
 };
 
 struct InsertStatementData : QueryData {
     InsertStatementData(Arena* arena, int parent_idx);
 
-    String table_name_ = {};
-    Vector<String> fields_ = {};
+    String8 table_name_ = {};
+    Vector<String8> fields_ = {};
     // only one of these should be used per insertStatement.
     Vector<ExpressionNode*> values_ = {};
     // this is used to support (insert into ... select .. from ..) syntax.
@@ -120,7 +120,7 @@ struct DeleteStatementData : QueryData {
 struct UpdateStatementData : QueryData {
     UpdateStatementData(Arena* arena, int parent_idx);
 
-    Vector<String> fields_ = {}; 
+    Vector<String8> fields_ = {}; 
     Vector<ExpressionNode*> values_ = {};
 };
 

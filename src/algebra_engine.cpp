@@ -137,10 +137,10 @@ class AlgebraEngine {
     private:
 
         bool isValidSelectStatementData (SelectStatementData* data){
-            for(String& table_name : data->tables_){
-                TableSchema* schema = catalog_->getTableSchema(table_name);
+            for(String8 table_name : data->tables_){
+                TableSchema* schema = catalog_->get_table_schema(table_name);
                 if(!schema) {
-                    std::cout << "[ERROR] Invalid table name " << table_name << std::endl;
+                    std::cout << "[ERROR] Invalid table name" << std::endl;
                     return false;
                 }
             }
@@ -154,15 +154,16 @@ class AlgebraEngine {
                         return false;
                 }
             }
-            std::unordered_map<String, int> mentioned_tables;
+            std::unordered_map<String8, bool, String_hash, String_eq> mentioned_tables;
             for(int i = 0; i < data->table_names_.size(); ++i){
                 if(mentioned_tables.count(data->table_names_[i])) {
+                    /*
                     std::cout << "[ERROR] table name \"" << data->table_names_[i] << "\" specified more than once." 
-                        << std::endl;
+                        << std::endl;*/
                     return false;
 
                 }
-                mentioned_tables[data->table_names_[i]] = i;
+                mentioned_tables.insert({data->table_names_[i], true});
             }
             // TODO: provide validation for fields and filters.
             return  true;
@@ -499,7 +500,7 @@ class AlgebraEngine {
                 for(auto &s: table_access){
                     bool used_in_query = false;
                     for(int j = 0; j < data->table_names_.size(); ++j){
-                        if(data->table_names_[j] == s) {
+                        if(to_string(data->table_names_[j]) == s) {
                             used_in_query = true;
                             break;
                         }
@@ -530,8 +531,10 @@ class AlgebraEngine {
             // initialize 1 scanner for each accessed table.
             std::unordered_map<String, AlgebraOperation*> table_scanner;
             for(int i = 0; i < data->tables_.size(); ++i){
-                AlgebraOperation* scan = New(ScanOperation, ctx.arena_, query_idx, data->tables_[i], data->table_names_[i]);
-                table_scanner[data->table_names_[i]] = scan;
+                String t = to_string(data->tables_[i]);
+                String tn = to_string(data->table_names_[i]);
+                AlgebraOperation* scan = New(ScanOperation, ctx.arena_, query_idx, t, tn);
+                table_scanner[tn] = scan;
             }
 
             // handle filters with 1 table access.
@@ -549,7 +552,7 @@ class AlgebraEngine {
                 if(scan->filters_.size() == 0) continue;
                 // if this is a delete/update operation 
                 // => no index scan for the table to be deleted/updated from.
-                if(data->type_ != SELECT_DATA && scan->table_name_ == data->table_names_[0]) continue;
+                if(data->type_ != SELECT_DATA && scan->table_name_ == to_string(data->table_names_[0])) continue;
                 // check for a suitable index.
                 match_index(scan);
             }
@@ -563,8 +566,8 @@ class AlgebraEngine {
                     data->table_names_.size() > join_data.lhs_idx_ && 
                     data->table_names_.size() > join_data.rhs_idx_
                 );
-                String lhs_name = data->table_names_[join_data.lhs_idx_];
-                String rhs_name = data->table_names_[join_data.rhs_idx_];
+                String lhs_name = to_string(data->table_names_[join_data.lhs_idx_]);
+                String rhs_name = to_string(data->table_names_[join_data.rhs_idx_]);
                 assert(table_scanner.count(lhs_name) && table_scanner.count(rhs_name));
                 // parse the condition to decide the join algorithm.
                 JoinAlgorithm join_algorithm = NESTED_LOOP_JOIN;
@@ -608,7 +611,8 @@ class AlgebraEngine {
 
 
             // remaining table outside of filters.
-            for(String t : data->table_names_) {
+            for(String8 ti : data->table_names_) {
+                String t = to_string(ti);
                 if(!table_scanner.count(t)) continue;
                 if(result == nullptr){
                     result = table_scanner[t];

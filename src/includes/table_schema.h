@@ -31,6 +31,7 @@ class TableSchema {
         u32 getSize();
 
         bool isValidCol(String& col_name);
+        bool is_valid_col(String8 col_name);
         String typeToString(Type t);
         void printSchema(std::stringstream& ss);
         void printSchema();

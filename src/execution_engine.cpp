@@ -35,7 +35,7 @@ class ExecutionEngine {
         // DDL handlers.
         bool create_table_handler(QueryCTX& ctx) {
             CreateTableStatementData* create_table = reinterpret_cast<CreateTableStatementData*>(ctx.queries_call_stack_[0]);
-            String table_name = create_table->table_name_;
+            String table_name = to_string(create_table->table_name_);
             Vector<FieldDef> fields = create_table->field_defs_;
             std::deque<String> col_names;
             std::deque<Type> col_types;
@@ -75,8 +75,8 @@ class ExecutionEngine {
 
         bool create_index_handler(QueryCTX& ctx) {
             CreateIndexStatementData* create_index = reinterpret_cast<CreateIndexStatementData*>(ctx.queries_call_stack_[0]);
-            String index_name = create_index->index_name_;
-            String table_name = create_index->table_name_;
+            String index_name = to_string(create_index->index_name_);
+            String table_name = to_string(create_index->table_name_);
             Vector<IndexField> fields = create_index->fields_;
             bool is_unique_index = create_index->is_unique_index_;
             bool err = catalog_->createIndex(&ctx, table_name, index_name, fields, is_unique_index);
@@ -86,7 +86,7 @@ class ExecutionEngine {
 
         bool drop_table_handler(QueryCTX& ctx) {
             auto drop_table = reinterpret_cast<DropTableStatementData*>(ctx.queries_call_stack_[0]);
-            String table_name = drop_table->table_name_;
+            String table_name = to_string(drop_table->table_name_);
             bool err = catalog_->deleteTable(&ctx, table_name);
             if(err) return false;
             return true;
@@ -94,7 +94,7 @@ class ExecutionEngine {
 
         bool drop_index_handler(QueryCTX& ctx) {
             DropIndexStatementData* drop_index = reinterpret_cast<DropIndexStatementData*>(ctx.queries_call_stack_[0]);
-            String index_name = drop_index->index_name_;
+            String index_name = to_string(drop_index->index_name_);
             bool err = catalog_->deleteIndex(&ctx, index_name);
             if(err) return false;
             return true;
@@ -322,14 +322,14 @@ class ExecutionEngine {
                     {
                         auto statement = 
                             (InsertStatementData*)(ctx.queries_call_stack_[logical_plan->query_idx_]);
-                        TableSchema* table = catalog_->getTableSchema(statement->table_name_);
+                        TableSchema* table = catalog_->get_table_schema(statement->table_name_);
                         int select_idx = statement->select_idx_;
 
                         InsertionExecutor* insert = New(InsertionExecutor, ctx.arena_,
                                 &ctx,
                                 logical_plan, 
                                 table,
-                                catalog_->getIndexesOfTable(statement->table_name_),
+                                catalog_->get_indexes_of_table(statement->table_name_),
                                 select_idx);
                         return insert;
                     } break;
@@ -340,14 +340,14 @@ class ExecutionEngine {
                         auto statement = 
                             (DeleteStatementData*)(ctx.queries_call_stack_[logical_plan->query_idx_]);
                         assert(statement->tables_.size() != 0);
-                        TableSchema* table = catalog_->getTableSchema(statement->tables_[0]);
+                        TableSchema* table = catalog_->get_table_schema(statement->tables_[0]);
 
                         DeletionExecutor* deletion = New(DeletionExecutor, ctx.arena_,
                                 &ctx,
                                 logical_plan, 
                                 child,
                                 table,
-                                catalog_->getIndexesOfTable(statement->tables_[0]));
+                                catalog_->get_indexes_of_table(statement->tables_[0]));
                         return deletion;
                     } break;
                 case UPDATE: 
@@ -357,14 +357,14 @@ class ExecutionEngine {
                         auto statement = 
                             (UpdateStatementData*)(ctx.queries_call_stack_[logical_plan->query_idx_]);
                         assert(statement->tables_.size() != 0);
-                        TableSchema* table = catalog_->getTableSchema(statement->tables_[0]);
+                        TableSchema* table = catalog_->get_table_schema(statement->tables_[0]);
 
                         UpdateExecutor* update = New(UpdateExecutor, ctx.arena_,
                                 &ctx,
                                 logical_plan, 
                                 child,
                                 table,
-                                catalog_->getIndexesOfTable(statement->tables_[0]));
+                                catalog_->get_indexes_of_table(statement->tables_[0]));
                         return update;
                     } break;
                 default: 

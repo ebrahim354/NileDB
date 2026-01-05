@@ -32,8 +32,8 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
     }
     for(int i = 0; i < fields.size(); ++i){
         if(fields[i]->category_ == SCOPED_FIELD) {
-            String table = to_string(((ScopedFieldNode*)fields[i])->table_->token_.val_);
-            String cur_field   = to_string(fields[i]->token_.val_);
+            String8 table = ((ScopedFieldNode*)fields[i])->table_->token_.val_;
+            String8 cur_field   = fields[i]->token_.val_;
             for(int k = 0; k < query->table_names_.size(); ++k){
                 if(table != query->table_names_[k] && k == query->table_names_.size() - 1)
                     return true;
@@ -42,20 +42,20 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
                 table = query->tables_[k];
                 break;
             }
-            TableSchema* schema = catalog->getTableSchema(table);
+            TableSchema* schema = catalog->get_table_schema(table);
             if(!schema) return true;
-            if(!schema->isValidCol(cur_field)){
+            if(!schema->is_valid_col(cur_field)){
                 return true; // the table does not contain this column => corelated.
             }
         } else { // the field is not scoped.
-            Vector<String> possible_tables = catalog->getTablesByField(to_string(fields[i]->token_.val_));
+            Vector<String> possible_tables = catalog->get_tables_by_field(fields[i]->token_.val_);
             bool table_matched = false;
             for(int j = 0; j < possible_tables.size(); ++j){
-                if(std::find(query->table_names_.begin(), query->table_names_.end(), possible_tables[j]) 
-                        != query->table_names_.end()
-                  ) {
-                    table_matched = true;
-                    break;
+                for(int k = 0; k < query->table_names_.size(); ++k){
+                    if(possible_tables[j] == to_string(query->table_names_[j])) {
+                        table_matched = true;
+                        break;
+                    }
                 }
             }
             if(!table_matched) return true; // no table matched the field in this scope => corelated.
@@ -88,27 +88,24 @@ UnionOrExcept::UnionOrExcept(Arena* arena, QueryType type, int parent_idx, Query
 
 CreateTableStatementData::CreateTableStatementData(Arena* arena, int parent_idx):
     QueryData(arena, CREATE_TABLE_DATA, parent_idx),
-    field_defs_(arena), table_name_(arena)
+    field_defs_(arena)
 {}
 
 CreateIndexStatementData::CreateIndexStatementData(Arena* arena, int parent_idx):
     QueryData(arena, CREATE_INDEX_DATA, parent_idx),
-    fields_(arena), index_name_(arena), table_name_(arena)
+    fields_(arena)
 {}
 
 DropTableStatementData::DropTableStatementData(Arena* arena, int parent_idx):
-    QueryData(arena, DROP_TABLE_DATA, parent_idx),
-    table_name_(arena)
+    QueryData(arena, DROP_TABLE_DATA, parent_idx)
 {}
 
 DropIndexStatementData::DropIndexStatementData(Arena* arena, int parent_idx):
-    QueryData(arena, DROP_INDEX_DATA, parent_idx),
-    index_name_(arena)
+    QueryData(arena, DROP_INDEX_DATA, parent_idx)
 {}
 
 InsertStatementData::InsertStatementData(Arena* arena, int parent_idx):
-    QueryData(arena, INSERT_DATA, parent_idx),
-    table_name_(arena), fields_(arena), values_(arena)
+    QueryData(arena, INSERT_DATA, parent_idx), fields_(arena), values_(arena)
 {}
 
 DeleteStatementData::DeleteStatementData(Arena* arena, int parent_idx):

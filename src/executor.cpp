@@ -858,7 +858,7 @@ void UpdateExecutor::init() {
 
     for(auto& field_name : statement_->fields_){
         int idx = table_->colExist(field_name);
-        if(!table_->isValidCol(field_name) || idx < 0) {
+        if(!table_->is_valid_col(field_name) || idx < 0) {
             error_status_ = 1;
             return;
         }
@@ -988,11 +988,16 @@ void InsertionExecutor::init() {
     statement_ = reinterpret_cast<InsertStatementData*>(ctx_->queries_call_stack_[query_idx_]);
     // fields
     if(!statement_->fields_.size() || statement_->fields_.size() < table_->getCols().size()){
-        statement_->fields_ = table_->getCols();
+        //statement_->fields_ = table_->getCols();
+        auto cols = table_->getCols();
+        for(int i = 0; i < cols.size(); ++i){
+            auto str = str_alloc(&ctx_->arena_, cols[i].size());
+            memcpy(str.str_, cols[i].c_str(), str.size_);
+        }
     } else {
         for(auto& field_name : statement_->fields_){
             int idx = table_->colExist(field_name);
-            if(!table_->isValidCol(field_name) || idx < 0) {
+            if(!table_->is_valid_col(field_name) || idx < 0) {
                 error_status_ = 1;
                 return;
             }

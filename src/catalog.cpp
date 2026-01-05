@@ -79,7 +79,7 @@ void Catalog::init(CacheManager *cm) {
         int err = it.getCurTupleCpy(arena_, &t);
         if(err) break;
         // extract the data of this row.
-        String  table_name = t.get_val_at(0).getStringVal();
+        String8  table_name = t.get_val_at(0).getStringView(&arena_);
         String8  query      = t.get_val_at(1).getStringView(&arena_);
         FileID  fid        = t.get_val_at(2).getIntVal();
         // "temporary" query ctx.
@@ -106,15 +106,17 @@ void Catalog::init(CacheManager *cm) {
         }
 
         // initialize the table.
-        String fname = table_name+".ndb";
-        String fsm = table_name+"_fsm.ndb";
+        String fname = to_string(table_name);
+        fname +=".ndb";
+        String fsm = to_string(table_name);
+        fsm += "_fsm.ndb";
         assert((fid_to_fname.count(fid) == 0) && "[FATAL] fid already exists!"); 
         fid_to_fname[fid] = fname;
         fid_to_fname[fid+1] = fsm;
         Table* table = nullptr; 
         ALLOCATE_INIT(arena_, table, Table, cm, fid);
-        TableSchema* schema = New(TableSchema, arena_, table_name, table, cols);
-        tables_.insert({table_name, schema});
+        TableSchema* schema = New(TableSchema, arena_, to_string(table_name), table, cols);
+        tables_.insert({to_string(table_name), schema});
 
         // clean the temporary query ctx.
         pctx.clean();
@@ -278,6 +280,12 @@ TableSchema* Catalog::getTableSchema(const String &table_name) {
     return tables_[table_name];
 }
 
+TableSchema* Catalog::get_table_schema(String8 table_name) {
+    if (!tables_.count(to_string(table_name)))
+        return nullptr;
+    return tables_[to_string(table_name)];
+}
+
 bool Catalog::isValidTable(const String& table_name) {
     if (!tables_.count(table_name)) return false;
     return true;
@@ -300,8 +308,30 @@ Vector<String> Catalog::getTablesByField(String field) {
     return output;
 }
 
+Vector<String> Catalog::get_tables_by_field(String8 field) {
+    Vector<String> output;
+    for(auto& t : tables_){
+        if(t.second->is_valid_col(field))
+            output.push_back(t.first);
+    }
+    return output;
+}
+
 //TODO: change unnecessary indirection.
 Vector<IndexHeader> Catalog::getIndexesOfTable(String& tname) {
+    Vector<IndexHeader> idxs;
+    if(indexes_of_table_.count(tname)){
+        for(int i = 0; i < indexes_of_table_[tname].size(); ++i){
+            String idx_name = indexes_of_table_[tname][i];
+            if(indexes_.count(idx_name))
+                idxs.push_back(indexes_[idx_name]);
+        }
+    }
+    return idxs;
+}
+
+Vector<IndexHeader> Catalog::get_indexes_of_table(String8 t) {
+    String tname = to_string(t);
     Vector<IndexHeader> idxs;
     if(indexes_of_table_.count(tname)){
         for(int i = 0; i < indexes_of_table_[tname].size(); ++i){
