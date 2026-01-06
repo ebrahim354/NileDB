@@ -106,10 +106,9 @@ void Catalog::init(CacheManager *cm) {
         }
 
         // initialize the table.
-        String fname = to_string(table_name);
-        fname +=".ndb";
-        String fsm = to_string(table_name);
-        fsm += "_fsm.ndb";
+        String8 fname = str_cat(&arena_, table_name, str_lit(".ndb"), true);
+        String8 fsm = str_cat(&arena_, table_name, str_lit("_fsm.ndb"), true);
+
         assert((fid_to_fname.count(fid) == 0) && "[FATAL] fid already exists!"); 
         fid_to_fname[fid] = fname;
         fid_to_fname[fid+1] = fsm;
@@ -126,7 +125,7 @@ void Catalog::init(CacheManager *cm) {
     // indexes_meta_data (text index_name, text table_name, int fid, boolean is_unique).
     // indexs_keys       (text index_name, int field_number_in_table, int field_number_in_index).
     // both should either exist or not.
-    assert(tables_.count(str_lit(INDEX_META_TABLE)) == tables_.count(str_lit(INDEX_KEYS_TABLE))); 
+    assert(tables_.count(str_lit(INDEX_META_TABLE)) == tables_.count(str_lit(INDEX_KEYS_TABLE)));
     if(tables_.count(str_lit(INDEX_META_TABLE))){
         load_indexes();
     } else {
@@ -173,9 +172,9 @@ TableSchema* Catalog::create_table(QueryCTX* ctx, String8 table_name, Vector<Col
     assert((fid_to_fname.count(nfid) == 0 && fid_to_fname.count(nfid+1) == 0) && "[FATAL] fid already exists!");
     if (tables_.count(table_name) || fid_to_fname.count(nfid))
         return nullptr;
-    String fname = to_string(table_name)+".ndb";
-    String fsm = to_string(table_name)+"_fsm.ndb";
-    fid_to_fname[nfid] = fname;
+    String8 fname = str_cat(&arena_, table_name, str_lit(".ndb"), true);
+    String8 fsm   = str_cat(&arena_, table_name, str_lit("_fsm.ndb"), true);
+    fid_to_fname[nfid]   = fname;
     fid_to_fname[nfid+1] = fsm;
 
     // initialize the table
@@ -217,7 +216,7 @@ bool Catalog::create_index(QueryCTX* ctx, String8 table_name, String8 index_name
         cols.push_back({col, fields[i].desc_});
     }
     // initialize the index
-    String index_fname = to_string(index_name)+"_INDEX.ndb";
+    String8 index_fname = str_cat(&arena_, index_name, str_lit("_INDEX.ndb"), true);
     FileID nfid = generate_max_fid(); 
     assert(fid_to_fname.count(nfid) == 0); // TODO: replace assertion with error.
     fid_to_fname[nfid] = index_fname;
@@ -347,7 +346,7 @@ bool Catalog::load_indexes() {
         assert(indexes_.count(index_name) == 0 && "Index accured multiple times on meta data!");
 
         // set up file ids mappings.
-        String index_fname = to_string(index_name)+"_INDEX.ndb";
+        String8 index_fname = str_cat(&arena_, index_name, str_lit("_INDEX.ndb"), true);
         assert((fid_to_fname.count(fid) == 0) && "[FATAL] fid already exists!"); 
         fid_to_fname[fid] = index_fname;
 

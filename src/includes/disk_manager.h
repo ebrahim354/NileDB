@@ -45,12 +45,12 @@ class DiskManager {
 
     private:
         // 1 on failure, 0 on success.
-        int openFile(String file_name);
+        int openFile(String8 file_name);
         // first 4 bytes of a file indicates the next free page number.
         // second 4 bytes of a file indicates the number of pages on a file. 
         // in case of value of 0 means no current free pages
         // append to the end of the file for new pages
-        std::unordered_map<String, FileMeta> cached_files_;
+        std::unordered_map<String8, FileMeta, String_hash, String_eq> cached_files_;
 };
 
 #endif // DISK_MANAGER_H

@@ -35,8 +35,8 @@
  * This meta data system should be suffecient for now.
  */
 
-#define META_DATA_FILE   "NILEDB_META_DATA.ndb"
-#define META_DATA_FSM    "NILEDB_META_DATA_fsm.ndb"
+#define META_DATA_FILE   str_lit_null("NILEDB_META_DATA.ndb")
+#define META_DATA_FSM    str_lit_null("NILEDB_META_DATA_fsm.ndb")
 #define META_DATA_TABLE  "NILEDB_META_DATA"
 #define INDEX_KEYS_TABLE "NDB_INDEX_KEYS"
 #define INDEX_META_TABLE "NDB_INDEX_META"

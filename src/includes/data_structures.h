@@ -61,10 +61,29 @@ String8 str_copy(Arena* arena, String8 other) {
     return s;
 }
 
+String8 str_cat(Arena* arena, String8 a, String8 b, bool null_terminated = false) {
+    String8 res = {};
+    res.size_ = a.size_ + b.size_ + null_terminated;
+    res.str_ = (u8*)arena->alloc(res.size_);
+    memcpy(res.str_, a.str_, a.size_);
+    memcpy(res.str_ + a.size_, b.str_, b.size_);
+    if(null_terminated) res.str_[res.size_ - 1] = 0;
+    return res;
+}
 
+bool str_ends_with(String8 a, String8 b, bool skip_null = true) {
+    if(skip_null && b.last_char() == 0) b.size_--;
+    if(skip_null && a.last_char() == 0) a.size_--;
+    if(b.size_ > a.size_) return false;
+    u64 right_a_padding = a.size_ - b.size_;
+    a.str_  += right_a_padding;
+    a.size_ -= right_a_padding;
+    return (a == b);
+}
 
 
 #define str_lit(s) (String8) { .str_ = (u8*)(s), .size_ = sizeof(s) - 1 }
+#define str_lit_null(s) (String8) { .str_ = (u8*)(s), .size_ = sizeof(s)     }
 
 
 // source: 

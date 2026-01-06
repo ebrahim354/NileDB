@@ -17,7 +17,7 @@
 #define FILE_EXT ".ndb" // nile db
 #define SIZE_PAGE_HEADER = 8;
 
-std::unordered_map<FileID, String> fid_to_fname;
+std::unordered_map<FileID, String8> fid_to_fname;
 
 
 struct PageID {
