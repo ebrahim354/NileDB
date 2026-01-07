@@ -32,12 +32,9 @@ class TableSchema {
         // get a pointer to a spicific value inside of a record using the schema. 
         // Type conversion is done by the user of the function.
         // return nullptr in case of an error or the value is equal to null (handle cases separately later).
-        char* getValue(String8 col_name, Record& r, uint16_t* size);
+        char* getValue(u64 col_idx, Record& r, uint16_t* size);
         // translate a given record using the schema to a vector of Value type.
         // return 1 in case of an error.
-        // values is the output.
-        int translateToValues(Record& r, Vector<Value>& values);
-        int translateToValuesOffset(Record& r, Vector<Value>& values, int offset);
         int translateToTuple(Record& r, Tuple& tuple, RecordID& rid);
         // translate a vector of values using the schema to a Record. 
         // return null in case of an error.

@@ -60,17 +60,9 @@ Vector<Column> TableSchema::getColumns(){
 
 // get a pointer to a specific value inside of a record using the schema. 
 // Type conversion is done by the user of the function.
-// return nullptr in case of an error or the value is equal to null (handle cases separately later).
-char* TableSchema::getValue(String8 col_name ,Record& r, uint16_t* size){
-    Column* col = nullptr;
-    for(size_t i = 0; i < columns_.size(); ++i) {
-        if(columns_[i].getName() == col_name) {
-            col = &columns_[i];
-            break;
-        }
-    }
-    // invalid column name.
-    if(!col) return nullptr;
+char* TableSchema::getValue(u64 col_idx, Record& r, uint16_t* size) {
+    assert(col_idx < columns_.size());
+    Column* col = &columns_[col_idx];
 
     char* val = nullptr;
     if(col->isVarLength()){
@@ -79,60 +71,7 @@ char* TableSchema::getValue(String8 col_name ,Record& r, uint16_t* size){
         val = r.getFixedPtr(col->getOffset());
         *size = col->getSize();
     }
-    // value is null or the column offset is invalid.
-    // (the difference needs to be handled). 
     return val;
-}
-
-// translate a given record using the schema to a vector of Value type.
-// return 1 in case of an error.
-// values is the output.
-int TableSchema::translateToValues(Record& r, Vector<Value>& values){
-    for(int i = 0; i < columns_.size(); ++i){
-        // check the bitmap if this value is null.
-        char * bitmap_ptr = r.getFixedPtr(size_)+(i/8);  
-        int is_null = *bitmap_ptr & (1 << (i%8));
-        if(is_null) {
-            values.emplace_back(Value(NULL_TYPE));
-            continue;
-        }
-        uint16_t sz = 0;
-        char* content = getValue(columns_[i].getName(), r, &sz);
-        if(!content)
-            return 1;
-        Value val(content, columns_[i].getType(), sz);
-        //val.type_ = columns_[i].getType();
-        //val.value_from_size(val.size_);
-        //memcpy(val.get_ptr(), content, val.size_);
-        values.emplace_back(val);
-    }
-    return 0;
-}
-
-int TableSchema::translateToValuesOffset(Record& r, Vector<Value>& values, int offset){
-    if( offset < 0 || offset + columns_.size() > values.size()) {
-        assert(0 && "Can't translate this record");
-        return 1;
-    }
-    for(int i = 0; i < columns_.size(); ++i){
-        // check the bitmap if this value is null.
-        char * bitmap_ptr = r.getFixedPtr(size_)+(i/8);  
-        int is_null = *bitmap_ptr & (1 << (i%8));
-        if(is_null) {
-            values[offset+i] = Value(NULL_TYPE);
-            continue;
-        }
-        Value* val = &values[offset+i];
-        //val->type_ = columns_[i].getType();
-        uint16_t sz = 0;
-        char* content = getValue(columns_[i].getName(), r, &sz);
-        if(!content)
-            return 1;
-        *val = Value(content, columns_[i].getType(), sz);
-        //val->value_from_size(val->size_);
-        //memcpy(val->get_ptr(), content, val->size_);
-    }
-    return 0;
 }
 
 int TableSchema::translateToTuple(Record& r, Tuple& tuple, RecordID& rid){
@@ -150,7 +89,7 @@ int TableSchema::translateToTuple(Record& r, Tuple& tuple, RecordID& rid){
         }
         //val->type_ = columns_[i].getType();
         uint16_t sz = 0;
-        char* content = getValue(columns_[i].getName(), r, &sz);
+        char* content = getValue(i, r, &sz);
         if(!content)
             return 1;
         tuple.put_val_at(i, Value(content, columns_[i].getType(), sz));
@@ -249,7 +188,7 @@ int TableSchema::remove(RecordID& rid) {
     for(int i = 0; i < columns_.size(); ++i){
         if(columns_[i].isVarLength()){
             u16 sz = 0;
-            char* content = getValue(columns_[i].getName(), cur_r, &sz);
+            char* content = getValue(i, cur_r, &sz);
             // it is in fact an overflow page keep fetching other overflow pages to delete them.
             if(sz == MAX_U16) {
                 PageNum cur_pnum = *(PageNum*)content;

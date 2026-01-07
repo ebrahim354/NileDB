@@ -110,7 +110,7 @@ int  TableIterator::getCurTupleCpy(Arena& arena, Tuple* out) {
             continue;
         }
         uint16_t sz = 0;
-        char* content = schema_->getValue(col.getName(), cur_r, &sz);
+        char* content = schema_->getValue(i, cur_r, &sz);
         if(!content)
             return 1;
         // this means it's an overflow text.

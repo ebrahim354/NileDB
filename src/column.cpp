@@ -30,8 +30,8 @@ Column::Column(Arena* arena, String8 name, Type type, u8 col_offset, ConstraintT
     type_(type), 
     col_offset_(col_offset),
     constraints_(constraints),
-    size_(getSizeFromType(type)){
-    }
+    size_(getSizeFromType(type))
+{}
 
 Column::Column(String8 name, Type type, u8 col_offset, ConstraintType constraints): 
     name_(name), 

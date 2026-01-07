@@ -37,6 +37,7 @@ class ExecutionEngine {
             CreateTableStatementData* create_table = reinterpret_cast<CreateTableStatementData*>(ctx.queries_call_stack_[0]);
             String8 table_name = create_table->table_name_;
             Vector<FieldDef> fields = create_table->field_defs_;
+
             std::deque<String8> col_names;
             std::deque<Type> col_types;
             std::deque<ConstraintType> col_constraints;

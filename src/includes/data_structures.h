@@ -18,6 +18,10 @@ struct String8 {
         if(size_ != other.size_) return false;
         return std::memcmp(str_, other.str_, size_) == 0;
     }
+    const bool operator!=(const String8& other) const {
+        if(size_ != other.size_) return true;
+        return (std::memcmp(str_, other.str_, size_) != 0);
+    }
 
     const bool operator<(const String8& other) const {
         u64 min_sz = size_;
@@ -146,7 +150,7 @@ String8 i64_to_str(Arena* arena, i64 t){
     u8* ptr = (u8*)arena->alloc(idx);
     u64 size = idx;
     while(idx > 0) {
-        ptr[size-idx] = temp_str[idx];
+        ptr[size-idx] = temp_str[idx-1];
         idx--;
     }
     return {.str_ = ptr, .size_ = size};

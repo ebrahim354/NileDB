@@ -8,12 +8,12 @@
 #include <string.h>
 
 
-
-bool cmp(std::vector<std::string>& lhs, std::vector<std::string>& rhs){
+/*
+bool cmp(Vector<String>& lhs, Vector<String>& rhs){
     if(lhs[0] < rhs[0]) return true;
     if(lhs[0] == rhs[0]) return lhs[1] < rhs[1];
     return false;
-}
+}*/
 
 
 #define DEFAULT_HASH_THRESHOLD 8
@@ -439,23 +439,21 @@ int test_file(const char* file_name){
       */
       if( enableTrace ) printf("%s;\n", zScript);
       std::string sttmnt = "";
+      sttmnt.reserve(4096);
       int idx = 0;
       while(zScript[idx] != 0){
           sttmnt += zScript[idx++];
       }
-      // what is the diff between a statement and a query ? TODO
-      //QueryResult result = QueryResult(); 
-      //rc = !ndb->SQL(sttmnt, &result);
       Executor* result_exec = nullptr; 
       QueryCTX query_ctx;
-      query_ctx.init(sttmnt.size());
-      rc = !ndb->SQL(query_ctx, sttmnt, &result_exec);
-      std::vector<std::vector<std::string>> result;
+      query_ctx.init(sttmnt.c_str(), sttmnt.size());
+      rc = !ndb->SQL(query_ctx, &result_exec);
+      Vector<Vector<String>> result;
       while(result_exec && !result_exec->error_status_ && !result_exec->finished_){
           Tuple res = result_exec->next();
           if(res.size() == 0 || result_exec->error_status_) break;
           size_t sz = res.size();
-          std::vector<std::string> cur_tuple;
+          Vector<String> cur_tuple;
           cur_tuple.resize(sz);
           for(int i = 0; i < sz; ++i) {
               cur_tuple[i] = res.get_val_at(i).toString();
@@ -465,6 +463,7 @@ int test_file(const char* file_name){
       }
       if(result_exec)
         rc = result_exec->error_status_;
+      ndb->flush();
       query_ctx.clean();
 
       int tmp = 1;
@@ -550,6 +549,7 @@ int test_file(const char* file_name){
       //rc = pEngine->xQuery(pConn, zScript, sScript.azToken[1],
        //                    &azResult, &nResult);
       std::string sttmnt = "";
+      sttmnt.reserve(4096);
       int idx = 0;
       while(zScript[idx] != 0){
           sttmnt += zScript[idx++];
@@ -559,14 +559,14 @@ int test_file(const char* file_name){
       //std::sort(result.begin(), result.end(), &cmp);
       Executor* result_exec = nullptr; 
       QueryCTX query_ctx;
-      query_ctx.init(sttmnt.size());
-      rc = !ndb->SQL(query_ctx, sttmnt, &result_exec);
-      std::vector<std::vector<std::string>> result;
+      query_ctx.init(sttmnt.c_str(), sttmnt.size());
+      rc = !ndb->SQL(query_ctx, &result_exec);
+      Vector<Vector<String>> result;
       while(result_exec && !result_exec->error_status_ && !result_exec->finished_){
           Tuple res = result_exec->next();
           if(res.size() == 0 || result_exec->error_status_) break;
           size_t sz = res.size();
-          std::vector<std::string> cur_tuple;
+          Vector<String> cur_tuple;
           cur_tuple.resize(sz);
           for(int i = 0; i < sz; ++i) {
               cur_tuple[i] = res.get_val_at(i).toString();
@@ -576,6 +576,7 @@ int test_file(const char* file_name){
       }
       if(result_exec)
         rc = result_exec->error_status_;
+      ndb->flush();
       query_ctx.clean();
 
       int tmp = 1;
@@ -750,7 +751,7 @@ int test_file(const char* file_name){
   /* Shutdown the database connection.
   */
   //rc = pEngine->xDisconnect(pConn);
-  // delete ndb;
+   delete ndb;
   /* Report the number of errors and quit.
   */
   if( verifyMode || nErr || nSkipped){
@@ -770,7 +771,7 @@ int test_directory(const char* dir_name){
     struct dirent *ep;
 
     if(!dp) {
-        std::cout << "TESTING the following file: " + (std::string) dir_name << "\n";
+        std::cout << "TESTING the following file: " + (String) dir_name << "\n";
         int err = test_file(dir_name);
         // TODO: NOT SECURE DON'T USE THIS IN PRODUCTION.
         if(!err)
@@ -779,9 +780,9 @@ int test_directory(const char* dir_name){
     }
     int err_status = 0;
     while((ep = readdir(dp)) != NULL){
-        if((std::string)ep->d_name == "." || (std::string)ep->d_name == "..") continue;
-        std::string tmp = (std::string) dir_name + "/";
-        tmp += (std::string) ep->d_name;
+        if((String)ep->d_name == "." || (String)ep->d_name == "..") continue;
+        String tmp = (String) dir_name + "/";
+        tmp += (String) ep->d_name;
 
         int err_status = test_directory(tmp.c_str());
         if(err_status) break;

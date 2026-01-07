@@ -186,6 +186,9 @@ TableSchema* Catalog::create_table(QueryCTX* ctx, String8 table_name, Vector<Col
     if(deep_copy) {
         table_name = str_copy(&arena_, table_name);
         query = str_copy(&arena_, ctx->query_);
+        for(int i = 0; i < columns.size(); ++i){
+            columns[i].setName(str_copy(&arena_, columns[i].getName()));
+        }
     }
 
     TableSchema* schema = New(TableSchema, arena_, table_name, table, columns);
@@ -526,7 +529,6 @@ int Catalog::delete_table(QueryCTX* ctx, String8 table_name) {
         indexes_of_table_.erase(table_name);
     }
 
-    //TableIterator it_meta = meta_table_schema_->getTable()->begin();
     TableIterator it_meta = meta_table_schema_->begin();
     std::set<u64> halloween_preventer;
     it_meta.init();
@@ -534,10 +536,6 @@ int Catalog::delete_table(QueryCTX* ctx, String8 table_name) {
         if(halloween_preventer.count(it_meta.getCurRecordID().get_hash())) continue;
         ArenaTemp tmp = ctx->arena_.start_temp_arena();
 
-        //Record r = it_meta.getCurRecordCpy(&ctx->arena_);
-        //assert(!r.isInvalidRecord());
-        //Vector<Value> values;
-        //err = meta_table_schema_->translateToValues(r, values);
         Tuple t;
         int err = it_meta.getCurTupleCpy(ctx->arena_, &t);
         assert(err == 0 && "Could not traverse the meta data table.");
