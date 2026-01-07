@@ -1,14 +1,7 @@
 #ifndef LRU_K_REPLACER_H
 #define LRU_K_REPLACER_H
 
-#include <array>
-#include <cstdint>
-#include <iostream>
-#include <map>
-#include <mutex> 
-#include <unordered_map>
-#include <utility>
-#include <assert.h>
+
 
 #define EVICTABLE 0
 #define NON_EVICTABLE 1

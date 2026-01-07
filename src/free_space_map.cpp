@@ -2,8 +2,6 @@
 #include "cache_manager.cpp"
 #include "free_space_map.h"
 #include "page.cpp"
-#include <math.h>
-#include <cstring>
 
 void FreeSpaceMap::init(CacheManager* cm, FileID fid) {
     cm_ = cm;

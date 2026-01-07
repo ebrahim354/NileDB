@@ -1,11 +1,12 @@
 #ifndef DATA_STRUCTURES_H
 #define DATA_STRUCTURES_H
 
+#include <cassert>
+#include <cstring>
+#include <memory_resource>
+
 #include "defines.h"
 #include "arena.h"
-#include <assert.h>
-#include <string.h>
-#include <memory_resource>
 
 // string types and helpers.
 
@@ -15,13 +16,13 @@ struct String8 {
 
     const bool operator==(const String8& other) const {
         if(size_ != other.size_) return false;
-        return memcmp(str_, other.str_, size_) == 0;
+        return std::memcmp(str_, other.str_, size_) == 0;
     }
 
     const bool operator<(const String8& other) const {
         u64 min_sz = size_;
         if(other.size_ < size_) min_sz = other.size_;
-        int res = strncmp((char*)str_, (char*)other.str_, min_sz);
+        int res = std::strncmp((char*)str_, (char*)other.str_, min_sz);
         return res < 0;
     }
 
@@ -36,15 +37,13 @@ struct String8 {
     }
 };
 
+#define str_lit(s) (String8) { .str_ = (u8*)(s), .size_ = sizeof(s) - 1 }
+#define str_lit_null(s) (String8) { .str_ = (u8*)(s), .size_ = sizeof(s) }
+
 const String8 NULL_STRING8 = {
     .str_ = 0,
     .size_ = 0,
 };
-
-
-std::pmr::string to_string(String8 str){
-    return std::pmr::string((char*)str.str_, str.size_);
-}
 
 String8 str_alloc(Arena* arena, u64 size) {
     String8 s = {};
@@ -57,7 +56,7 @@ String8 str_copy(Arena* arena, String8 other) {
     String8 s = {};
     s.str_ = (u8*)arena->alloc(other.size_);
     s.size_ = other.size_;
-    memcpy(s.str_, other.str_, other.size_);
+    std::memcpy(s.str_, other.str_, other.size_);
     return s;
 }
 
@@ -65,8 +64,8 @@ String8 str_cat(Arena* arena, String8 a, String8 b, bool null_terminated = false
     String8 res = {};
     res.size_ = a.size_ + b.size_ + null_terminated;
     res.str_ = (u8*)arena->alloc(res.size_);
-    memcpy(res.str_, a.str_, a.size_);
-    memcpy(res.str_ + a.size_, b.str_, b.size_);
+    std::memcpy(res.str_, a.str_, a.size_);
+    std::memcpy(res.str_ + a.size_, b.str_, b.size_);
     if(null_terminated) res.str_[res.size_ - 1] = 0;
     return res;
 }
@@ -81,9 +80,79 @@ bool str_ends_with(String8 a, String8 b, bool skip_null = true) {
     return (a == b);
 }
 
+bool str_starts_with(String8 a, String8 b) {
+    if(b.size_ > a.size_) return false;
+    a.size_ = b.size_;
+    return (a == b);
+}
 
-#define str_lit(s) (String8) { .str_ = (u8*)(s), .size_ = sizeof(s) - 1 }
-#define str_lit_null(s) (String8) { .str_ = (u8*)(s), .size_ = sizeof(s)     }
+std::vector<String8> str_split(String8 s, String8 needle)
+{
+    std::vector<String8> arr;
+    arr.reserve(4);
+    u8* last_ptr = s.str_;
+    while(s.size_){
+        if(str_starts_with(s, needle)) {
+            arr.push_back({ .str_ = last_ptr, .size_ = (u64)(s.str_ - last_ptr) });
+            s.str_  += needle.size_;
+            s.size_ -= needle.size_;
+            last_ptr = s.str_;
+            continue;
+        }
+        s.str_++;
+        s.size_--;
+    }
+    if(s.str_ - last_ptr > 0) arr.push_back({ .str_ = last_ptr, .size_ = (u64)(s.str_ - last_ptr) });
+    return arr;
+}
+
+
+// TODO: write a better implementation for these functions.
+i64 str_to_i64(String8 s) {
+    char str[64];
+    if (s.size_ > 63)
+    {
+        s.size_ = 63;
+    }
+    memcpy(str, s.str_, s.size_);
+    str[s.size_] = 0;
+    return strtoll(str, NULL, 10);
+}
+
+float str_to_f64(String8 s) {
+    char str[64];
+    if (s.size_ > 63)
+    {
+        s.size_ = 63;
+    }
+    memcpy(str, s.str_, s.size_);
+    str[s.size_] = 0;
+    return atof(str);
+}
+
+String8 i64_to_str(Arena* arena, i64 t){
+    if(t == 0) return str_lit("0");
+
+    char temp_str[64];
+    u8 idx = 0;
+    if(t < 0)  {
+        temp_str[idx++] = '-';
+        t *= -1;
+    }
+    while(t > 0){
+        temp_str[idx++] = ((t%10) + '0');
+        t /= 10;
+    }
+    u8* ptr = (u8*)arena->alloc(idx);
+    u64 size = idx;
+    while(idx > 0) {
+        ptr[size-idx] = temp_str[idx];
+        idx--;
+    }
+    return {.str_ = ptr, .size_ = size};
+}
+
+
 
 
 // source: 
@@ -134,7 +203,7 @@ struct String_eq {
     bool operator()(const String8& lhs, const String8& rhs) const
     {
         if(lhs.size_ != rhs.size_) return false;
-        return memcmp(lhs.str_, rhs.str_, lhs.size_) == 0;
+        return std::memcmp(lhs.str_, rhs.str_, lhs.size_) == 0;
     }
 };
 

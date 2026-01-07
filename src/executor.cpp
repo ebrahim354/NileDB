@@ -262,6 +262,7 @@ void HashJoinExecutor::init() {
         String tmp_k = left_output.build_hash_key(left_child_fields_);
         String8 key = str_alloc(&ctx_->temp_arena_, tmp_k.size());
         memcpy(key.str_, tmp_k.c_str(), tmp_k.size());
+
         if(hashed_left_child_.count(key)) 
             hashed_left_child_[key].push_back(left_output);
         else {

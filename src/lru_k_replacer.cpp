@@ -7,8 +7,8 @@
 #include <mutex> 
 #include <unordered_map>
 #include <utility>
-#include <assert.h>
-#include <lru_k_replacer.h>
+#include <cassert>
+#include "lru_k_replacer.h"
 
 
 

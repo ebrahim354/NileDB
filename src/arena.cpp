@@ -2,7 +2,6 @@
 
 #include "defines.h"
 #include "arena.h"
-#include <sys/mman.h>
 
 // used resources: 
 // https://www.gingerbill.org/article/2019/02/01/memory-allocation-strategies-001

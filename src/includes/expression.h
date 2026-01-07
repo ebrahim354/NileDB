@@ -850,8 +850,7 @@ void accessed_fields(ASTNode* expression ,Vector<ASTNode*>& fields, bool only_on
                           }
         case FIELD:{
                        String8 field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
-                       String prefix = AGG_FUNC_IDENTIFIER_PREFIX; // skip aggregate functions.
-                       if(to_string(field).rfind(prefix, 0) == 0) return;
+                       if(str_starts_with(field, str_lit(AGG_FUNC_IDENTIFIER_PREFIX))) return;
                        fields.push_back(expression);
                        return;
                    }
@@ -906,8 +905,7 @@ Value evaluate_subquery(QueryCTX* ctx, const Tuple& cur_tuple, ASTNode* item) {
 
 
 Value evaluate_field(QueryCTX* ctx, const Tuple& tuple, ASTNode* item) {
-
-    String field = to_string(item->token_.val_);
+    String8 field = item->token_.val_;
     int idx = -1;
     int query_input_idx = ctx->query_inputs.size() - 1;
 
@@ -923,7 +921,7 @@ Value evaluate_field(QueryCTX* ctx, const Tuple& tuple, ASTNode* item) {
         int num_of_matches = 0;
         auto columns = cur_tuple->schema_->getColumns();
         for(size_t i = 0; i < columns.size(); ++i){
-            Vector<String> splittedStr = strSplit(to_string(columns[i].getName()), '.');
+            std::vector<String8> splittedStr = str_split(columns[i].getName(), str_lit("."));
             if(splittedStr.size() != 2) {
                 std::cout << "[ERROR] Invalid schema " << std::endl;
                 ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: make a better error_status_.
@@ -935,7 +933,7 @@ Value evaluate_field(QueryCTX* ctx, const Tuple& tuple, ASTNode* item) {
             }
         }
         if(num_of_matches > 1){
-            std::cout << "[ERROR] Ambiguous field name: " << field << std::endl;
+            std::cout << "[ERROR] Ambiguous field name: " << std::endl;
             ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: make a better error_status_.
             return Value();
         }
@@ -949,11 +947,10 @@ Value evaluate_field(QueryCTX* ctx, const Tuple& tuple, ASTNode* item) {
     }
 
     if(idx < 0 || idx >= cur_tuple->size()) {
-        String prefix = AGG_FUNC_IDENTIFIER_PREFIX;
-        if(field.rfind(prefix, 0) == 0)
+        if(str_starts_with(field, str_lit(AGG_FUNC_IDENTIFIER_PREFIX)))
             std::cout << "[ERROR] aggregate functions should not be used in here"<< std::endl;
         else 
-            std::cout << "[ERROR] Invalid field name " << field << std::endl;
+            std::cout << "[ERROR] Invalid field name " << std::endl;
         ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
         return Value();
     }
@@ -962,11 +959,12 @@ Value evaluate_field(QueryCTX* ctx, const Tuple& tuple, ASTNode* item) {
 
 Value evaluate_scoped_field(QueryCTX* ctx, const Tuple& cur, ASTNode* item) {
 
-    String field = to_string(item->token_.val_);
-    String table = to_string(reinterpret_cast<ScopedFieldNode*>(item)->table_->token_.val_);
-    String col = table;col += "."; col+= field;
-    String8 tmp_str = str_alloc(&ctx->arena_, col.size());
-    memcpy(tmp_str.str_, col.c_str(), tmp_str.size_);
+    String8 field = item->token_.val_;
+    String8 table = ((ScopedFieldNode*)item)->table_->token_.val_;
+
+    // TODO: this is stupid.
+    String8 col = str_cat(&ctx->arena_, table, str_lit("."));
+    col = str_cat(&ctx->arena_, col, field);
 
     int idx = -1;
     int query_input_idx = ctx->query_inputs.size() - 1;
@@ -976,7 +974,7 @@ Value evaluate_scoped_field(QueryCTX* ctx, const Tuple& cur, ASTNode* item) {
             cur_tuple = &ctx->query_inputs[query_input_idx--];
             continue;
         }
-        idx = cur_tuple->schema_->col_exist(tmp_str);
+        idx = cur_tuple->schema_->col_exist(col);
 
         if((idx < 0 || idx >= cur_tuple->size()) 
                 && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()){
@@ -987,7 +985,7 @@ Value evaluate_scoped_field(QueryCTX* ctx, const Tuple& cur, ASTNode* item) {
     }
 
     if(idx < 0 || idx >= cur_tuple->size()) {
-        std::cout << "[ERROR] Invalid scoped field name " << col << std::endl;
+        std::cout << "[ERROR] Invalid scoped field name " << std::endl;
         ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
         return Value();
     }

@@ -34,7 +34,7 @@ void CacheManager::show(bool hide_unpinned) {
     for (size_t i = 0; i < pool_size_; i++) {
         if(hide_unpinned && pages_[i].pin_count_ == 0) continue;
         std::cout << "page number: " << i << " " << *pages_[i].data_ << " pinCnt: " << pages_[i].pin_count_
-            << " isDirty: " << pages_[i].is_dirty_ << " page_id: " << to_string(fid_to_fname[pages_[i].page_id_.fid_])
+            << " isDirty: " << pages_[i].is_dirty_ << " page_id: " << pages_[i].page_id_.fid_
             << " " << pages_[i].page_id_.page_num_ << std::endl;
     }
 }
@@ -74,7 +74,7 @@ Page* CacheManager::newPage(FileID fid){
     int err = disk_manager_->allocateNewPage(fid, new_page->data_, &new_page->page_id_);
     if(err) {
         replacer_->SetEvictable(new_frame, true);
-        std::cout << "could not allocate a new page " << to_string(fid_to_fname[fid]) << std::endl;
+        std::cout << "could not allocate a new page " << fid << std::endl;
         return nullptr;
     }
     page_table_.insert({new_page->page_id_, new_frame});

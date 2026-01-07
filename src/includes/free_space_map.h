@@ -3,8 +3,7 @@
 
 #include "cache_manager.h"
 #include "page.h"
-#include <math.h>
-#include <cstring>
+#include <cmath>
 
 #define MAX_FRACTION 256
 

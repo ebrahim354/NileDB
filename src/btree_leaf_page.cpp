@@ -1,6 +1,4 @@
 #pragma once
-#include <vector>
-#include <math.h>
 
 #include "btree_page.cpp"
 #include "record.cpp"

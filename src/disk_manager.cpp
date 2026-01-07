@@ -3,9 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstdint>
-#include <string.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include "string.h"
 #include <thread>
 #include <unordered_map>
 #include <cassert>

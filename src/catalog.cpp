@@ -499,7 +499,6 @@ int Catalog::delete_index(QueryCTX* ctx, String8 index_name) {
             break;
         }
     }
-    if(!err) std::cout << "Dropped Index: " << to_string(index_name) << "\n";
     return err;
 }
 
@@ -566,8 +565,6 @@ int Catalog::delete_table(QueryCTX* ctx, String8 table_name) {
     tables_.erase(table_name);
     fid_to_fname.erase(table_fid);
     fid_to_fname.erase(fsm_fid);
-
-    if(!err) std::cout << "Dropped Table: " << to_string(table_name) << "\n";
     return err;
 }
 

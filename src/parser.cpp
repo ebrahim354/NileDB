@@ -734,12 +734,11 @@ ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
 
     if(!ctx.matchTokenType(TokenType::RP)) return nullptr;
     ++ctx;
-    String tmp = AGG_FUNC_IDENTIFIER_PREFIX;
-    tmp += intToStr(query->aggregates_.size());
-    String8 s = str_alloc(&ctx.arena_, tmp.size());
-    memcpy(s.str_, tmp.c_str(), s.size_);
+    String8 f = 
+        str_cat(&ctx.arena_, str_lit(AGG_FUNC_IDENTIFIER_PREFIX), i64_to_str(&ctx.arena_, query->aggregates_.size()));
+
     ASTNode* ret = nullptr;
-    ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FIELD, Token(TokenType::IDENTIFIER, s));
+    ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FIELD, Token(TokenType::IDENTIFIER, f));
     return ret;
 }
 

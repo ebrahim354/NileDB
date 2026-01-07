@@ -2,9 +2,6 @@
 #define BTREE_LEAF_PAGE_H
 
 
-#include <vector>
-#include <math.h>
-
 #include "btree_page.h"
 #include "record.h"
 

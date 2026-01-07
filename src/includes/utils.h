@@ -49,52 +49,12 @@ bool areDigits(String& nums, int* floating_sign = nullptr){
     return (are_digits && nums.size() > 0);
 }
 
-// TODO: write a better implementation for these functions.
-i64 str_to_i64(String8 s) {
-    char str[64];
-    if (s.size_ > 63)
-    {
-        s.size_ = 63;
-    }
-    memcpy(str, s.str_, s.size_);
-    str[s.size_] = 0;
-    return strtoll(str, NULL, 10);
-}
-
-float str_to_f64(String8 s) {
-    char str[64];
-    if (s.size_ > 63)
-    {
-        s.size_ = 63;
-    }
-    memcpy(str, s.str_, s.size_);
-    str[s.size_] = 0;
-    return atof(str);
-}
-
-long long str_to_ll(String& s) {
-    return strtoll(s.c_str(), NULL, 10);
-}
-
-float str_to_float(String& s) {
-    return strtof(s.c_str(), NULL);
-}
-double str_to_double(String& s) {
-    return strtod(s.c_str(), NULL);
-}
 
 String removeExt(String n, int s){
 	while(s--){
 		n.pop_back();
 	}	
 	return n;
-}
-
-int strToInt(String str){
-    std::istringstream iss(str.c_str());
-	int tmp;
-	iss >> tmp;
-	return tmp;
 }
 
 

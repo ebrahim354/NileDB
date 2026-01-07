@@ -1,6 +1,6 @@
 #include <iostream>
 #include <string>
-#include <time.h>
+#include <ctime>
 #include "NileDB.cpp"
 
 
