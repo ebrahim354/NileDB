@@ -196,25 +196,19 @@ class ExecutionEngine {
                         TableSchema* schema = catalog_->get_table_schema(op->table_name_);
                         String8 tname =  op->table_name_;
                         if(op->table_rename_.size_ != 0) tname = op->table_rename_;
-                        Vector<Column> columns = schema->getColumns();
-                        // create a new schema and rename columns to table.col_name
-                        for(int i = 0; i < columns.size(); i++){
-                            String8 col_name = str_alloc(&ctx.arena_, tname.size_ + 1 + columns[i].getName().size_);
-                            memcpy(col_name.str_, tname.str_, tname.size_);
-                            memcpy(col_name.str_ + tname.size_, ".", 1);
-                            memcpy(col_name.str_ + tname.size_+1, columns[i].getName().str_, columns[i].getName().size_);
+                        for(u32 i = 0; i < ctx.queries_call_stack_[op->query_idx_]->accessed_fields_.size(); ++i) {
+                            auto field = ctx.queries_call_stack_[op->query_idx_]->accessed_fields_[i];
 
-                            columns[i].setName(col_name);
+                            i32 idx = schema->col_exist(field->token_.val_);
+                            assert(idx > -1);
+                            field->offset_ = idx;
                         }
-
-                        TableSchema* new_output_schema = New(TableSchema, ctx.arena_,
-                                tname, schema->getTable(), columns, true);
                         Executor* scan = nullptr;
                         if(op->scan_type_ == SEQ_SCAN){
-                            scan = New(SeqScanExecutor, ctx.arena_, &ctx, op, new_output_schema);
+                            scan = New(SeqScanExecutor, ctx.arena_, &ctx, op, schema);
                         } else {
                             scan = New(IndexScanExecutor, ctx.arena_, &ctx, op,
-                                    new_output_schema, catalog_->get_index_header(op->index_name_));
+                                    schema, catalog_->get_index_header(op->index_name_));
                         }
                         return scan;
                     } break;

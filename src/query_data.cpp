@@ -18,7 +18,7 @@ JoinType token_type_to_join_type (TokenType t) {
 
 bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* catalog) {
     if(!query || !catalog) assert(0 && "invalid input");
-    Vector<ASTNode*> fields;
+    Vector<FieldNode*> fields;
     for(int i = 0; i < query->fields_.size(); ++i){
         accessed_fields(query->fields_[i], fields, true);
     }
@@ -31,8 +31,8 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
         accessed_fields(query->group_by_[i], fields, true);
     }
     for(int i = 0; i < fields.size(); ++i){
-        if(fields[i]->category_ == SCOPED_FIELD) {
-            String8 table = ((ScopedFieldNode*)fields[i])->table_->token_.val_;
+        if((fields[i])->table_ != nullptr) {
+            String8 table = (fields[i])->table_->token_.val_;
             String8 cur_field   = fields[i]->token_.val_;
             for(int k = 0; k < query->table_names_.size(); ++k){
                 if(table != query->table_names_[k] && k == query->table_names_.size() - 1)
@@ -67,7 +67,7 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
 
 QueryData::QueryData(Arena* arena, QueryType type, int parent_idx):
     type_(type), parent_idx_(parent_idx), 
-    tables_(arena), table_names_(arena), joined_tables_(arena)
+    tables_(arena), table_names_(arena), joined_tables_(arena), accessed_fields_(arena)
 {}
 
 SelectStatementData::SelectStatementData (Arena* arena, int parent_idx):

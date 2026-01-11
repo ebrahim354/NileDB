@@ -430,9 +430,16 @@ Value evaluate_expression(
                       {
                           return Value(NULL_TYPE);
                       }
+        case FIELD_EXPR: 
+                      {
+                          FieldNode* field = ((FieldNode*)expression);
+                          assert(field->offset_ < cur_tuple.size());
+                          assert(field->offset_ >= 0);
+                          return cur_tuple.get_val_at(field->offset_);
+                      }
         default:
                       {
-                          return evaluate(ctx, cur_tuple, expression);
+                          assert(0);
                       }
     }
 }
@@ -638,14 +645,16 @@ void accessed_tables(ASTNode* expression ,Vector<String8>& tables, Catalog* cata
                           accessed_tables(cast->exp_, tables, catalog);
                           return;
                       } 
-        case SCOPED_FIELD:{
-                              String8 table = reinterpret_cast<ScopedFieldNode*>(expression)->table_->token_.val_;
-                              tables.push_back(table);
-                              return;
-                          }
-        case FIELD:{
-                       String8 field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
-                       Vector<String8> valid_tables = catalog->get_tables_by_field((field));
+        case FIELD_EXPR:{
+                       FieldNode* field = (FieldNode*)expression;
+                       // if the field explicitly has the table e.g: foo.bar
+                       if(field->table_ != nullptr){
+                           tables.push_back(field->table_->token_.val_);
+                           return;
+                       }
+                       // if the field does not explicitly have the table e.g: bar
+                       String8 field_name = field->token_.val_;
+                       Vector<String8> valid_tables = catalog->get_tables_by_field((field_name));
                        for(int i = 0; i < valid_tables.size(); ++i){
                            int n = tables.size();
                            bool exists = false;
@@ -670,7 +679,7 @@ void accessed_tables(ASTNode* expression ,Vector<String8>& tables, Catalog* cata
     }
 }
 
-void accessed_fields(ASTNode* expression ,Vector<ASTNode*>& fields, bool only_one = true) {
+void accessed_fields(ASTNode* expression ,Vector<FieldNode*>& fields, bool only_one = true) {
     if(!expression) return;
     switch(expression->category_){
         case EXPRESSION  : 
@@ -844,14 +853,9 @@ void accessed_fields(ASTNode* expression ,Vector<ASTNode*>& fields, bool only_on
                           accessed_fields(cast->exp_, fields);
                           return;
                       } 
-        case SCOPED_FIELD:{
-                              fields.push_back(expression);
-                              return;
-                          }
-        case FIELD:{
-                       String8 field = reinterpret_cast<ASTNode*>(expression)->token_.val_;
-                       if(str_starts_with(field, str_lit(AGG_FUNC_IDENTIFIER_PREFIX))) return;
-                       fields.push_back(expression);
+        case FIELD_EXPR:
+                    {
+                       fields.push_back((FieldNode*)expression);
                        return;
                    }
         case AGG_FUNC:{
@@ -863,8 +867,11 @@ void accessed_fields(ASTNode* expression ,Vector<ASTNode*>& fields, bool only_on
         case FLOAT_CONSTANT: 
         case INTEGER_CONSTANT: 
         case NULL_CONSTANT: 
+        case SUB_QUERY: 
+                      return;
         default:
-                   return;
+                      assert(0);
+                      return;
     }
 }
 
@@ -901,105 +908,6 @@ Value evaluate_subquery(QueryCTX* ctx, const Tuple& cur_tuple, ASTNode* item) {
     }
     ctx->query_inputs.pop_back();
     return tmp.get_val_at(0);
-}
-
-
-Value evaluate_field(QueryCTX* ctx, const Tuple& tuple, ASTNode* item) {
-    String8 field = item->token_.val_;
-    int idx = -1;
-    int query_input_idx = ctx->query_inputs.size() - 1;
-
-    const Tuple* cur_tuple = &tuple;
-
-    while(true){
-        if(cur_tuple->schema_ == nullptr && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()) {
-            cur_tuple = &ctx->query_inputs[query_input_idx--];
-            continue;
-        }
-        if(!cur_tuple->schema_) break;
-
-        int num_of_matches = 0;
-        auto columns = cur_tuple->schema_->getColumns();
-        for(size_t i = 0; i < columns.size(); ++i){
-            std::vector<String8> splittedStr = str_split(columns[i].getName(), str_lit("."));
-            if(splittedStr.size() != 2) {
-                std::cout << "[ERROR] Invalid schema " << std::endl;
-                ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: make a better error_status_.
-                return Value();
-            }
-            if(field == splittedStr[1]){
-                num_of_matches++;
-                idx = i;
-            }
-        }
-        if(num_of_matches > 1){
-            std::cout << "[ERROR] Ambiguous field name: " << std::endl;
-            ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: make a better error_status_.
-            return Value();
-        }
-
-        if((idx < 0 || idx >= cur_tuple->size()) 
-                && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()){
-            cur_tuple = &ctx->query_inputs[query_input_idx--];
-            continue;
-        }
-        break;
-    }
-
-    if(idx < 0 || idx >= cur_tuple->size()) {
-        if(str_starts_with(field, str_lit(AGG_FUNC_IDENTIFIER_PREFIX)))
-            std::cout << "[ERROR] aggregate functions should not be used in here"<< std::endl;
-        else 
-            std::cout << "[ERROR] Invalid field name " << std::endl;
-        ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
-        return Value();
-    }
-    return cur_tuple->get_val_at(idx);
-}
-
-Value evaluate_scoped_field(QueryCTX* ctx, const Tuple& cur, ASTNode* item) {
-
-    String8 field = item->token_.val_;
-    String8 table = ((ScopedFieldNode*)item)->table_->token_.val_;
-
-    // TODO: this is stupid.
-    String8 col = str_cat(&ctx->arena_, table, str_lit("."));
-    col = str_cat(&ctx->arena_, col, field);
-
-    int idx = -1;
-    int query_input_idx = ctx->query_inputs.size() - 1;
-    const Tuple* cur_tuple = &cur;
-    while(true){
-        if(cur_tuple->schema_ == nullptr && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()) {
-            cur_tuple = &ctx->query_inputs[query_input_idx--];
-            continue;
-        }
-        idx = cur_tuple->schema_->col_exist(col);
-
-        if((idx < 0 || idx >= cur_tuple->size()) 
-                && query_input_idx >= 0 && query_input_idx < ctx->query_inputs.size()){
-            cur_tuple = &ctx->query_inputs[query_input_idx--];
-            continue;
-        }
-        break;
-    }
-
-    if(idx < 0 || idx >= cur_tuple->size()) {
-        std::cout << "[ERROR] Invalid scoped field name " << std::endl;
-        ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: better error handling.
-        return Value();
-    }
-    return cur_tuple->get_val_at(idx);
-}
-
-Value evaluate(QueryCTX* ctx, const Tuple& cur_tuple, ASTNode* item){
-    if(item->category_ == FIELD) return evaluate_field(ctx, cur_tuple, item);
-    if(item->category_ == SCOPED_FIELD) return evaluate_scoped_field(ctx, cur_tuple, item);
-    if(item->category_ == SUB_QUERY) return evaluate_scoped_field(ctx, cur_tuple, item);
-    std::cout << "?????[ERROR] Item type is not supported!" << std::endl;
-    // error_status_ = 1;
-    ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: put a better error_status_.
-    return Value();
 }
 
 #endif // EXPRESSION_H

@@ -31,6 +31,8 @@ struct QueryData {
     int idx_ = -1;          // every query must have an id starting from 0 even the top level query.
     int parent_idx_ = -1;   // -1 means this query is the top level query.
 
+    Vector<FieldNode*> accessed_fields_ {};
+
     Vector<String8> tables_      = {};
     Vector<String8> table_names_ = {};
     Vector<JoinedTablesData> joined_tables_ = {};

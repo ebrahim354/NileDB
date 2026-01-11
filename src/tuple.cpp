@@ -4,26 +4,25 @@
 Tuple::Tuple(){}
 Tuple::Tuple(Arena* arena): arena_(arena)
 {}
-void Tuple::setNewSchema(TableSchema* schema, Value val) {
-    assert(schema && arena_);
-    schema_ = schema;
-    u32 size = schema_->numOfCols();
-    values_ = (Value*) arena_->alloc(size * sizeof(Value));
-    for(int i = 0; i < size; ++i)
+void Tuple::resize(u32 new_size, Value val) {
+    assert(arena_);
+    width_ = new_size;
+    values_ = (Value*) arena_->alloc(width_ * sizeof(Value));
+    for(int i = 0; i < width_; ++i)
         values_[i] = val;
 }    
 
-int Tuple::size() const {
-    if(!schema_) return 0;
-    return schema_->numOfCols();
+u32 Tuple::size() const {
+    return width_;
 }
+
 // the usual copy constructor makes a shallow copy that only lasts for the lifetime of a pull,
 // a pull is the time between two next() calls of the same executor.
 // this function makes a deep copy that can last for a custom lifetime based on the passed allocator.
 Tuple Tuple::duplicate(Arena* arena) const {
-    if(!schema_) return *this;
+    if(width_ == 0) return *this;
     auto t = Tuple(arena);
-    t.setNewSchema(schema_);
+    t.resize(width_);
     for(int i = 0; i < size(); ++i)
         t.values_[i] = values_[i].get_copy(arena);
     return t;

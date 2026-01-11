@@ -777,7 +777,7 @@ bool Value::getBoolVal() const{
 }
 int Value::getIntVal() const {
     if(!content_) return 0;
-    if(type_ == INT || type_ == BIGINT) return cast_as(int, content_);
+    if(type_ == INT || type_ == BIGINT || type_ == EXECUTOR_ID) return cast_as(int, content_);
     else if(type_ == FLOAT){
         return getFloatVal();
     } else if(type_ == DOUBLE){

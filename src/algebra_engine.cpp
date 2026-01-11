@@ -11,6 +11,7 @@ class AlgebraEngine {
         {}
         ~AlgebraEngine(){}
 
+
         Vector<int> find_filters_that_access_table(String8 table, 
                 Vector<std::pair<Vector<String8>, ExpressionNode*>> tables_per_filter) {
             Vector<int> ans;
@@ -75,9 +76,83 @@ class AlgebraEngine {
             }
         }
 
+
+        // return false on error.
+        bool assign_tables_to_fields(QueryCTX& ctx, QueryData* data) {
+            if(!data) return false;
+            Vector<FieldNode*> fields;
+            accessed_fields(data->where_, fields);
+            for(u32 i = 0 ; i < data->joined_tables_.size(); ++i)
+                accessed_fields(data->joined_tables_[i].condition_, fields);
+            switch(data->type_){
+                case SELECT_DATA:
+                    {
+                        auto select_data = reinterpret_cast<SelectStatementData*>(data);
+                        accessed_fields(select_data->having_, fields);
+                        for(u32 i = 0; i < select_data->fields_.size(); ++i)
+                            accessed_fields(select_data->fields_[i], fields);
+                        for(u32 i = 0; i < select_data->aggregates_.size(); ++i)
+                            accessed_fields(select_data->aggregates_[i], fields);
+                        for(u32 i = 0; i < select_data->group_by_.size(); ++i)
+                            accessed_fields(select_data->group_by_[i], fields);
+                    } break;
+                case INSERT_DATA:
+                    {
+                        auto insert_data = reinterpret_cast<InsertStatementData*>(data);
+                        for(u32 i = 0; i < insert_data->values_.size(); ++i)
+                            accessed_fields(insert_data->values_[i], fields);
+                    } break;
+                case DELETE_DATA:
+                    {
+                        auto delete_data = reinterpret_cast<DeleteStatementData*>(data);
+                    } break;
+                case UPDATE_DATA:
+                    {
+                        auto update_data = reinterpret_cast<UpdateStatementData*>(data);
+                        for(u32 i = 0; i < update_data->values_.size(); ++i)
+                            accessed_fields(update_data->values_[i], fields);
+                    } break;
+                default:
+                    assert(0);
+            }
+
+            i32 query_idx = data->idx_;
+            while(query_idx > -1) {
+                QueryData* cur_data = ctx.queries_call_stack_[query_idx];
+                for(u32 i = 0; i < fields.size(); ++i) {
+                    // TODO: check if table exists for scoped fields.
+                    if(fields[i]->table_) continue;
+                    Vector<String8> tables = catalog_->get_tables_by_field(fields[i]->token_.val_);
+                    for(u32 j = 0; j < tables.size(); ++j){
+                        for(u32 k = 0; k < cur_data->tables_.size(); ++k){
+                            if(tables[j] == cur_data->tables_[k]) {
+                                // found the same table twice for the same field!
+                                if(fields[i]->table_){
+                                    assert(0 && "Table is ambiguas!");
+                                }
+                                ASTNode* tab = nullptr;
+                                Token tab_tok = Token(TokenType::TABLE, cur_data->table_names_[k]);
+                                ALLOCATE_INIT(ctx.arena_, tab, ASTNode, TABLE, tab_tok);
+                                fields[i]->table_ = tab;
+                            }
+                        }
+                    }
+                }
+                // check parent queries.
+                query_idx = cur_data->parent_idx_;
+            }
+            // check if some fields did not find their table.
+            data->accessed_fields_.reserve(fields.size());
+            for(u32 i = 0; i < fields.size(); ++i) {
+                if(!fields[i]->table_) assert(0 && "Couldn't find table for this field");
+                data->accessed_fields_.push_back(fields[i]);
+            }
+            return true;
+        }
         
         void createAlgebraExpression(QueryCTX& ctx){
             for(auto data : ctx.queries_call_stack_){
+                if(!assign_tables_to_fields(ctx, data)) assert(0);
                 switch(data->type_){
                     case SELECT_DATA:
                         {
@@ -369,7 +444,7 @@ class AlgebraEngine {
                     case EQUALITY:{
                                       ASTNode* left  = ((EqualityNode*)ex)->cur_;
                                       ASTNode* right = ((EqualityNode*)ex)->next_;
-                                      Vector<ASTNode*> left_fields, right_fields;
+                                      Vector<FieldNode*> left_fields, right_fields;
                                       accessed_fields(left , left_fields);
                                       accessed_fields(right, right_fields);
                                       if(left_fields.size() == 1 && right_fields.size() == 1) return true;
@@ -409,15 +484,17 @@ class AlgebraEngine {
                                             left  = ((ComparisonNode*)ex)->cur_;
                                             right = ((ComparisonNode*)ex)->next_;
                                         }
-                                        if(left->category_ != FIELD && left->category_ != SCOPED_FIELD
-                                                && right->category_ != FIELD && right->category_ != SCOPED_FIELD)
+                                        if(left->category_ != FIELD_EXPR 
+                                                && right->category_ != FIELD_EXPR)
                                             return -1;
-                                        Vector<ASTNode*> key;
+                                        Vector<FieldNode*> key;
                                         accessed_fields(left , key);
                                         accessed_fields(right, key);
                                         if(key.size() != 1) return -1;
                                         int key_idx = table->col_exist(key[0]->token_.val_);
                                         assert(key_idx != -1);
+                                        if(key[0]->table_) 
+                                            assert(table->getTableName() == key[0]->table_->token_.val_);
 
                                         for(int i = 0; i < index.fields_numbers_.size(); ++i) {
                                             if(index.fields_numbers_[i].idx_ == key_idx) {

@@ -58,11 +58,9 @@ struct FieldDef {
 };
 
 enum CategoryType {
-    FIELD,       
+    FIELD_EXPR,       
     CASE_EXPRESSION,
     NULLIF_EXPRESSION,
-                // scoped field is a field of the format: tableName + "." + fieldName
-    SCOPED_FIELD,
     STRING_CONSTANT,
     INTEGER_CONSTANT,
     FLOAT_CONSTANT,
@@ -162,15 +160,15 @@ struct NullifExpressionNode : ASTNode {
 };
 
 
-// scoped field is a field of the format: tableName + "." + fieldName
-struct ScopedFieldNode : ASTNode {
-    void init (Token f, ASTNode* table);
-
+struct FieldNode : ASTNode {
+    void init(Token f, ASTNode* table);
     ASTNode* table_ = nullptr;
+    // the offset of the field within the output tuple. 
+    i32 offset_ = -1;
 };
 
 struct SubQueryNode : ASTNode {
-    void init (int idx, int parent_idx);
+    void init(int idx, int parent_idx);
 
     int idx_ = -1;
     int parent_idx_ = -1;

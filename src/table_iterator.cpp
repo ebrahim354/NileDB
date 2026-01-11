@@ -97,7 +97,7 @@ int  TableIterator::getCurTupleCpy(Arena& arena, Tuple* out) {
     Record cur_r = getCurRecordCpy(&arena);
     RecordID cur_rid = getCurRecordID();
     *out = Tuple(&arena);
-    out->setNewSchema(schema_);
+    out->resize(schema_->numOfCols());
     //*out = t;
     // translate the tuple.
     for(int i = 0; i < out->size(); ++i){

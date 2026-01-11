@@ -519,14 +519,14 @@ ASTNode* Parser::field(QueryCTX& ctx){
     ASTNode* ret = nullptr;
     if(ctx.matchTokenType(TokenType::IDENTIFIER)) {
         auto token = ctx.getCurrentToken(); ++ctx;
+        ALLOCATE_INIT(ctx.arena_, ret, FieldNode, token, nullptr);
         Vector<String8> possible_tables = catalog_->get_tables_by_field(token.val_);
+
         if(possible_tables.size() == 1) {
             ASTNode* t = nullptr;
             ALLOCATE_INIT(ctx.arena_, t, ASTNode, TABLE, Token(TokenType::IDENTIFIER, possible_tables[0]));
-            ALLOCATE_INIT(ctx.arena_, ret, ScopedFieldNode, token, t);
-            return ret;
+            ((FieldNode*)ret)->table_ = t;
         }
-        ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FIELD, token);
         return ret;
     }
     return ret;
@@ -540,7 +540,7 @@ ASTNode* Parser::scoped_field(QueryCTX& ctx){
         ++ctx;
         auto field_name = ctx.getCurrentToken();++ctx;
         ASTNode* ret = nullptr;
-        ALLOCATE_INIT(ctx.arena_, ret, ScopedFieldNode, field_name, t);
+        ALLOCATE_INIT(ctx.arena_, ret, FieldNode, field_name, t);
         return ret;
     }
     return nullptr;
@@ -736,9 +736,10 @@ ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
     ++ctx;
     String8 f = 
         str_cat(&ctx.arena_, str_lit(AGG_FUNC_IDENTIFIER_PREFIX), i64_to_str(&ctx.arena_, query->aggregates_.size()));
+    assert(0 && "TODO AGG FUNCS\n");
 
     ASTNode* ret = nullptr;
-    ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FIELD, Token(TokenType::IDENTIFIER, f));
+    //ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FIELD, Token(TokenType::IDENTIFIER, f));
     return ret;
 }
 

@@ -195,7 +195,7 @@ TableSchema* Catalog::create_table(QueryCTX* ctx, String8 table_name, Vector<Col
     tables_.insert({table_name, schema});
     // persist the table schema in the meta data table.
     Tuple t(&ctx->arena_);
-    t.setNewSchema(meta_table_schema_);
+    t.resize(meta_table_schema_->numOfCols());
     t.put_val_at(0, Value(table_name));
     //t.put_val_at(1, Value(&ctx->arena_, ctx->query_));
     t.put_val_at(1, Value(query));
@@ -236,6 +236,10 @@ bool Catalog::create_index(QueryCTX* ctx, String8 table_name, String8 index_name
 
     if(deep_copy){
         index_name = str_copy(&arena_, index_name);
+        table_name = str_copy(&arena_, table_name);
+        for(int i = 0 ; i < fields.size(); ++i){
+            fields[i].name_ = str_copy(&arena_, fields[i].name_);
+        }
     }
 
     IndexHeader header = IndexHeader(index, index_name, cols);
@@ -248,7 +252,7 @@ bool Catalog::create_index(QueryCTX* ctx, String8 table_name, String8 index_name
 
     // store index_meta_data.
     Tuple t(&ctx->arena_);
-    t.setNewSchema(index_meta_data);
+    t.resize(index_meta_data->numOfCols());
     t.put_val_at(0, Value(index_name));
     t.put_val_at(1, Value(table_name));
     t.put_val_at(2, Value(nfid));
@@ -262,7 +266,7 @@ bool Catalog::create_index(QueryCTX* ctx, String8 table_name, String8 index_name
     for(int i = 0; i < cols.size(); ++i){
         NumberedIndexField c = cols[i];
         Tuple t(&ctx->arena_);
-        t.setNewSchema(index_keys);
+        t.resize(index_keys->numOfCols());
         t.put_val_at(0, Value(index_name));
         t.put_val_at(1, Value(c.idx_));
         t.put_val_at(2, Value(i));

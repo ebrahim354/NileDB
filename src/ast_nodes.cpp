@@ -69,10 +69,11 @@ void NullifExpressionNode::init (ExpressionNode* lhs, ExpressionNode* rhs) {
     rhs_ = rhs;
 }
 
-void ScopedFieldNode::init(Token f, ASTNode* table) {
-    category_ = SCOPED_FIELD; 
+void FieldNode::init(Token f, ASTNode* table) {
+    category_ = FIELD_EXPR; 
     token_ = f;
     table_ = table;
+    offset_ = -1;
 }
 
 void SubQueryNode::init(int idx, int parent_idx) {
