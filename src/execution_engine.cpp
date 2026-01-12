@@ -198,6 +198,7 @@ class ExecutionEngine {
                         if(op->table_rename_.size_ != 0) tname = op->table_rename_;
                         for(u32 i = 0; i < ctx.queries_call_stack_[op->query_idx_]->accessed_fields_.size(); ++i) {
                             auto field = ctx.queries_call_stack_[op->query_idx_]->accessed_fields_[i];
+                            if(field->table_->token_.val_ != tname) continue;
 
                             i32 idx = schema->col_exist(field->token_.val_);
                             assert(idx > -1);

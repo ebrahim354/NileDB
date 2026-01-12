@@ -117,35 +117,56 @@ class AlgebraEngine {
             }
 
             i32 query_idx = data->idx_;
+            data->accessed_fields_.resize(fields.size(), nullptr);
             while(query_idx > -1) {
                 QueryData* cur_data = ctx.queries_call_stack_[query_idx];
                 for(u32 i = 0; i < fields.size(); ++i) {
-                    // TODO: check if table exists for scoped fields.
-                    if(fields[i]->table_) continue;
+                    // if this field is already covered by subqueries skip it.
+                    if(!fields[i]) continue; 
+                    bool is_scoped_field = (fields[i]->table_ != nullptr);
+                    bool already_matched = false;
+
                     Vector<String8> tables = catalog_->get_tables_by_field(fields[i]->token_.val_);
                     for(u32 j = 0; j < tables.size(); ++j){
                         for(u32 k = 0; k < cur_data->tables_.size(); ++k){
                             if(tables[j] == cur_data->tables_[k]) {
-                                // found the same table twice for the same field!
-                                if(fields[i]->table_){
-                                    assert(0 && "Table is ambiguas!");
+                                if(is_scoped_field) {
+                                    if(fields[i]->table_->token_.val_ != cur_data->table_names_[k]) continue;
+
+                                    // found the same table twice for the same field!
+                                    if(already_matched){
+                                        assert(0 && "Table is ambiguas!");
+                                    }
+
+                                    already_matched = true;
+                                } else {
+
+                                    // found the same table twice for the same field!
+                                    if(already_matched){
+                                        assert(0 && "Table is ambiguas!");
+                                    }
+                                    already_matched = true;
+
+                                    ASTNode* tab = nullptr;
+                                    Token tab_tok = Token(TokenType::TABLE, cur_data->table_names_[k]);
+                                    ALLOCATE_INIT(ctx.arena_, tab, ASTNode, TABLE, tab_tok);
+                                    fields[i]->table_ = tab;
                                 }
-                                ASTNode* tab = nullptr;
-                                Token tab_tok = Token(TokenType::TABLE, cur_data->table_names_[k]);
-                                ALLOCATE_INIT(ctx.arena_, tab, ASTNode, TABLE, tab_tok);
-                                fields[i]->table_ = tab;
                             }
                         }
+                    }
+
+                    if(already_matched) {
+                        data->accessed_fields_[i] = fields[i];
+                        fields[i] = nullptr;
                     }
                 }
                 // check parent queries.
                 query_idx = cur_data->parent_idx_;
             }
             // check if some fields did not find their table.
-            data->accessed_fields_.reserve(fields.size());
             for(u32 i = 0; i < fields.size(); ++i) {
-                if(!fields[i]->table_) assert(0 && "Couldn't find table for this field");
-                data->accessed_fields_.push_back(fields[i]);
+                if(fields[i]) assert(0 && "Couldn't find table for this field");
             }
             return true;
         }
