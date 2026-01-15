@@ -56,7 +56,7 @@ class ExecutionEngine {
             Vector<IndexField> primary_key_cols;
             uint8_t offset_ptr = 0;
             for(size_t i = 0; i < col_names.size(); ++i){
-                columns.push_back(Column(col_names[i], col_types[i], offset_ptr, col_constraints[i]));
+                columns.push_back(Column(col_names[i], col_types[i], offset_ptr, NULL_STRING8, col_constraints[i]));
                 bool is_primary_key = col_constraints[i]&CONSTRAINT_PRIMARY_KEY;
                 if(is_primary_key) {
                     primary_key_cols.push_back({col_names[i], false}); // primary key can only be asc.

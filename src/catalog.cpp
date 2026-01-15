@@ -61,9 +61,9 @@ void Catalog::init(CacheManager *cm) {
 
     Vector<Column> meta_data_columns;
     meta_data_columns.reserve(5);
-    meta_data_columns.emplace_back(&arena_, str_lit("table_name")      , VARCHAR, 0);
-    meta_data_columns.emplace_back(&arena_, str_lit("query")           , VARCHAR, 4); // query used to create the table.
-    meta_data_columns.emplace_back(&arena_, str_lit("fid")             , INT    , 8);
+    meta_data_columns.emplace_back(str_lit("table_name")      , VARCHAR, 0);
+    meta_data_columns.emplace_back(str_lit("query")           , VARCHAR, 4); // query used to create the table.
+    meta_data_columns.emplace_back(str_lit("fid")             , INT    , 8);
     meta_table_schema_ =  New(TableSchema, arena_, str_lit(META_DATA_TABLE), meta_data_table, meta_data_columns);
     tables_[str_lit(META_DATA_TABLE)] = meta_table_schema_;
 
@@ -101,7 +101,7 @@ void Catalog::init(CacheManager *cm) {
                 std::cout << "[ERROR] Invalid type\n";
                 assert(0);
             }
-            cols.emplace_back(&arena_, str_copy(&arena_, (*fields)[i].field_name_), type, col_offset, (*fields)[i].constraints_);
+            cols.emplace_back(str_copy(&arena_, (*fields)[i].field_name_), type, col_offset, table_name, (*fields)[i].constraints_);
             col_offset += getSizeFromType(type);
         }
 
@@ -137,10 +137,10 @@ void Catalog::init(CacheManager *cm) {
             "(index_name TEXT, table_name TEXT, fid INTEGER, is_unique BOOLEAN)");
         pctx.init(index_query);
         Vector<Column> index_meta_columns;
-        index_meta_columns.emplace_back(&arena_, str_lit("index_name")    , VARCHAR, 0 );
-        index_meta_columns.emplace_back(&arena_, str_lit("table_name")    , VARCHAR, 4 );
-        index_meta_columns.emplace_back(&arena_, str_lit("fid")           , INT    , 8 );
-        index_meta_columns.emplace_back(&arena_, str_lit("is_unique")     , BOOLEAN, 12);
+        index_meta_columns.emplace_back(str_lit("index_name")    , VARCHAR, 0 );
+        index_meta_columns.emplace_back(str_lit("table_name")    , VARCHAR, 4 );
+        index_meta_columns.emplace_back(str_lit("fid")           , INT    , 8 );
+        index_meta_columns.emplace_back(str_lit("is_unique")     , BOOLEAN, 12);
         TableSchema* ret = create_table(&pctx, str_lit(INDEX_META_TABLE), index_meta_columns, false); 
         assert(ret != nullptr);
 
@@ -153,10 +153,10 @@ void Catalog::init(CacheManager *cm) {
         pctx.query_ = index_keys_query;
 
         Vector<Column> index_keys_columns;
-        index_keys_columns.emplace_back(&arena_, str_lit("index_name")            , VARCHAR   , 0);
-        index_keys_columns.emplace_back(&arena_, str_lit("field_number_in_table") , INT       , 4);
-        index_keys_columns.emplace_back(&arena_, str_lit("field_number_in_index") , INT       , 8);
-        index_keys_columns.emplace_back(&arena_, str_lit("is_desc_order")         , BOOLEAN   , 12);
+        index_keys_columns.emplace_back(str_lit("index_name")            , VARCHAR   , 0);
+        index_keys_columns.emplace_back(str_lit("field_number_in_table") , INT       , 4);
+        index_keys_columns.emplace_back(str_lit("field_number_in_index") , INT       , 8);
+        index_keys_columns.emplace_back(str_lit("is_desc_order")         , BOOLEAN   , 12);
         ret = create_table(&pctx, str_lit(INDEX_KEYS_TABLE), index_keys_columns, false); 
         assert(ret != nullptr);
         pctx.clean();

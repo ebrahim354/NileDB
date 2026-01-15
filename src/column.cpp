@@ -25,18 +25,11 @@ Type tokenTypeToColType(TokenType t){
     }
 }
 
-Column::Column(Arena* arena, String8 name, Type type, u8 col_offset, ConstraintType constraints):
+Column::Column(String8 name, Type type, u8 col_offset, String8 scope_name, ConstraintType constraints): 
     name_(name), 
     type_(type), 
     col_offset_(col_offset),
-    constraints_(constraints),
-    size_(getSizeFromType(type))
-{}
-
-Column::Column(String8 name, Type type, u8 col_offset, ConstraintType constraints): 
-    name_(name), 
-    type_(type), 
-    col_offset_(col_offset),
+    scope_name_(scope_name),
     constraints_(constraints),
     size_(getSizeFromType(type))
 {}

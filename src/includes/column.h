@@ -42,13 +42,10 @@ u8 getSizeFromType(Type t);
 
 class Column {
     public:
-        Column(Arena* arena, String8 name, Type type, u8 col_offset, ConstraintType constraints = CONSTRAINT_NOTHING);
-        Column(String8 name, Type type, u8 col_offset, ConstraintType constraints = CONSTRAINT_NOTHING);
+        Column(String8 name, Type type, u8 col_offset, String8 scope_name = NULL_STRING8,
+                ConstraintType constraints = CONSTRAINT_NOTHING);
         ~Column();
 
-        // the reson for this is that we don't want anyone to change the column meta data after initializing it.
-        // if you want to modify the column you have to delete it and start a new one, this is better to avoid errors
-        // in the future, for example: when we start adding ALTER TABLE command.
         void                           setName(String8 name);
         String8                        getName();
         Type                           getType();
@@ -63,6 +60,7 @@ class Column {
 
     private:
         String8 name_;
+        String8 scope_name_;
         Type type_ = INVALID;
         uint16_t col_offset_ = 0;
         ConstraintType constraints_ = CONSTRAINT_NOTHING;
