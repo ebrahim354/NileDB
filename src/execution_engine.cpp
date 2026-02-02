@@ -1,6 +1,5 @@
 #pragma once
 #include "parser.cpp"
-#include "expression.h"
 #include "algebra_engine.cpp"
 #include "catalog.cpp"
 #include "executor.cpp"
@@ -144,7 +143,7 @@ class ExecutionEngine {
 
                 if(created_physical_plan->query_idx_ > 0 &&
                         created_physical_plan->query_idx_ < ctx.queries_call_stack_.size() &&
-                        !ctx.queries_call_stack_[created_physical_plan->query_idx_]->is_corelated_
+                        !ctx.queries_call_stack_[created_physical_plan->query_idx_]->corelated_
                   ){
                     SubQueryExecutor* sub_q = New(SubQueryExecutor, ctx.arena_, &ctx, created_physical_plan);
                     created_physical_plan = sub_q;
@@ -196,20 +195,15 @@ class ExecutionEngine {
                         TableSchema* schema = catalog_->get_table_schema(op->table_name_);
                         String8 tname =  op->table_name_;
                         if(op->table_rename_.size_ != 0) tname = op->table_rename_;
-                        for(u32 i = 0; i < ctx.queries_call_stack_[op->query_idx_]->accessed_fields_.size(); ++i) {
-                            auto field = ctx.queries_call_stack_[op->query_idx_]->accessed_fields_[i];
-                            if(field->table_->token_.val_ != tname) continue;
 
-                            i32 idx = schema->col_exist(field->token_.val_);
-                            assert(idx > -1);
-                            field->offset_ = idx;
-                        }
+                        TableSchema* new_output_schema = schema->duplicate(ctx.arena_, tname);
+
                         Executor* scan = nullptr;
                         if(op->scan_type_ == SEQ_SCAN){
-                            scan = New(SeqScanExecutor, ctx.arena_, &ctx, op, schema);
+                            scan = New(SeqScanExecutor, ctx.arena_, &ctx, op, new_output_schema);
                         } else {
                             scan = New(IndexScanExecutor, ctx.arena_, &ctx, op,
-                                    schema, catalog_->get_index_header(op->index_name_));
+                                    new_output_schema, catalog_->get_index_header(op->index_name_));
                         }
                         return scan;
                     } break;
@@ -328,10 +322,12 @@ class ExecutionEngine {
                         TableSchema* table = catalog_->get_table_schema(statement->table_name_);
                         int select_idx = statement->select_idx_;
 
+                        TableSchema* new_output_schema = table->duplicate(ctx.arena_, table->getTableName());
+
                         InsertionExecutor* insert = New(InsertionExecutor, ctx.arena_,
                                 &ctx,
                                 logical_plan, 
-                                table,
+                                new_output_schema,
                                 catalog_->get_indexes_of_table(statement->table_name_),
                                 select_idx);
                         return insert;

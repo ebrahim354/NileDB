@@ -84,6 +84,8 @@ int main() {
             std::cout << "rows: " << row_cnt << std::endl;
             std::cout << "SUCCESS\n";
             std::cout << "Time: " << elapsed_in_ms << " ms" << std::endl;
+            std::cout << "Main arena usage: " << query_ctx.arena_.alloc_pos_ / 1000 << " KB\n";
+            std::cout << "temp arena usage: " << query_ctx.temp_arena_.alloc_pos_ / 1000 << " KB\n";
             query_ctx.clean();
         }
     }

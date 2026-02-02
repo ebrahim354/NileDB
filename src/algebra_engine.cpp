@@ -5,6 +5,10 @@
 #include <vector>
 #include <set>
 
+Vector<ExpressionNode*> split_by_and(QueryCTX* ctx, ExpressionNode* expression);
+void accessed_tables(ASTNode* expression ,Vector<String8>& tables, Catalog* catalog, bool only_one = true);
+void get_fields_of_query(QueryData* data, Vector<FieldNode*>& fields);
+
 class AlgebraEngine {
     public:
         AlgebraEngine(Catalog* catalog): catalog_(catalog)
@@ -77,45 +81,12 @@ class AlgebraEngine {
         }
 
 
+
         // return false on error.
         bool assign_tables_to_fields(QueryCTX& ctx, QueryData* data) {
             if(!data) return false;
             Vector<FieldNode*> fields;
-            accessed_fields(data->where_, fields);
-            for(u32 i = 0 ; i < data->joined_tables_.size(); ++i)
-                accessed_fields(data->joined_tables_[i].condition_, fields);
-            switch(data->type_){
-                case SELECT_DATA:
-                    {
-                        auto select_data = reinterpret_cast<SelectStatementData*>(data);
-                        accessed_fields(select_data->having_, fields);
-                        for(u32 i = 0; i < select_data->fields_.size(); ++i)
-                            accessed_fields(select_data->fields_[i], fields);
-                        for(u32 i = 0; i < select_data->aggregates_.size(); ++i)
-                            accessed_fields(select_data->aggregates_[i], fields);
-                        for(u32 i = 0; i < select_data->group_by_.size(); ++i)
-                            accessed_fields(select_data->group_by_[i], fields);
-                    } break;
-                case INSERT_DATA:
-                    {
-                        auto insert_data = reinterpret_cast<InsertStatementData*>(data);
-                        for(u32 i = 0; i < insert_data->values_.size(); ++i)
-                            accessed_fields(insert_data->values_[i], fields);
-                    } break;
-                case DELETE_DATA:
-                    {
-                        auto delete_data = reinterpret_cast<DeleteStatementData*>(data);
-                    } break;
-                case UPDATE_DATA:
-                    {
-                        auto update_data = reinterpret_cast<UpdateStatementData*>(data);
-                        for(u32 i = 0; i < update_data->values_.size(); ++i)
-                            accessed_fields(update_data->values_[i], fields);
-                    } break;
-                default:
-                    assert(0);
-            }
-
+            get_fields_of_query(data, fields);
             i32 query_idx = data->idx_;
             data->accessed_fields_.resize(fields.size(), nullptr);
             while(query_idx > -1) {
@@ -123,7 +94,7 @@ class AlgebraEngine {
                 for(u32 i = 0; i < fields.size(); ++i) {
                     // if this field is already covered by subqueries skip it.
                     if(!fields[i]) continue; 
-                    bool is_scoped_field = (fields[i]->table_ != nullptr);
+                    bool is_scoped_field = (fields[i]->table_name_ != nullptr);
                     bool already_matched = false;
 
                     Vector<String8> tables = catalog_->get_tables_by_field(fields[i]->token_.val_);
@@ -131,7 +102,7 @@ class AlgebraEngine {
                         for(u32 k = 0; k < cur_data->tables_.size(); ++k){
                             if(tables[j] == cur_data->tables_[k]) {
                                 if(is_scoped_field) {
-                                    if(fields[i]->table_->token_.val_ != cur_data->table_names_[k]) continue;
+                                    if(fields[i]->table_name_->token_.val_ != cur_data->table_names_[k]) continue;
 
                                     // found the same table twice for the same field!
                                     if(already_matched){
@@ -150,13 +121,19 @@ class AlgebraEngine {
                                     ASTNode* tab = nullptr;
                                     Token tab_tok = Token(TokenType::TABLE, cur_data->table_names_[k]);
                                     ALLOCATE_INIT(ctx.arena_, tab, ASTNode, TABLE, tab_tok);
-                                    fields[i]->table_ = tab;
+                                    fields[i]->table_name_ = tab;
                                 }
                             }
                         }
                     }
 
                     if(already_matched) {
+                        if(!data->corelated_ && query_idx != data->idx_) {
+                            printf("Query %d is corelated duo to field %.*s\n", 
+                                    data->idx_, (int)fields[i]->token_.val_.size_, fields[i]->token_.val_.str_);
+                            data->corelated_ = true;
+                        }
+                        fields[i]->query_idx_ = query_idx;
                         data->accessed_fields_[i] = fields[i];
                         fields[i] = nullptr;
                     }
@@ -488,7 +465,7 @@ class AlgebraEngine {
                                     continue;
                     case AND:{
                                  auto ptr = ((AndNode*)ex);
-                                 if(ptr->next_ == nullptr) {
+                                 if(ptr->next_ == nullptr || ptr->mark_split_) {
                                      ex = ptr->cur_;
                                      continue;
                                  }
@@ -512,10 +489,11 @@ class AlgebraEngine {
                                         accessed_fields(left , key);
                                         accessed_fields(right, key);
                                         if(key.size() != 1) return -1;
-                                        int key_idx = table->col_exist(key[0]->token_.val_);
+                                        int key_idx = 
+                                            table->col_exist(key[0]->token_.val_, key[0]->table_name_->token_.val_);
                                         assert(key_idx != -1);
-                                        if(key[0]->table_) 
-                                            assert(table->getTableName() == key[0]->table_->token_.val_);
+                                        if(key[0]->table_name_) 
+                                            assert(table->getTableName() == key[0]->table_name_->token_.val_);
 
                                         for(int i = 0; i < index.fields_numbers_.size(); ++i) {
                                             if(index.fields_numbers_[i].idx_ == key_idx) {

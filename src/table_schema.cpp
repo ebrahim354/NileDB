@@ -10,7 +10,6 @@
 TableSchema::TableSchema(Arena* arena, String8 name, Table* table, const Vector<Column>& columns, bool tmp_schema):
     table_name_(name), table_(table), columns_(columns, arena), tmp_schema_(tmp_schema)
 {
-    columns_.reserve(20);
     size_ = 0;
     for(auto& c : columns){
         size_ += c.getSize();
@@ -26,15 +25,28 @@ String8 TableSchema::getTableName(){
     return table_name_;
 }
 
+TableSchema* TableSchema::duplicate(Arena& arena, String8 new_scope_name) {
+    Vector<Column> new_columns;
+    new_columns.reserve(columns_.size());
+    // create a new schema and rename assign the scope columns to tname
+    for(int i = 0; i < columns_.size(); i++){
+        new_columns.push_back(columns_[i]);
+        new_columns[i].setScopeName(new_scope_name);
+    }
+
+    TableSchema* new_output_schema = New(TableSchema, arena, table_name_, table_, new_columns);
+
+    return new_output_schema;
+}
 
 
 int TableSchema::numOfCols() {
     return columns_.size();
 }
 
-int TableSchema::col_exist(String8 col_name) {
+int TableSchema::col_exist(String8 col_name, String8 scope_name) {
     for(size_t i = 0; i < columns_.size(); ++i){
-        if(columns_[i].getName() == col_name)
+        if(columns_[i].getName() == col_name && columns_[i].getScopeName() == scope_name)
             return i;
     }
     return -1;

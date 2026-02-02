@@ -162,9 +162,11 @@ struct NullifExpressionNode : ASTNode {
 
 struct FieldNode : ASTNode {
     void init(Token f, ASTNode* table);
-    ASTNode* table_ = nullptr;
-    // the offset of the field within the output tuple. 
-    i32 offset_ = -1;
+    ASTNode* table_name_ = nullptr;
+    i32 query_idx_ = -1;
+    // the schema that this field belongs to.
+    // this schema is not only specific for scans but can be the schema of any 'Executor' type.
+    TableSchema* schema_ = nullptr;
 };
 
 struct SubQueryNode : ASTNode {
@@ -258,6 +260,7 @@ struct AndNode : ASTNode {
 
     NotNode* cur_ = nullptr;
     ASTNode* next_ = nullptr;
+    bool mark_split_ = false;
 };
 
 struct OrNode : ASTNode {

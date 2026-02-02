@@ -3,6 +3,7 @@
 
 #include "catalog.h"
 #include "ast_nodes.h"
+#include "query_ctx.h"
 
 class Catalog;
 
@@ -41,7 +42,7 @@ struct QueryData {
     // a mark for subqueries to indicate if they are corelated to their parent or not.
     // the top level query is always not corelated and has a parent_query_idx of -1.
     // TODO: if the top level query is corelated that is an error, indicate that.
-    bool is_corelated_ = false; 
+    bool corelated_ = false; 
 };
 
 // SQL statement data wrappers.

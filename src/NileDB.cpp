@@ -8,6 +8,8 @@
 #include "execution_engine.cpp"
 #include "query_processor.cpp"
 
+#include "arena.cpp"
+
 
 class NileDB {
     private:

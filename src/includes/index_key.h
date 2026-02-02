@@ -192,15 +192,14 @@ struct IndexKey {
                         break;
                     }
                 case (u8)SerialType::TEXT:
+                default: // text is the default.
                     {
-                        u8 bytes_read = varint_decode(nullptr, &header_val);
+                        u8 bytes_read = varint_encode(nullptr, header_val);
                         out << std::string((char*)payload_ptr, header_val - (u8)SerialType::TEXT);
                         header          += bytes_read;
                         payload_ptr     += header_val     - (u8)SerialType::TEXT;
                         break;
                     }
-                default:
-                    assert(0 && "TYPE NOT SUPPORTED!");
             }
             if(header_size) out << ",";
         }
@@ -282,13 +281,13 @@ bool index_key_resize(Arena* arena, IndexKey* k, u32 n) {
                     break;
                 }
             case (u8)SerialType::TEXT:
+            default: // text is the default.
                 {
-                    u8 bytes_read = varint_decode(nullptr, &header_val);
+                    u8 bytes_read = varint_encode(nullptr, header_val);
                     header          += bytes_read;
                     payload_ptr     += header_val     - (u8)SerialType::TEXT;
                     break;
                 }
-            default:
                 assert(0 && "TYPE NOT SUPPORTED!");
         }
         n--;
@@ -353,14 +352,14 @@ IndexKey index_key_resize_cpy(Arena* arena, IndexKey k, i32 n){
                     break;
                 }
             case (u8)SerialType::TEXT:
+            default: // text is the default
                 {
-                    u8 bytes_read = varint_decode(nullptr, &header_val);
+                    u8 bytes_read = varint_encode(nullptr, header_val);
                     header          += bytes_read;
                     payload_ptr     += header_val     - (u8)SerialType::TEXT;
                     break;
                 }
-            default:
-                assert(0 && "TYPE NOT SUPPORTED!");
+            assert(0 && "TYPE NOT SUPPORTED!");
         }
         n--;
     }
@@ -490,12 +489,13 @@ int index_key_cmp(IndexKey lhs, IndexKey rhs) {
                     break;
                 }
             case (u8)SerialType::TEXT:
+            default: // text is the default.
                 {
                     if(header_val < (u8)SerialType::TEXT || rhs_header_val < (u8)SerialType::TEXT)
                         assert(0 && "TYPE NOT SUPPORTED FOR COMPARISON!");
 
-                    u8 lhs_bytes_read = varint_decode(nullptr, &header_val);
-                    u8 rhs_bytes_read = varint_decode(nullptr, &rhs_header_val);
+                    u8 lhs_bytes_read = varint_encode(nullptr, header_val);
+                    u8 rhs_bytes_read = varint_encode(nullptr, rhs_header_val);
 
                     diff = memcmp(payload_ptr, rhs_payload_ptr, 
                             std::min(header_val, rhs_header_val)-(u8)SerialType::TEXT);
@@ -507,7 +507,6 @@ int index_key_cmp(IndexKey lhs, IndexKey rhs) {
                     rhs_header += rhs_bytes_read;
                     break;
                 }
-            default:
                 assert(0 && "TYPE NOT SUPPORTED!");
         }
         if(diff) {

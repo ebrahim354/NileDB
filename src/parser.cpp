@@ -525,7 +525,7 @@ ASTNode* Parser::field(QueryCTX& ctx){
         if(possible_tables.size() == 1) {
             ASTNode* t = nullptr;
             ALLOCATE_INIT(ctx.arena_, t, ASTNode, TABLE, Token(TokenType::IDENTIFIER, possible_tables[0]));
-            ((FieldNode*)ret)->table_ = t;
+            ((FieldNode*)ret)->table_name_ = t;
         }
         return ret;
     }
@@ -734,13 +734,25 @@ ASTNode* Parser::agg_func(QueryCTX& ctx, ExpressionNode* expression_ctx){
 
     if(!ctx.matchTokenType(TokenType::RP)) return nullptr;
     ++ctx;
+    /*
     String8 f = 
         str_cat(&ctx.arena_, str_lit(AGG_FUNC_IDENTIFIER_PREFIX), i64_to_str(&ctx.arena_, query->aggregates_.size()));
-    assert(0 && "TODO AGG FUNCS\n");
-
     ASTNode* ret = nullptr;
-    //ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FIELD, Token(TokenType::IDENTIFIER, f));
-    return ret;
+    ALLOCATE_INIT(ctx.arena_, ret, ASTNode, FIELD, Token(TokenType::IDENTIFIER, f));*/
+
+
+    Token t_tok = Token(TokenType::IDENTIFIER, str_lit(AGG_FUNC_IDENTIFIER_PREFIX));
+    Token agg_tok = Token(TokenType::IDENTIFIER, i64_to_str(&ctx.arena_, query->aggregates_.size()));
+
+    ASTNode* t = nullptr;
+    FieldNode* agg_field = nullptr;
+
+    ALLOCATE_INIT(ctx.arena_, t, ASTNode, TABLE, t_tok);
+    ALLOCATE_INIT(ctx.arena_, agg_field, FieldNode, agg_tok, t);
+
+    agg_field->query_idx_ = expression_ctx->query_idx_;
+
+    return agg_field;
 }
 
 ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
@@ -765,6 +777,7 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
         if(!sub_query) {
             return nullptr;
         }
+        /*
         if(!sub_query->is_corelated_)
             sub_query->is_corelated_ = is_corelated_subquery(ctx, sub_query, catalog_);
         std::cout << "is corelated: " << sub_query->is_corelated_ << "\n";
@@ -772,7 +785,7 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
             auto parent = ctx.queries_call_stack_[sub_query->parent_idx_];
             if(parent->parent_idx_ != -1)
                 parent->is_corelated_ = true;
-        }
+        }*/
         SubQueryNode* sub_query_node = nullptr; 
         ALLOCATE_INIT(ctx.arena_, sub_query_node, SubQueryNode, sub_query->idx_, sub_query->parent_idx_);
         if(!ctx.matchTokenType(TokenType::RP)){
@@ -790,6 +803,7 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
         if(!sub_query) {
             return nullptr;
         }
+        /*
         if(!sub_query->is_corelated_)
             sub_query->is_corelated_ = is_corelated_subquery(ctx, sub_query, catalog_);
         sub_query->is_corelated_ = is_corelated_subquery(ctx, sub_query, catalog_);
@@ -798,7 +812,7 @@ ASTNode* Parser::item(QueryCTX& ctx, ExpressionNode* expression_ctx){
             auto parent = ctx.queries_call_stack_[sub_query->parent_idx_];
             if(parent->parent_idx_ != -1)
                 parent->is_corelated_ = true;
-        }
+        }*/
         SubQueryNode* sub_query_node = nullptr; 
         ALLOCATE_INIT(ctx.arena_, sub_query_node, SubQueryNode, sub_query->idx_, sub_query->parent_idx_);
         return sub_query_node;

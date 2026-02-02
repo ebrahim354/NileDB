@@ -1,6 +1,6 @@
 #pragma once
+#include "arena.h"
 #include "query_ctx.h"
-#include "arena.cpp"
 
 QueryCTX::QueryCTX () {}
 

@@ -15,12 +15,14 @@ void ScanOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";
     //std::cout << "Scan operation, name: " << to_string(table_name_) << " rename: " << to_string(table_rename_);
-    std::cout << "Scan operation \n";
-    std::cout << " type: " << (scan_type_ == SEQ_SCAN ? "SEQ_SCAN \n" : "INDEX_SCAN \n");
+    std::cout << "Scan operation ";
+    std::cout << " type: " << (scan_type_ == SEQ_SCAN ? "SEQ_SCAN " : "INDEX_SCAN ") << ", table: ";
+    printf("%.*s\n", (int)table_rename_.size_ , table_rename_.str_);
     if(filters_.size()){
         for(int j = 0; j < filters_.size(); ++j){
-            std::cout << "Scan filter number (" << (int)(j+1) << ") "; 
-            std::cout << "\n";
+            for(int i = 0; i < prefix_space_cnt; ++i)
+                std::cout << " ";
+            std::cout << "Scan filter number (" << (int)(j+1) << ") \n";
         }
     }
     std::cout << "\n";
@@ -128,7 +130,7 @@ FilterOperation::FilterOperation(Arena* arena, int query_idx, AlgebraOperation* 
 void FilterOperation::print(int prefix_space_cnt) {
     for(int i = 0; i < prefix_space_cnt; ++i)
         std::cout << " ";
-    std::cout << "filter operation "; 
+    std::cout << "filter operation \n"; 
     if(child_)
         child_->print(prefix_space_cnt + 1);
 }

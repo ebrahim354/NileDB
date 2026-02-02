@@ -583,14 +583,14 @@ Value Value::operator-(Value rhs) {
                        }
                    }
                    break;
-        case BOOLEAN:{
-                         if(rhs.type_ == BOOLEAN){
-                             return Value((int)((bool)content_ - rhs.getBoolVal()));
-                         } else {
-                             assert(0 && "NOT SUPPORTED TYPE CONVERSION");
-                         }
-                     }
+        case BOOLEAN:
+                   {
+                       if(rhs.type_ == NULL_TYPE){
+                           return Value(NULL_TYPE);
+                       }
+                       return Value((int)((bool)content_ - rhs.getBoolVal()));
                      break;
+                   }
         case VARCHAR: 
                      {
                          if(rhs.type_ == VARCHAR) {

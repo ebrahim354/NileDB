@@ -6,6 +6,7 @@
 #include "algebra_operation.h"
 
 struct QueryCTX;
+struct FlatExpr;
 struct InsertStatementData;
 struct DeleteStatementData;
 struct UpdateStatementData;
@@ -60,7 +61,7 @@ struct FilterExecutor : public Executor {
     void init();
     Tuple next();
 
-    ExpressionNode* filter_ = nullptr;
+    FlatExpr* filter_ = nullptr;
     /*
     Vector<ExpressionNode*> fields_ = {};
     Vector<String> field_names_ = {};
@@ -76,7 +77,7 @@ struct NestedLoopJoinExecutor : public Executor {
     Tuple left_output_;
     Executor* left_child_ = nullptr;
     Executor* right_child_ = nullptr;
-    ExpressionNode* filter_ = nullptr;
+    FlatExpr* filter_ = nullptr;
     JoinType join_type_ = INNER_JOIN;
     bool right_child_have_reset_ = false;
     bool left_output_visited_ = false;
@@ -113,7 +114,7 @@ struct HashJoinExecutor : public Executor {
     std::pmr::unordered_map<String8, Vector<Tuple>, String_hash, String_eq> hashed_left_child_;
     // tracks left keys that didn't find a match and can be used for left and full outer joins.
     std::pmr::set<String8> non_visited_left_keys_; 
-    ExpressionNode* filter_ = nullptr;
+    FlatExpr* filter_ = nullptr;
     JoinType join_type_ = INNER_JOIN;
     // the value of -1 means that we will use the first tuple.
     int duplicated_idx_ = -1; 
@@ -160,7 +161,7 @@ struct SeqScanExecutor : public Executor {
     Tuple next();
 
     TableSchema* table_        = nullptr;
-    Vector<ASTNode*>* filters_ = nullptr;
+    Vector<FlatExpr*> filters_;
     TableIterator it_;
 };
 
@@ -174,8 +175,8 @@ struct IndexScanExecutor : public Executor {
     IndexHeader index_header_ = {};
     TableSchema* table_ = nullptr;
     FileID table_fid_ = INVALID_FID;
-    Vector<ASTNode*>* index_filters_ = nullptr;
-    Vector<ASTNode*>* filters_ = nullptr;
+    Vector<FlatExpr*> index_filters_;
+    Vector<FlatExpr*> filters_;
     IndexIterator start_it_{};
     IndexKey search_key_;
 };
@@ -243,7 +244,7 @@ struct ProjectionExecutor : public Executor {
     Tuple next();
 
     // child_executor_ is optional in case of projection for example : select 1 + 1 should work without a from clause.
-    Vector<ExpressionNode*> *fields_ {};
+    Vector<FlatExpr*> fields_ {};
 };
 
 struct SortExecutor : public Executor {

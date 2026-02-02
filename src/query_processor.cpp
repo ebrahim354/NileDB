@@ -31,6 +31,7 @@ class QueryProcessor{
                 //query_ctx.clean();
                 return status;
             }
+            query_ctx.query_inputs.resize(query_ctx.queries_call_stack_.size());
             std::cout << "[INFO] Creating logical plan" << std::endl;
             algebra_->createAlgebraExpression(query_ctx);
             if(query_ctx.operators_call_stack_.size() < query_ctx.queries_call_stack_.size() || 

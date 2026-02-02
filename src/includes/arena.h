@@ -12,8 +12,8 @@
 #define DEFAULT_ALIGNMENT sizeof(void *)
 #endif
 
-#define ARENA_MAX         Megabytes(1)
-#define ARENA_COMMIT_SIZE Kilobytes(8)
+#define ARENA_MAX         Megabytes(512)
+#define ARENA_COMMIT_SIZE Kilobytes(512)
 
 inline bool is_power_of_two(uintptr_t x);
 

@@ -72,8 +72,9 @@ void NullifExpressionNode::init (ExpressionNode* lhs, ExpressionNode* rhs) {
 void FieldNode::init(Token f, ASTNode* table) {
     category_ = FIELD_EXPR; 
     token_ = f;
-    table_ = table;
-    offset_ = -1;
+    table_name_ = table;
+    query_idx_ = -1;
+    schema_ = nullptr;
 }
 
 void SubQueryNode::init(int idx, int parent_idx) {

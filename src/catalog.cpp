@@ -188,6 +188,7 @@ TableSchema* Catalog::create_table(QueryCTX* ctx, String8 table_name, Vector<Col
         query = str_copy(&arena_, ctx->query_);
         for(int i = 0; i < columns.size(); ++i){
             columns[i].setName(str_copy(&arena_, columns[i].getName()));
+            columns[i].setScopeName(table_name);
         }
     }
 
@@ -214,7 +215,7 @@ bool Catalog::create_index(QueryCTX* ctx, String8 table_name, String8 index_name
     TableSchema* table = tables_[table_name];
     Vector<NumberedIndexField> cols;
     for(int i = 0; i < fields.size(); ++i){
-        int col = table->col_exist(fields[i].name_);
+        int col = table->col_exist(fields[i].name_, table_name);
         if(col == -1) return 1;
         cols.push_back({col, fields[i].desc_});
     }

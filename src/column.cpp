@@ -39,8 +39,10 @@ Column::~Column()
     // the reson for this is that we don't want anyone to change the column meta data after initializing it.
     // if you want to modify the column you have to delete it and start a new one, this is better to avoid errors
     // in the future, for example: when we start adding ALTER TABLE command.
-void                    Column::setName(String8 name) { name_ = name  ; }
-String8                  Column::getName()        { return name_            ; }
+void                    Column::setName(String8 name) { name_ = name       ; }
+void                    Column::setScopeName(String8 sname) {scope_name_ = sname;}
+String8                 Column::getName()        { return name_            ; }
+String8                 Column::getScopeName()   { return scope_name_      ; }
 Type                    Column::getType()        { return type_            ; }
 u8                      Column::getSize() const  { return size_            ; }
 u16                     Column::getOffset()      { return col_offset_      ; }

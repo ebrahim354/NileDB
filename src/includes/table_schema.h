@@ -21,10 +21,12 @@ class TableSchema {
 
         String8 getTableName();
         int numOfCols();
-        int col_exist(String8 col_name);
+        int col_exist(String8 col_name, String8 scope_name);
 
         Column getCol(int idx);
         u32 getSize();
+
+        TableSchema* duplicate(Arena& arena, String8 new_scope_name);
 
         bool is_valid_col(String8 col_name);
         Vector<String8> getCols();

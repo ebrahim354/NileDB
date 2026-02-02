@@ -47,7 +47,9 @@ class Column {
         ~Column();
 
         void                           setName(String8 name);
+        void                           setScopeName(String8 sname);
         String8                        getName();
+        String8                        getScopeName();
         Type                           getType();
         u8                             getSize() const;
         u16                            getOffset();

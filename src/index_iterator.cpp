@@ -28,6 +28,9 @@ IndexIterator::~IndexIterator(){
 void IndexIterator::clear() {
     if(cur_page_) {
         cache_manager_->unpinPage(cur_page_id_, false);
+        cur_page_ = nullptr;
+        cur_raw_page_ = nullptr;
+        cur_page_id_ = INVALID_PAGE_ID;
     }
 }
 

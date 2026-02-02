@@ -1,7 +1,9 @@
 #pragma once
-#include "ast_nodes.cpp"
-#include "expression.h"
+#include "query_data.h"
+#include "ast_nodes.h"
 
+void accessed_fields(ASTNode* expression ,Vector<FieldNode*>& fields, bool only_one = true);
+void accessed_fields_deep(QueryCTX& ctx, ASTNode* expression ,Vector<FieldNode*>& fields, bool only_one = true);
 JoinType token_type_to_join_type (TokenType t) {
     switch(t){
         case TokenType::LEFT:
@@ -31,8 +33,8 @@ bool is_corelated_subquery(QueryCTX& ctx, SelectStatementData* query, Catalog* c
         accessed_fields(query->group_by_[i], fields, true);
     }
     for(int i = 0; i < fields.size(); ++i){
-        if((fields[i])->table_ != nullptr) {
-            String8 table = (fields[i])->table_->token_.val_;
+        if((fields[i])->table_name_ != nullptr) {
+            String8 table = (fields[i])->table_name_->token_.val_;
             String8 cur_field   = fields[i]->token_.val_;
             for(int k = 0; k < query->table_names_.size(); ++k){
                 if(table != query->table_names_[k] && k == query->table_names_.size() - 1)
