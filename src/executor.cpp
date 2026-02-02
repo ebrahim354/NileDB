@@ -704,6 +704,7 @@ void IndexScanExecutor::assign_iterators() {
 
     search_key_ = temp_index_key_from_values(&ctx_->temp_arena_, key_vals);
     search_key_.sort_order_ = create_sort_order_bitmap(&ctx_->temp_arena_, index_header_.fields_numbers_);
+    if(index_header_.fields_numbers_[0].desc_) first_key_on_left = !first_key_on_left;
     auto op = first_col_op;
     if(!first_key_on_left){
         if      (op == TokenType::GT)  op = TokenType::LT;

@@ -696,7 +696,7 @@ i32 flatten_expression (
                 i32 r1 = out_expr->allocate_register();
                 i32 r2 = flatten_expression(ctx, land->cur_, out_expr, land->cur_->category_ == AND);
                 ASTNode* ptr = land->next_;
-                if(only_one) return r2;
+                if(only_one || land->mark_split_) return r2;
 
                 while(ptr){
                     if(ptr->category_ == AND && ((AndNode*)ptr)->mark_split_) break;
