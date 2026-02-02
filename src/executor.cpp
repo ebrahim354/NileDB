@@ -1610,43 +1610,40 @@ SubQueryExecutor::SubQueryExecutor(Arena* arena, QueryCTX* ctx, Executor* child_
     parent_query_idx_ = child_executor_->parent_query_idx_; 
 
     output_.resize(output_schema_->numOfCols());
+    cached_ = false;
 }
 
 void SubQueryExecutor::init() {
     finished_ = 0;
     error_status_ = 0;
-    if(!cached_){
+    assert(child_executor_ != nullptr);
+    if(!cached_) {
         child_executor_->init();
-    } else {
-        it_ = tuple_list_.begin();
+        while(!child_executor_->finished_ && !child_executor_->error_status_){
+            auto t = child_executor_->next();
+            if(t.size() == 0){
+                break;
+            }
+            tuple_list_.push_back(t.duplicate(&ctx_->arena_));
+            error_status_ = child_executor_->error_status_;
+        }
+        cached_ = true;
     }
+
+    it_ = tuple_list_.begin();
 }
 
 Tuple SubQueryExecutor::next() {
     if(finished_ || error_status_) {
         return {};
     }
-    if(!cached_){
-        Tuple t = child_executor_->next();
-        if(t.is_empty()) {
-            cached_ = true;
-            finished_ = true;
-            return {};
-        }
+    if(it_ == tuple_list_.end()) {
         error_status_ = child_executor_->error_status_;
         finished_ = child_executor_->finished_;
-        tuple_list_.push_back(t);
-        output_ = t;
-    } else {
-        if(it_ == tuple_list_.end()) {
-            error_status_ = child_executor_->error_status_;
-            finished_ = child_executor_->finished_;
-            return {};
-        }
-        output_ = *it_;
-        ++it_;
+        return {};
     }
-    if(finished_) cached_ = true;
+    output_ = *it_;
+    ++it_;
     return output_;
 }
 

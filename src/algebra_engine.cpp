@@ -530,6 +530,10 @@ class AlgebraEngine {
                     if(matched_filters[j] == -1) break;
                     // this condition makes sure that:
                     // all matched_filters are stored with the same order(desc or asc) within the index.
+                    // for example:
+                    // index with fields (col0 desc, col1 asc), 
+                    // a query with predicates: col0 > 5000 AND col1 > 1000
+                    // will only use the first predicate as a search key.
                     if(j > 0 && 
                             table_indexes[i].fields_numbers_[j].desc_ != table_indexes[i].fields_numbers_[j-1].desc_) break;
                     max_offset = j;

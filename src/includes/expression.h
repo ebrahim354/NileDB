@@ -7,10 +7,12 @@
 #include "utils.h"
 #include <string>
 #include <unordered_map>
+#include <stack>
 
 Value evaluate_subquery(QueryCTX* ctx, const Tuple& cur_tuple, ASTNode* item);
 void get_fields_of_query_deep(QueryCTX& ctx, QueryData* data, Vector<FieldNode*>& fields);
 Value evaluate_subquery_flat(QueryCTX* ctx, i32 query_idx);
+Value match_with_subquery(QueryCTX* ctx, i32 query_idx, Value val);
 
 
 Value invalid_func(std::vector<Value>& vals){
@@ -77,6 +79,7 @@ enum class ExprOpCode: u8 {
     GT,
     GTE,
     SUB_QUERY,
+    SUB_QUERY_MATCH,
     ADD,
     SUBTRACT,
     MULTIPLY,
@@ -115,6 +118,7 @@ struct FlatExpr {
     // fields used during compilation.
     u32 sp_ = 1;
     u32 max_sp_ = 1;
+    std::stack<i32> in_expr_vals_;
 
     u32 allocate_register() {
         sp_++;
@@ -194,6 +198,11 @@ struct FlatExpr {
                 case ExprOpCode::SUB_QUERY:
                     {
                         name = "SubQuery";
+                        break;
+                    }
+                case ExprOpCode::SUB_QUERY_MATCH:
+                    {
+                        name = "SubQueryMatch";
                         break;
                     }
                 case ExprOpCode::ADD:
@@ -414,7 +423,10 @@ i32 flatten_expression (
                 auto sub_query = reinterpret_cast<SubQueryNode*>(in_expr);
                 i32 r1 = out_expr->allocate_register();
                 i32 r2 = sub_query->idx_; 
-                out_expr->push_step(ExprOpCode::SUB_QUERY, r1, r2); 
+                if(out_expr->in_expr_vals_.size())
+                    out_expr->push_step(ExprOpCode::SUB_QUERY_MATCH, r1, r2, out_expr->in_expr_vals_.top());
+                else
+                    out_expr->push_step(ExprOpCode::SUB_QUERY, r1, r2); 
                 assert(r2 > 0);
                 return r1;
             }
@@ -765,13 +777,17 @@ i32 flatten_expression (
                 InNode* in = reinterpret_cast<InNode*>(in_expr);
                 // the value to be compared.
                 i32 r2 = flatten_expression(ctx, in->val_, out_expr, false); 
+                out_expr->in_expr_vals_.push(r2);
                 i32 r3 = in->list_.size(); // the number of items to compare to.
                 for(int i = 0; i < in->list_.size(); ++i){
                     i32 res = flatten_expression(ctx, in->list_[i], out_expr, false);
                     out_expr->reset_sp(res);
                 }
+                out_expr->in_expr_vals_.pop();
+
                 i32 r1 = out_expr->allocate_register();
                 out_expr->push_step(ExprOpCode::IN, r1, r2, r3);
+
 
                 if(in->negated_) {
                     i32 not_res = out_expr->allocate_register();
@@ -897,6 +913,14 @@ Value evaluate_flat_expression(QueryCTX* ctx, FlatExpr& expr, const Tuple& cur_t
                     Value* v1 = &expr.registers_[r1];
                     ctx->query_inputs[expr.query_idx_] = cur_tuple; 
                     *v1 = evaluate_subquery_flat(ctx, r2);
+                    break;
+                }
+            case ExprOpCode::SUB_QUERY_MATCH:
+                {
+                    Value* v1 = &expr.registers_[r1];
+                    Value* v3 = &expr.registers_[r3];
+                    ctx->query_inputs[expr.query_idx_] = cur_tuple; 
+                    *v1 = match_with_subquery(ctx, r2, *v3);
                     break;
                 }
             case ExprOpCode::ADD:
@@ -1054,10 +1078,10 @@ Value evaluate_flat_expression(QueryCTX* ctx, FlatExpr& expr, const Tuple& cur_t
                     Value* v3 = &expr.registers_[r3];
 
                     if(v2->isNull() && v3->isNull()) *v1 = Value(NULL_TYPE);
-                    else if(v2->isNull()) *v1 = *v3;
-                    else if(v3->isNull()) *v1 = *v2;
+                    else if(v2->isNull()) *v1 = v3->getBoolVal();
+                    else if(v3->isNull()) *v1 = v2->getBoolVal();
                     else {
-                        *v1 = Value((bool)(v2->getBoolVal() || v3->getBoolVal()));
+                        *v1 = Value((bool)((v2->getBoolVal() || v3->getBoolVal())));
                     }
                     break;
                 }
@@ -2250,7 +2274,6 @@ Value evaluate_subquery_flat(QueryCTX* ctx, i32 query_idx) {
 
     Tuple tmp = sub_query_executor->next();
     if(tmp.size() == 0 && sub_query_executor->finished_) {
-        ctx->query_inputs.pop_back();
         if(used_with_exists) 
             return Value(false);
         return Value();
@@ -2268,6 +2291,53 @@ Value evaluate_subquery_flat(QueryCTX* ctx, i32 query_idx) {
         return Value();
     }
     return tmp.get_val_at(0);
+}
+
+
+// matches a value with the output of a subquery, used for IN expressions for example: SELECT 5 IN (SELECT 5 FROM table1);
+Value match_with_subquery(QueryCTX* ctx, i32 query_idx, Value val) {
+    //if(val.getIntVal() == 0) asm("int3");
+    if(val.isNull()) return Value(NULL_TYPE);
+
+    Executor* sub_query_executor = ctx->executors_call_stack_[query_idx]; 
+    sub_query_executor->init();
+    if(sub_query_executor->error_status_){
+        std::cout << "[ERROR] could not initialize sub-query" << std::endl;
+        ctx->error_status_ = Error::QUERY_NOT_SUPPORTED; // TODO: put a better error_status_.
+        return Value();
+    }
+
+    bool answer = false;
+    bool null_ret = false;
+    while(!answer && !sub_query_executor->finished_ && !sub_query_executor->error_status_){
+        Tuple sub_query_output = sub_query_executor->next();
+        if(sub_query_output.size() == 0 && sub_query_executor->finished_) {
+            break;
+        }
+
+        if(sub_query_executor->error_status_) {
+            std::cout << "[ERROR] could not execute sub-query" << std::endl;
+            ctx->error_status_ = (Error)1; // TODO: better error handling.
+            return Value();
+        }
+
+        if(sub_query_output.size() != 1) {
+            std::cout << "[ERROR] sub-query should return exactly 1 column" << std::endl;
+            ctx->error_status_ = (Error)1; // TODO: better error handling.
+            return Value();
+        }
+        if(sub_query_output.get_val_at(0).isNull()){
+            null_ret = true;
+        }
+        else if(val == sub_query_output.get_val_at(0)){
+            answer = true;
+            null_ret = false;
+            break;
+        }
+    }
+    if(null_ret) return Value(NULL_TYPE);
+    if(answer == true) return val;
+    return Value(INVALID);
 }
 
 #endif // EXPRESSION_H

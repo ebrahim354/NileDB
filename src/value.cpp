@@ -604,7 +604,9 @@ Value Value::operator-(Value rhs) {
                      } 
                      break;
         case NULL_TYPE:
+                     return Value(NULL_TYPE);
         case INVALID:
+                     return Value(INVALID);
         default :
                      assert(0 && "OPERATOR NOT SUPPORTED FOR THIS TYPE!");
     }
@@ -801,6 +803,7 @@ double Value::getDoubleVal() const {
     return cast_as(double, content_);
 }
 bool Value::operator==(const Value &rhs) const { 
+    if(rhs.type_ == INVALID || type_ == INVALID) return false;
     int cmp = value_cmp(*this, rhs);
     return cmp == 0;
 }
