@@ -49,10 +49,14 @@ class Catalog {
         void destroy ();
 
         TableSchema* create_table(QueryCTX* ctx, String8 table_name, Vector<Column> &columns, bool deep_copy = true);
+        TableSchema* create_temp_table(QueryCTX* ctx, TableSchema* temp_schema);
+        int delete_temp_table(TableSchema* schema);
         TableSchema* get_table_schema(String8 table_name);
 
         bool create_index(QueryCTX* ctx, String8 table_name, String8 index_name,
                 Vector<IndexField> &fields, bool is_unique, bool deep_copy = true);
+        IndexHeader create_temp_index(QueryCTX* ctx, Vector<NumberedIndexField> &fields, bool is_unique);
+        int delete_temp_index(QueryCTX* ctx, IndexHeader& header);
         bool load_indexes();
         IndexHeader get_index_header(String8 index);
 

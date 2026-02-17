@@ -528,14 +528,16 @@ class AlgebraEngine {
 
                 for(int j = 0; j < matched_filters.size(); ++j){
                     if(matched_filters[j] == -1) break;
+                     //TODO: fix this condition.
                     // this condition makes sure that:
                     // all matched_filters are stored with the same order(desc or asc) within the index.
                     // for example:
                     // index with fields (col0 desc, col1 asc), 
                     // a query with predicates: col0 > 5000 AND col1 > 1000
                     // will only use the first predicate as a search key.
-                    if(j > 0 && 
-                            table_indexes[i].fields_numbers_[j].desc_ != table_indexes[i].fields_numbers_[j-1].desc_) break;
+                    //if(j > 0 && 
+                     //       table_indexes[i].fields_numbers_[j].desc_ != table_indexes[i].fields_numbers_[j-1].desc_) break;
+                    if(j > 0) break;
                     max_offset = j;
                 }
                 if(max_offset >= 0 && max_offset >= best_index.second.size()) {

@@ -208,6 +208,45 @@ TableSchema* Catalog::create_table(QueryCTX* ctx, String8 table_name, Vector<Col
     return schema;
 }
 
+TableSchema* Catalog::create_temp_table(QueryCTX* ctx, TableSchema* temp_schema) {
+    printf("creating a temp table!\n");
+    FileID nfid = generate_max_fid();
+    assert((fid_to_fname.count(nfid) == 0 && fid_to_fname.count(nfid+1) == 0) && "[FATAL] fid already exists!");
+    u64 cur_time = std::time(nullptr);
+
+    String8 table_name =  i64_to_str(&ctx->arena_, cur_time);
+
+    if (tables_.count(table_name) || fid_to_fname.count(nfid)){
+        assert(0);
+        return nullptr;
+    }
+
+    String8 fname = str_cat(&ctx->arena_, table_name, str_lit(".ndb"), true);
+    String8 fsm   = str_cat(&ctx->arena_, table_name, str_lit("_fsm.ndb"), true);
+    fid_to_fname[nfid]   = fname;
+    fid_to_fname[nfid+1] = fsm;
+
+    // initialize the table
+    Table* table = nullptr;
+    ALLOCATE_INIT(ctx->arena_, table, Table, cache_manager_, nfid);
+
+    TableSchema* schema = New(TableSchema, ctx->arena_, table_name, table, temp_schema->getColumns());
+
+    return schema;
+
+}
+
+int Catalog::delete_temp_table(TableSchema* schema) {
+    assert(schema->getTable());
+    auto fid = schema->getTable()->get_fid();
+    int err = cache_manager_->deleteFile(fid);
+    assert(err == 0);
+    fid_to_fname.erase(fid);
+    fid_to_fname.erase(fid+1);
+    return err;
+}
+
+
 bool Catalog::create_index(QueryCTX* ctx, String8 table_name, String8 index_name,
         Vector<IndexField> &fields, bool is_unique, bool deep_copy) {
     if (!tables_.count(table_name) || indexes_.count(index_name))
@@ -293,6 +332,42 @@ bool Catalog::create_index(QueryCTX* ctx, String8 table_name, String8 index_name
     }
     table_it.destroy();
     return false;
+}
+
+IndexHeader Catalog::create_temp_index(QueryCTX* ctx, Vector<NumberedIndexField> &fields, bool is_unique) {
+    u64 cur_time = std::time(nullptr);
+    String8 index_name =  i64_to_str(&ctx->arena_, cur_time);
+
+    if (indexes_.count(index_name)){
+        assert(0);
+    }
+
+    // initialize the index
+    String8 index_fname = str_cat(&ctx->arena_, index_name, str_lit("_INDEX.ndb"), true);
+    FileID nfid = generate_max_fid(); 
+    assert(fid_to_fname.count(nfid) == 0); // TODO: replace assertion with error.
+    fid_to_fname[nfid] = index_fname;
+
+
+    BTreeIndex* index = nullptr; 
+    ALLOCATE_INIT(ctx->arena_, index, 
+            BTreeIndex, cache_manager_, nfid, fields.size(), is_unique);
+
+    IndexHeader header = IndexHeader(index, index_name, fields);
+
+    return header;
+}
+
+int Catalog::delete_temp_index(QueryCTX* ctx, IndexHeader& header) {
+    assert(header.index_);
+    BTreeIndex* index = header.index_; 
+    FileID fid = index->get_fid();
+    assert(fid_to_fname.count(fid));
+
+    int err = cache_manager_->deleteFile(fid);
+    fid_to_fname.erase(fid);
+    assert(err == 0);
+    return err;
 }
 
 TableSchema* Catalog::get_table_schema(String8 table_name) {

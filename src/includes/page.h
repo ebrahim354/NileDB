@@ -12,7 +12,7 @@
 #define INVALID_PAGE_NUM -1
 #define INVALID_FID      -1
 
-#define PAGE_SIZE 512 // TODO: change to a higher size before release.
+#define PAGE_SIZE 256 // TODO: change to a higher size before release.
 //#define PAGE_SIZE 8192 
 #define FILE_EXT ".ndb" // nile db
 #define SIZE_PAGE_HEADER = 8;

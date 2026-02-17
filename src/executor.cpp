@@ -667,7 +667,8 @@ void IndexScanExecutor::assign_iterators() {
         }
 
         if(i == 0) first_col_op = ptr->token_.type_;
-        if(cat == COMPARISON && i != 0) break;
+        if(cat == COMPARISON && i != 0) 
+            assert(0);
         switch(cat) {
             case EQUALITY:
             case COMPARISON:{
